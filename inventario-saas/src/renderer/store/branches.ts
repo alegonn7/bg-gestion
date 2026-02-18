@@ -193,20 +193,95 @@ export const useBranchesStore = create<BranchesState>((set, get) => ({
       const branch = get().branches.find(b => b.id === id)
       if (!branch) throw new Error('Branch not found')
 
-      // Verificar que no tenga productos activos
-      if (branch.products_count && branch.products_count > 0) {
-        throw new Error(
-          `No se puede eliminar la sucursal "${branch.name}" porque tiene ${branch.products_count} productos activos. Desactiva o elimina los productos primero.`
-        )
+      // 1. Obtener todos los products_branch de esta sucursal
+      const { data: branchProducts } = await supabase
+        .from('products_branch')
+        .select('id')
+        .eq('branch_id', id)
+
+      const productBranchIds = branchProducts?.map(p => p.id) || []
+
+      // 2. Obtener todos los sale IDs de esta sucursal
+      const { data: branchSales } = await supabase
+        .from('sales')
+        .select('id')
+        .eq('branch_id', id)
+
+      const saleIds = branchSales?.map(s => s.id) || []
+
+      // 3. Eliminar inventory_movements por branch_id
+      const { error: movementsError } = await supabase
+        .from('inventory_movements')
+        .delete()
+        .eq('branch_id', id)
+
+      if (movementsError) throw movementsError
+
+      // 4. Eliminar inventory_movements restantes que referencian ventas de esta sucursal (por sale_id)
+      if (saleIds.length > 0) {
+        const { error: movementsBySaleError } = await supabase
+          .from('inventory_movements')
+          .delete()
+          .in('sale_id', saleIds)
+
+        if (movementsBySaleError) throw movementsBySaleError
       }
 
-      // Verificar que no tenga usuarios asignados
-      if (branch.users_count && branch.users_count > 0) {
-        throw new Error(
-          `No se puede eliminar la sucursal "${branch.name}" porque tiene ${branch.users_count} usuarios asignados. Reasigna los usuarios primero.`
-        )
+      // 5. Eliminar sale_items que referencian products_branch de esta sucursal
+      if (productBranchIds.length > 0) {
+        const { error: saleItemsError } = await supabase
+          .from('sale_items')
+          .delete()
+          .in('product_branch_id', productBranchIds)
+
+        if (saleItemsError) throw saleItemsError
       }
 
+      // 6. Eliminar sale_items restantes que referencian ventas de esta sucursal (por sale_id)
+      if (saleIds.length > 0) {
+        const { error: saleItemsBySaleError } = await supabase
+          .from('sale_items')
+          .delete()
+          .in('sale_id', saleIds)
+
+        if (saleItemsBySaleError) throw saleItemsBySaleError
+      }
+
+      // 7. Eliminar scanned_items de esta sucursal
+      const { error: scannedError } = await supabase
+        .from('scanned_items')
+        .delete()
+        .eq('branch_id', id)
+
+      if (scannedError) throw scannedError
+
+      // 8. Eliminar ventas de esta sucursal (ya sin FKs apuntándoles)
+      const { error: salesError } = await supabase
+        .from('sales')
+        .delete()
+        .eq('branch_id', id)
+
+      if (salesError) throw salesError
+
+      // 9. Eliminar products_branch de esta sucursal
+      if (productBranchIds.length > 0) {
+        const { error: productsError } = await supabase
+          .from('products_branch')
+          .delete()
+          .eq('branch_id', id)
+
+        if (productsError) throw productsError
+      }
+
+      // 10. Desasignar usuarios de esta sucursal (poner branch_id en null)
+      const { error: usersError } = await supabase
+        .from('users')
+        .update({ branch_id: null })
+        .eq('branch_id', id)
+
+      if (usersError) throw usersError
+
+      // 11. Eliminar la sucursal
       const { error } = await supabase
         .from('branches')
         .delete()

@@ -113,7 +113,7 @@ const chartOptions: ChartOption[] = [
 ]
 
 export default function Reports() {
-  const { user } = useAuthStore()
+  const { user, selectedBranch: authSelectedBranch } = useAuthStore()
   const {
     isLoading,
     totalRevenue,
@@ -148,7 +148,7 @@ export default function Reports() {
     fetchReports()
     fetchBranches()
     handlePeriodChange('30d')
-  }, [])
+  }, [authSelectedBranch?.id])
 
   const handlePeriodChange = (period: typeof selectedPeriod) => {
     setSelectedPeriod(period)
@@ -271,7 +271,8 @@ export default function Reports() {
                     return `${data.category_name}: ${formatCurrency(data.total_revenue)}`
                   }}
                 >
-                  {revenueByCategory.map((_entry, index) => (
+                  {revenueByCategory.map((_
+                  , index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>

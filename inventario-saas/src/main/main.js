@@ -52,7 +52,7 @@ function createWindow() {
       nodeIntegration: false,
       contextIsolation: true,
     },
-    icon: path.join(__dirname, '../../build/icon.ico'),
+    icon: path.join(__dirname, '../../build/icons/win/icon.ico'),
   });
 
   // En desarrollo, cargar desde Vite dev server
@@ -61,7 +61,7 @@ function createWindow() {
     mainWindow.webContents.openDevTools();
   } else {
     // En producción, cargar el build
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    mainWindow.loadFile(path.join(__dirname, '../../dist/index.html'));
   }
 
   mainWindow.on('closed', () => {

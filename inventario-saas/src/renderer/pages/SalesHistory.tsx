@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Download, Filter, Building2, DollarSign, FileText} from 'lucide-react'
+import { Download, Filter, Building2, DollarSign, FileText, XCircle, AlertTriangle} from 'lucide-react'
 import { useSalesStore } from '@/store/sales'
 import { useBranchesStore } from '@/store/branches'
 import { useAuthStore } from '@/store/auth'
@@ -12,17 +12,20 @@ export default function SalesHistory() {
     selectedBranchId,
     searchQuery,
     fetchSales,
+    voidSale,
     setFilters,
     clearFilters
   } = useSalesStore()
 
   const { branches, fetchBranches } = useBranchesStore()
-  const { user } = useAuthStore()
+  const { user, selectedBranch, organization } = useAuthStore()
 
   const [showFilters, setShowFilters] = useState(false)
   const [localStartDate, setLocalStartDate] = useState('')
   const [localEndDate, setLocalEndDate] = useState('')
   const [localSearchQuery, setLocalSearchQuery] = useState('')
+  const [voidConfirmId, setVoidConfirmId] = useState<string | null>(null)
+  const [isVoiding, setIsVoiding] = useState(false)
 
   const isOwnerOrAdmin = user?.role === 'owner' || user?.role === 'admin'
 
@@ -31,7 +34,7 @@ export default function SalesHistory() {
     if (isOwnerOrAdmin) {
       fetchBranches()
     }
-  }, [])
+  }, [selectedBranch?.id])
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('es-AR', {
@@ -71,7 +74,17 @@ export default function SalesHistory() {
     clearFilters()
   }
 
-  const generatePDF = (sale: any) => {
+  const handleVoidSale = async (saleId: string) => {
+    setIsVoiding(true)
+    const result = await voidSale(saleId)
+    setIsVoiding(false)
+    setVoidConfirmId(null)
+    if (!result.success) {
+      alert(result.error || 'Error al anular la venta')
+    }
+  }
+
+  const generatePDF = async (sale: any) => {
     const doc = new jsPDF({
       orientation: 'portrait',
       unit: 'mm',
@@ -93,32 +106,74 @@ export default function SalesHistory() {
       second: '2-digit'
     })
 
-    // Header
-    doc.setFontSize(14)
-    doc.setFont('helvetica', 'bold')
-    doc.text('COMPROBANTE DE VENTA', 40, 10, { align: 'center' })
+    const companyName = organization?.name || 'Mi Negocio'
+    let startY = 8
 
-    // Info del negocio
+    // Logo de la empresa (si existe)
+    if (organization?.logo_url) {
+      try {
+        const img = new Image()
+        img.crossOrigin = 'anonymous'
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => resolve()
+          img.onerror = () => reject()
+          img.src = organization.logo_url!
+        })
+        const maxH = 18
+        const maxW = 30
+        const ratio = Math.min(maxW / img.width, maxH / img.height)
+        const imgW = img.width * ratio
+        const imgH = img.height * ratio
+        const imgX = (80 - imgW) / 2
+        doc.addImage(img, 'PNG', imgX, startY, imgW, imgH)
+        startY += imgH + 5
+      } catch {
+        // Si falla la carga del logo, continuar sin él
+      }
+    }
+
+    // Nombre de la empresa
+    doc.setFontSize(11)
+    doc.setFont('helvetica', 'bold')
+    doc.text(companyName, 40, startY, { align: 'center' })
+    startY += 5
+
+    // Sucursal
     doc.setFontSize(9)
     doc.setFont('helvetica', 'normal')
-    doc.text('Mi Negocio', 40, 18, { align: 'center' })
-    doc.text(sale.branch_name, 40, 23, { align: 'center' })
+    doc.text(sale.branch_name, 40, startY, { align: 'center' })
+    startY += 6
 
-    // Fecha y hora ✅ corregida
+    // Título del comprobante
+    doc.setFontSize(12)
+    doc.setFont('helvetica', 'bold')
+    doc.text('COMPROBANTE DE VENTA', 40, startY, { align: 'center' })
+    startY += 4
+
+    // Leyenda: documento no fiscal
+    doc.setFontSize(7)
+    doc.setFont('helvetica', 'italic')
+    doc.text('DOCUMENTO NO VALIDO COMO FACTURA', 40, startY, { align: 'center' })
+    startY += 5
+
+    // Fecha y hora
     doc.setFontSize(8)
-    doc.text(`Fecha: ${fechaVenta}`, 5, 30)
-    doc.text(`Hora: ${horaVenta}`, 5, 34)
+    doc.setFont('helvetica', 'normal')
+    doc.text(`Fecha: ${fechaVenta}`, 5, startY)
+    startY += 4
+    doc.text(`Hora: ${horaVenta}`, 5, startY)
+    startY += 4
 
     // Separador
-    doc.line(5, 38, 75, 38)
+    doc.line(5, startY, 75, startY)
 
     // Items header
     doc.setFontSize(9)
     doc.setFont('helvetica', 'bold')
-    doc.text('PRODUCTOS', 5, 44)
+    doc.text('PRODUCTOS', 5, startY + 6)
 
     // Items
-    let yPos = 50
+    let yPos = startY + 12
     sale.items.forEach((item: any) => {
       doc.setFont('helvetica', 'normal')
       doc.text(`${item.product_name}`, 5, yPos)
@@ -159,18 +214,24 @@ export default function SalesHistory() {
     // Método de pago
     doc.setFontSize(9)
     doc.setFont('helvetica', 'normal')
-    doc.text(`Método de pago: ${sale.payment_method}`, 5, yPos)
+    doc.text(`Metodo de pago: ${sale.payment_method}`, 5, yPos)
     yPos += 6
 
     // Empleado
     if (sale.created_by_name) {
-      doc.text(`Atendió: ${sale.created_by_name}`, 5, yPos)
+      doc.text(`Atendio: ${sale.created_by_name}`, 5, yPos)
       yPos += 6
     }
 
     // Footer
     doc.setFontSize(8)
-    doc.text('¡Gracias por su compra!', 40, yPos, { align: 'center' })
+    doc.text('Gracias por su compra!', 40, yPos, { align: 'center' })
+    yPos += 5
+    doc.setFontSize(6)
+    doc.setFont('helvetica', 'italic')
+    doc.text('Este ticket no tiene validez fiscal. No constituye factura.', 40, yPos, { align: 'center' })
+    yPos += 3
+    doc.text('Segun Ley 11.683, RG AFIP 1415 y normativas vigentes.', 40, yPos, { align: 'center' })
 
     // Guardar
     doc.save(`venta-${sale.id.slice(0, 8)}-${Date.now()}.pdf`)
@@ -188,10 +249,12 @@ export default function SalesHistory() {
     )
   })
 
-  // Estadísticas
-  const totalSales = filteredSales.length
-  const totalRevenue = filteredSales.reduce((sum, sale) => sum + sale.total, 0)
+  // Estadísticas (excluir anuladas)
+  const activeSales = filteredSales.filter(s => s.status !== 'voided')
+  const totalSales = activeSales.length
+  const totalRevenue = activeSales.reduce((sum, sale) => sum + sale.total, 0)
   const averageSale = totalSales > 0 ? totalRevenue / totalSales : 0
+  const voidedCount = filteredSales.filter(s => s.status === 'voided').length
 
   return (
     <div className="h-full flex flex-col bg-gray-50">
@@ -344,10 +407,12 @@ export default function SalesHistory() {
           </div>
         ) : (
           <div className="space-y-4">
-            {filteredSales.map((sale) => (
-              <div key={sale.id} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+            {filteredSales.map((sale) => {
+              const isVoided = sale.status === 'voided'
+              return (
+              <div key={sale.id} className={`bg-white rounded-lg shadow-sm border overflow-hidden ${isVoided ? 'border-red-200 opacity-70' : 'border-gray-200'}`}>
                 {/* Sale Header */}
-                <div className="bg-gray-50 px-4 py-3 border-b flex items-center justify-between">
+                <div className={`px-4 py-3 border-b flex items-center justify-between ${isVoided ? 'bg-red-50' : 'bg-gray-50'}`}>
                   <div className="flex items-center gap-4">
                     <div>
                       <p className="text-sm font-medium text-gray-900">
@@ -361,15 +426,53 @@ export default function SalesHistory() {
                       <Building2 className="h-4 w-4" />
                       {sale.branch_name}
                     </div>
+                    {isVoided && (
+                      <span className="px-2.5 py-1 bg-red-100 text-red-700 text-xs font-bold rounded-full flex items-center gap-1">
+                        <XCircle className="w-3 h-3" />
+                        ANULADA
+                      </span>
+                    )}
                   </div>
                   
-                  <button
-                    onClick={() => generatePDF(sale)}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
-                  >
-                    <Download className="h-4 w-4" />
-                    Descargar
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {!isVoided && isOwnerOrAdmin && (
+                      <>
+                        {voidConfirmId === sale.id ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-red-600 font-medium">¿Anular?</span>
+                            <button
+                              onClick={() => handleVoidSale(sale.id)}
+                              disabled={isVoiding}
+                              className="px-3 py-1.5 bg-red-600 text-white text-xs font-medium rounded-lg hover:bg-red-700 disabled:opacity-50"
+                            >
+                              {isVoiding ? 'Anulando...' : 'Confirmar'}
+                            </button>
+                            <button
+                              onClick={() => setVoidConfirmId(null)}
+                              className="px-3 py-1.5 bg-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-300"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setVoidConfirmId(sale.id)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-600 text-sm rounded-lg hover:bg-red-100 border border-red-200"
+                          >
+                            <XCircle className="h-4 w-4" />
+                            Anular
+                          </button>
+                        )}
+                      </>
+                    )}
+                    <button
+                      onClick={() => generatePDF(sale)}
+                      className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
+                    >
+                      <Download className="h-4 w-4" />
+                      Descargar
+                    </button>
+                  </div>
                 </div>
 
                 {/* Sale Items */}
@@ -378,12 +481,12 @@ export default function SalesHistory() {
                     {sale.items.map((item, index) => (
                       <div key={index} className="flex items-center justify-between text-sm">
                         <div className="flex-1">
-                          <span className="font-medium">{item.product_name}</span>
+                          <span className={`font-medium ${isVoided ? 'line-through text-gray-400' : ''}`}>{item.product_name}</span>
                           <span className="text-gray-500 ml-2">
                             x{item.quantity} × {formatCurrency(item.price)}
                           </span>
                         </div>
-                        <span className="font-medium">{formatCurrency(item.subtotal)}</span>
+                        <span className={`font-medium ${isVoided ? 'line-through text-gray-400' : ''}`}>{formatCurrency(item.subtotal)}</span>
                       </div>
                     ))}
                   </div>
@@ -391,7 +494,7 @@ export default function SalesHistory() {
                   <div className="border-t pt-3 space-y-1">
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-600">Subtotal:</span>
-                      <span>{formatCurrency(sale.subtotal)}</span>
+                      <span className={isVoided ? 'line-through text-gray-400' : ''}>{formatCurrency(sale.subtotal)}</span>
                     </div>
                     {sale.discount > 0 && (
                       <div className="flex justify-between text-sm text-green-600">
@@ -401,7 +504,7 @@ export default function SalesHistory() {
                     )}
                     <div className="flex justify-between text-lg font-bold pt-1 border-t">
                       <span>Total:</span>
-                      <span className="text-blue-600">{formatCurrency(sale.total)}</span>
+                      <span className={isVoided ? 'text-red-400 line-through' : 'text-blue-600'}>{formatCurrency(sale.total)}</span>
                     </div>
                     <div className="flex justify-between text-sm text-gray-600 pt-2">
                       <span>Método de pago:</span>
@@ -416,7 +519,8 @@ export default function SalesHistory() {
                   </div>
                 </div>
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>

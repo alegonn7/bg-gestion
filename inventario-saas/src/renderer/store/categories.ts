@@ -162,10 +162,21 @@ export const useCategoriesStore = create<CategoriesState>((set, get) => ({
 
   getCategoryStats: async (categoryId: string) => {
     try {
+      // category_id está en la tabla products (maestro), no en products_branch
+      const { data: masterProducts } = await supabase
+        .from('products')
+        .select('id')
+        .eq('category_id', categoryId)
+        .eq('is_active', true)
+
+      if (!masterProducts || masterProducts.length === 0) return 0
+
+      const productIds = masterProducts.map(p => p.id)
+
       const { count } = await supabase
         .from('products_branch')
         .select('*', { count: 'exact', head: true })
-        .eq('category_id', categoryId)
+        .in('product_id', productIds)
         .eq('is_active', true)
 
       return count || 0

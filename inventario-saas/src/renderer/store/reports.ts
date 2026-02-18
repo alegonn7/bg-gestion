@@ -171,16 +171,21 @@ export const useReportsStore = create<ReportsState>((set) => ({
 
       if (!user || !organization) throw new Error('No authenticated user')
 
+      const { selectedBranch } = useAuthStore.getState()
       let branchIds: string[] = []
 
       if (user.role === 'owner' || user.role === 'admin') {
-        const { data: branches } = await supabase
-          .from('branches')
-          .select('id')
-          .eq('organization_id', organization.id)
-          .eq('is_active', true)
+        if (selectedBranch?.id) {
+          branchIds = [selectedBranch.id]
+        } else {
+          const { data: branches } = await supabase
+            .from('branches')
+            .select('id')
+            .eq('organization_id', organization.id)
+            .eq('is_active', true)
 
-        branchIds = branches?.map(b => b.id) || []
+          branchIds = branches?.map(b => b.id) || []
+        }
       } else if (user.branch_id) {
         branchIds = [user.branch_id]
       }
@@ -194,18 +199,21 @@ export const useReportsStore = create<ReportsState>((set) => ({
         .from('products_branch')
         .select(`
           id,
-          name,
           barcode,
           stock_quantity,
           stock_min,
           price_cost,
           price_sale,
-          category_id,
           branch_id,
-          categories (
+          product:products (
             id,
             name,
-            color
+            category_id,
+            categories (
+              id,
+              name,
+              color
+            )
           ),
           branches (
             id,
@@ -230,10 +238,10 @@ export const useReportsStore = create<ReportsState>((set) => ({
         .slice(0, 10)
         .map(p => ({
           product_id: p.id,
-          product_name: p.name || 'Sin nombre',
+          product_name: (p.product as any)?.name || 'Sin nombre',
           barcode: p.barcode,
-          category_name: (p.categories as any)?.name || null,
-          category_color: (p.categories as any)?.color || null,
+          category_name: (p.product as any)?.categories?.name || null,
+          category_color: (p.product as any)?.categories?.color || null,
           stock_quantity: p.stock_quantity,
           stock_value_cost: p.stock_quantity * p.price_cost,
           stock_value_sale: p.stock_quantity * p.price_sale,
@@ -244,10 +252,10 @@ export const useReportsStore = create<ReportsState>((set) => ({
       const topByValue = [...(products || [])]
         .map(p => ({
           product_id: p.id,
-          product_name: p.name || 'Sin nombre',
+          product_name: (p.product as any)?.name || 'Sin nombre',
           barcode: p.barcode,
-          category_name: (p.categories as any)?.name || null,
-          category_color: (p.categories as any)?.color || null,
+          category_name: (p.product as any)?.categories?.name || null,
+          category_color: (p.product as any)?.categories?.color || null,
           stock_quantity: p.stock_quantity,
           stock_value_cost: p.stock_quantity * p.price_cost,
           stock_value_sale: p.stock_quantity * p.price_sale,
@@ -263,9 +271,9 @@ export const useReportsStore = create<ReportsState>((set) => ({
         .slice(0, 20)
         .map(p => ({
           product_id: p.id,
-          product_name: p.name || 'Sin nombre',
+          product_name: (p.product as any)?.name || 'Sin nombre',
           barcode: p.barcode,
-          category_name: (p.categories as any)?.name || null,
+          category_name: (p.product as any)?.categories?.name || null,
           stock_quantity: p.stock_quantity,
           stock_min: p.stock_min,
           branch_name: (p.branches as any)?.name || 'Sin sucursal',
@@ -308,9 +316,9 @@ export const useReportsStore = create<ReportsState>((set) => ({
       const categoryStatsMap = new Map<string, CategoryStats>()
 
       products?.forEach(p => {
-        const categoryId = p.category_id || 'sin-categoria'
-        const categoryName = (p.categories as any)?.name || 'Sin categoría'
-        const categoryColor = (p.categories as any)?.color || null
+        const categoryId = (p.product as any)?.category_id || 'sin-categoria'
+        const categoryName = (p.product as any)?.categories?.name || 'Sin categoría'
+        const categoryColor = (p.product as any)?.categories?.color || null
 
         if (!categoryStatsMap.has(categoryId)) {
           categoryStatsMap.set(categoryId, {
@@ -363,16 +371,21 @@ export const useReportsStore = create<ReportsState>((set) => ({
 
       if (!user || !organization) throw new Error('No authenticated user')
 
+      const { selectedBranch: selBranch } = useAuthStore.getState()
       let branchIds: string[] = []
 
       if (user.role === 'owner' || user.role === 'admin') {
-        const { data: branches } = await supabase
-          .from('branches')
-          .select('id')
-          .eq('organization_id', organization.id)
-          .eq('is_active', true)
+        if (selBranch?.id) {
+          branchIds = [selBranch.id]
+        } else {
+          const { data: branches } = await supabase
+            .from('branches')
+            .select('id')
+            .eq('organization_id', organization.id)
+            .eq('is_active', true)
 
-        branchIds = branches?.map(b => b.id) || []
+          branchIds = branches?.map(b => b.id) || []
+        }
       } else if (user.branch_id) {
         branchIds = [user.branch_id]
       }
@@ -436,13 +449,18 @@ export const useReportsStore = create<ReportsState>((set) => ({
       if (branchId) {
         branchIds = [branchId]
       } else if (user.role === 'owner' || user.role === 'admin') {
-        const { data: branches } = await supabase
-          .from('branches')
-          .select('id')
-          .eq('organization_id', organization.id)
-          .eq('is_active', true)
+        const { selectedBranch: selBranch2 } = useAuthStore.getState()
+        if (selBranch2?.id) {
+          branchIds = [selBranch2.id]
+        } else {
+          const { data: branches } = await supabase
+            .from('branches')
+            .select('id')
+            .eq('organization_id', organization.id)
+            .eq('is_active', true)
 
-        branchIds = branches?.map(b => b.id) || []
+          branchIds = branches?.map(b => b.id) || []
+        }
       } else if (user.branch_id) {
         branchIds = [user.branch_id]
       }
@@ -469,15 +487,18 @@ export const useReportsStore = create<ReportsState>((set) => ({
           branch_id,
           products_branch!inner (
             id,
-            name,
             barcode,
             price_cost,
             price_sale,
-            category_id,
-            categories (
+            product:products (
               id,
               name,
-              color
+              category_id,
+              categories (
+                id,
+                name,
+                color
+              )
             )
           ),
           branches!inner (
@@ -505,13 +526,14 @@ export const useReportsStore = create<ReportsState>((set) => ({
       sales?.forEach(s => {
         const product = s.products_branch as any
         const branch = s.branches as any
-        const category = product.categories as any
+        const masterProduct = product.product
+        const category = masterProduct?.categories
         const productId = product.id
 
         if (!productSalesMap.has(productId)) {
           productSalesMap.set(productId, {
             product_id: productId,
-            product_name: product.name || 'Sin nombre',
+            product_name: masterProduct?.name || 'Sin nombre',
             barcode: product.barcode,
             category_name: category?.name || null,
             total_quantity_sold: 0,
@@ -605,8 +627,9 @@ export const useReportsStore = create<ReportsState>((set) => ({
 
       sales?.forEach(s => {
         const product = s.products_branch as any
-        const category = product.categories as any
-        const categoryId = product.category_id || 'sin-categoria'
+        const masterProduct2 = product.product
+        const category = masterProduct2?.categories
+        const categoryId = masterProduct2?.category_id || 'sin-categoria'
         const categoryName = category?.name || 'Sin categoría'
         const categoryColor = category?.color || null
 

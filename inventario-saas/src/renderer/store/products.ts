@@ -2,15 +2,32 @@ import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from './auth'
 
-export interface Product {
+// Producto maestro (catálogo)
+export interface MasterProduct {
   id: string
-  branch_id: string
+  organization_id: string
   barcode: string | null
+  sku: string | null
   name: string
   description: string | null
   category_id: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+  created_by: string | null
+  updated_by: string | null
+}
+
+// Producto por sucursal (stock y precios)
+export interface Product {
+  id: string
+  product_id: string
+  branch_id: string
+  barcode: string | null // denormalizado para búsquedas rápidas
   price_cost: number
   price_sale: number
+  price_cost_usd: number | null // Precio de costo en dólares (manual)
+  price_sale_usd: number | null // Precio de venta en dólares (manual)
   stock_quantity: number
   stock_min: number
   is_active: boolean
@@ -20,14 +37,13 @@ export interface Product {
   created_by: string | null
   updated_by: string | null
 
-  // Join con categoría
+  // Joins
+  product?: MasterProduct
   category?: {
     id: string
     name: string
     color: string
   }
-
-  // Join con sucursal (para vista consolidada Owner/Admin)
   branch?: {
     id: string
     name: string
@@ -41,7 +57,19 @@ interface ProductsState {
   searchQuery: string
 
   fetchProducts: () => Promise<void>
-  createProduct: (product: Partial<Product>) => Promise<void>
+  createProduct: (productData: {
+    barcode?: string
+    sku?: string
+    name: string
+    description?: string
+    category_id?: string
+    price_cost: number
+    price_sale: number
+    price_cost_usd?: number | null
+    price_sale_usd?: number | null
+    stock_quantity: number
+    stock_min: number
+  }) => Promise<void>
   updateProduct: (id: string, updates: Partial<Product>) => Promise<void>
   deleteProduct: (id: string) => Promise<void>
   setSearchQuery: (query: string) => void
@@ -58,21 +86,26 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
     set({ isLoading: true, error: null })
 
     try {
-      const { user, branch } = useAuthStore.getState()
+      const { user, selectedBranch } = useAuthStore.getState()
       if (!user) throw new Error('No authenticated user')
 
       let branchIds: string[] = []
 
       if (user.role === 'owner' || user.role === 'admin') {
-        const { data: branches } = await supabase
-          .from('branches')
-          .select('id')
-          .eq('organization_id', user.organization_id)
-          .eq('is_active', true)
+        // Si hay una sucursal seleccionada, filtrar solo por esa
+        if (selectedBranch?.id) {
+          branchIds = [selectedBranch.id]
+        } else {
+          const { data: branches } = await supabase
+            .from('branches')
+            .select('id')
+            .eq('organization_id', user.organization_id)
+            .eq('is_active', true)
 
-        branchIds = branches?.map(b => b.id) || []
+          branchIds = branches?.map(b => b.id) || []
+        }
       } else {
-        if (branch?.id) branchIds = [branch.id]
+        if (user.branch_id) branchIds = [user.branch_id]
       }
 
       if (branchIds.length === 0) {
@@ -84,8 +117,8 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
         .from('products_branch')
         .select(`
           *,
-          categories (id, name, color),
-          branches (id, name)
+          product:products(*),
+          branch:branches(id, name)
         `)
         .in('branch_id', branchIds)
         .eq('is_active', true)
@@ -93,7 +126,23 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
 
       if (error) throw error
 
-      set({ products: data as Product[], isLoading: false })
+      // Enriquecer con categoría desde el producto maestro
+      const enrichedData = await Promise.all(
+        (data || []).map(async (item: any) => {
+          let category = null
+          if (item.product?.category_id) {
+            const { data: cat } = await supabase
+              .from('categories')
+              .select('id, name, color')
+              .eq('id', item.product.category_id)
+              .single()
+            category = cat
+          }
+          return { ...item, category }
+        })
+      )
+
+      set({ products: enrichedData as Product[], isLoading: false })
 
     } catch (error: any) {
       console.error('Error fetching products:', error)
@@ -103,37 +152,91 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
 
   createProduct: async (productData) => {
     try {
-      const { user, branch, organization } = useAuthStore.getState()
-      if (!user || !organization) throw new Error('No user or organization')
+      const { user, selectedBranch } = useAuthStore.getState()
+      if (!user) throw new Error('No user')
 
-      let branchId = branch?.id
+      const branchId = user.role === 'owner' || user.role === 'admin' 
+        ? selectedBranch?.id 
+        : user.branch_id
 
       if (!branchId) {
-        const { data: branches } = await supabase
-          .from('branches')
-          .select('id')
-          .eq('organization_id', organization.id)
-          .eq('is_active', true)
-          .limit(1)
-
-        if (!branches?.length) throw new Error('No hay sucursales disponibles.')
-        branchId = branches[0].id
+        throw new Error('No hay sucursal seleccionada')
       }
 
+      // 1. Buscar si el producto maestro ya existe (por barcode)
+      let masterProduct: MasterProduct | null = null
+
+      if (productData.barcode) {
+        const { data } = await supabase
+          .from('products')
+          .select('*')
+          .eq('barcode', productData.barcode)
+          .eq('organization_id', user.organization_id)
+          .single()
+
+        masterProduct = data
+      }
+
+      // 2. Si no existe, crear producto maestro
+      if (!masterProduct) {
+        const { data: newMaster, error: masterError } = await supabase
+          .from('products')
+          .insert({
+            organization_id: user.organization_id,
+            barcode: productData.barcode || null,
+            sku: productData.sku || null,
+            name: productData.name,
+            description: productData.description || null,
+            category_id: productData.category_id || null,
+            created_by: user.id,
+            updated_by: user.id,
+          })
+          .select()
+          .single()
+
+        if (masterError) throw masterError
+        masterProduct = newMaster
+      }
+
+      // 3. Crear products_branch con referencia al maestro
       const { data, error } = await supabase
         .from('products_branch')
         .insert({
-          ...productData,
+          product_id: masterProduct!.id,
           branch_id: branchId,
+          barcode: productData.barcode || null, // denormalizado
+          price_cost: productData.price_cost,
+          price_sale: productData.price_sale,
+          price_cost_usd: productData.price_cost_usd || null,
+          price_sale_usd: productData.price_sale_usd || null,
+          stock_quantity: productData.stock_quantity || 0,
+          stock_min: productData.stock_min || 0,
           created_by: user.id,
           updated_by: user.id,
         })
-        .select(`*, categories (id, name, color), branches (id, name)`)
+        .select(`
+          *,
+          product:products(*),
+          branch:branches(id, name)
+        `)
         .single()
 
       if (error) throw error
 
-      set(state => ({ products: [data as Product, ...state.products] }))
+      // Enriquecer con categoría
+      let category = null
+      if (masterProduct?.category_id) {
+        const { data: cat } = await supabase
+          .from('categories')
+          .select('id, name, color')
+          .eq('id', masterProduct.category_id)
+          .single()
+        category = cat
+      }
+
+      const enrichedProduct = { ...data, category } as Product
+
+      set(state => ({ products: [enrichedProduct, ...state.products] }))
 
     } catch (error: any) {
       console.error('Error creating product:', error)
@@ -148,25 +251,81 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
 
       const { data: current } = await supabase
         .from('products_branch')
-        .select('version')
+        .select('version, product_id')
         .eq('id', id)
         .single()
 
+      // Actualizar products_branch (precios, stock)
       const { data, error } = await supabase
         .from('products_branch')
         .update({
-          ...updates,
+          price_cost: updates.price_cost,
+          price_sale: updates.price_sale,
+          price_cost_usd: updates.price_cost_usd !== undefined ? updates.price_cost_usd : undefined,
+          price_sale_usd: updates.price_sale_usd !== undefined ? updates.price_sale_usd : undefined,
+          stock_quantity: updates.stock_quantity,
+          stock_min: updates.stock_min,
+          is_active: updates.is_active,
           updated_by: user.id,
           version: (current?.version || 1) + 1,
         })
         .eq('id', id)
-        .select(`*, categories (id, name, color), branches (id, name)`)
+        .select(`
+          *,
+          product:products(*),
+          branch:branches(id, name)
+        `)
         .single()
 
       if (error) throw error
 
+      // Si hay cambios en datos maestros (nombre, descripción, categoría), actualizar products
+      if (updates.product && current?.product_id) {
+        const masterUpdates: any = {}
+        if (updates.product.name) masterUpdates.name = updates.product.name
+        if (updates.product.description !== undefined) masterUpdates.description = updates.product.description
+        if (updates.product.category_id !== undefined) masterUpdates.category_id = updates.product.category_id
+        
+        if (Object.keys(masterUpdates).length > 0) {
+          const { error: masterError } = await supabase
+            .from('products')
+            .update({ ...masterUpdates, updated_by: user.id })
+            .eq('id', current.product_id)
+          
+          if (masterError) throw masterError
+
+          // Re-fetch el producto con los datos maestros actualizados
+          const { data: refreshed, error: refreshError } = await supabase
+            .from('products_branch')
+            .select(`
+              *,
+              product:products(*),
+              branch:branches(id, name)
+            `)
+            .eq('id', id)
+            .single()
+
+          if (!refreshError && refreshed) {
+            Object.assign(data, refreshed)
+          }
+        }
+      }
+
+      // Enriquecer con categoría
+      let category = null
+      if (data.product?.category_id) {
+        const { data: cat } = await supabase
+          .from('categories')
+          .select('id, name, color')
+          .eq('id', data.product.category_id)
+          .single()
+        category = cat
+      }
+
+      const enrichedProduct = { ...data, category } as Product
+
       set(state => ({
-        products: state.products.map(p => p.id === id ? { ...p, ...data } : p)
+        products: state.products.map(p => p.id === id ? enrichedProduct : p)
       }))
 
     } catch (error: any) {
@@ -200,9 +359,9 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
 
     const query = searchQuery.toLowerCase()
     return products.filter(p =>
-      p.name?.toLowerCase().includes(query) ||
+      p.product?.name?.toLowerCase().includes(query) ||
       p.barcode?.includes(query) ||
-      p.description?.toLowerCase().includes(query)
+      p.product?.description?.toLowerCase().includes(query)
     )
   },
 }))

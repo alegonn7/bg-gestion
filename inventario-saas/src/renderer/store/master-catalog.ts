@@ -50,13 +50,20 @@ export const useMasterCatalogStore = create<MasterCatalogState>((set, get) => ({
         .from('products_branch')
         .select(`
           *,
+          product:products (
+            id,
+            name,
+            description,
+            barcode,
+            category_id,
+            categories (
+              name
+            )
+          ),
           branches!inner (
             id,
             name,
             organization_id
-          ),
-          categories (
-            name
           )
         `)
         .eq('branches.organization_id', organization.id)
@@ -68,14 +75,14 @@ export const useMasterCatalogStore = create<MasterCatalogState>((set, get) => ({
       const grouped = new Map<string, MasterProduct>()
 
       allProducts?.forEach((product: any) => {
-        // La clave de agrupación: barcode si existe, sino el nombre
-        const groupKey = product.barcode || `NO_BARCODE_${product.name}`
+        // La clave de agrupación: barcode si existe, sino el nombre del maestro
+        const groupKey = product.barcode || product.product?.barcode || `NO_BARCODE_${product.product?.name || product.id}`
 
         if (!grouped.has(groupKey)) {
           grouped.set(groupKey, {
-            barcode: product.barcode,
-            name: product.name,
-            description: product.description,
+            barcode: product.barcode || product.product?.barcode,
+            name: product.product?.name || 'Sin nombre',
+            description: product.product?.description || null,
             total_stock: 0,
             branches_count: 0,
             avg_price_cost: 0,
@@ -102,8 +109,9 @@ export const useMasterCatalogStore = create<MasterCatalogState>((set, get) => ({
         masterProduct.branches_count = masterProduct.branches.length
 
         // Agregar categoría si existe y no está duplicada
-        if (product.categories?.name && !masterProduct.categories.includes(product.categories.name)) {
-          masterProduct.categories.push(product.categories.name)
+        const catName = product.product?.categories?.name
+        if (catName && !masterProduct.categories.includes(catName)) {
+          masterProduct.categories.push(catName)
         }
 
         // Recalcular precios promedio

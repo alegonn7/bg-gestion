@@ -1,8 +1,12 @@
-import { useEffect, useState } from 'react'
-import { Plus, Search, Package, AlertTriangle, RefreshCw, Tag, X, Scan } from 'lucide-react'
+import { useEffect, useState, useRef } from 'react'
+import { Plus, Search, Package, AlertTriangle, RefreshCw, Tag, X, Scan, Download, Upload, FileText, Loader2, CheckCircle, XCircle, Percent } from 'lucide-react'
 import { useProductsStore, type Product } from '@/store/products'
 import { useCategoriesStore } from '@/store/categories'
 import { useScannerStore } from '@/store/scanner'
+import { supabase } from '@/lib/supabase'
+import { useAuthStore } from '@/store/auth'
+import { useDollarStore } from '@/store/dollar'
+import { exportProductsToCSV, parseCSV, importProductsFromCSV, type ImportResult } from '@/lib/csv'
 import ProductCard from '@/components/ProductCard'
 import ProductDetailModal from '@/components/ProductDetailModal'
 import CreateProductModal from '@/components/CreateProductModal'
@@ -10,6 +14,7 @@ import EditProductModal from '@/components/EditProductModal'
 import InventoryMovementModal from '@/components/InventoryMovementModal'
 import MovementHistoryModal from '@/components/MovementHistoryModal'
 import ManageCategoriesModal from '@/components/ManageCategoriesModal'
+import BulkPriceUpdateModal from '@/components/BulkPriceUpdateModal'
 
 export default function Products() {
   const { isLoading, error, searchQuery, fetchProducts, setSearchQuery, getFilteredProducts, deleteProduct } = useProductsStore()
@@ -24,17 +29,30 @@ export default function Products() {
   const [isMovementOpen, setIsMovementOpen] = useState(false)
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [isCategoriesOpen, setIsCategoriesOpen] = useState(false)
+  const [isBulkPriceOpen, setIsBulkPriceOpen] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState<{ product: Product; inputValue: string } | null>(null)
+
+  // Duplicar producto
+  const [duplicateData, setDuplicateData] = useState<any | null>(null)
 
   // Scanner
   const [scannerMode, setScannerMode] = useState(false)
   const [lastProcessedScanId, setLastProcessedScanId] = useState<string | null>(null)
-  const [scannedBarcode, setScannedBarcode] = useState<string | null>(null) // barcode prellenado para CreateProductModal
+  const [scannedBarcode, setScannedBarcode] = useState<string | null>(null)
+  const { selectedBranch } = useAuthStore()
+  const { fetchBlueRate } = useDollarStore()
+
+  // CSV Import
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [isImporting, setIsImporting] = useState(false)
+  const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null)
+  const [importResult, setImportResult] = useState<ImportResult | null>(null)
 
   useEffect(() => {
     fetchProducts()
     fetchCategories()
-  }, [fetchProducts])
+    fetchBlueRate()
+  }, [fetchProducts, selectedBranch?.id])
 
   // ✅ Escuchar escaneos desde la app cuando scannerMode está activo
   useEffect(() => {
@@ -47,40 +65,80 @@ export default function Products() {
     const barcode = lastScan.barcode
     if (!barcode) return
 
-    // Buscar si el producto ya existe
-    const allProducts = getFilteredProducts()
-    const existingProduct = allProducts.find(p => p.barcode === barcode)
+    const checkProduct = async () => {
+      const { selectedBranch, user } = useAuthStore.getState()
+      const branchId = user?.role === 'owner' || user?.role === 'admin'
+        ? selectedBranch?.id
+        : user?.branch_id
 
-    if (existingProduct) {
-      // Producto ya existe → abrir detalle
-      setSelectedProduct(existingProduct)
-      setIsDetailOpen(true)
-      setScannerMode(false)
-    } else {
-      // Producto no existe → abrir formulario de creación con código prellenado
-      setScannedBarcode(barcode)
-      setIsCreateOpen(true)
-      setScannerMode(false)
+      if (!branchId) {
+        alert('No hay sucursal seleccionada')
+        setScannerMode(false)
+        return
+      }
+
+      const { data: existingProduct } = await supabase
+        .from('products_branch')
+        .select(`
+          *,
+          product:products(*),
+          branch:branches(id, name)
+        `)
+        .eq('barcode', barcode)
+        .eq('branch_id', branchId)
+        .single()
+
+      if (existingProduct) {
+        setSelectedProduct(existingProduct as Product)
+        setIsDetailOpen(true)
+        setScannerMode(false)
+      } else {
+        setScannedBarcode(barcode)
+        setIsCreateOpen(true)
+        setScannerMode(false)
+      }
     }
+
+    checkProduct()
   }, [lastScan])
 
+  // ✅ Ahora category_id viene de product.product.category_id
   const filteredProducts = selectedCategory
-    ? getFilteredProducts().filter(p => p.category_id === selectedCategory)
+    ? getFilteredProducts().filter(p => p.product?.category_id === selectedCategory)
     : getFilteredProducts()
 
   const lowStockCount = filteredProducts.filter(p => p.stock_quantity <= p.stock_min).length
+
+  // ✅ nombre del producto viene de product.product.name
+  const getProductName = (product: Product) => product.product?.name || ''
 
   const handleProductClick = (product: Product) => { setSelectedProduct(product); setIsDetailOpen(true) }
   const handleEdit = () => { setIsDetailOpen(false); setIsEditOpen(true) }
   const handleMovement = () => { setIsDetailOpen(false); setIsMovementOpen(true) }
   const handleViewHistory = () => { setIsDetailOpen(false); setIsHistoryOpen(true) }
+  const handleDuplicate = () => {
+    if (!selectedProduct) return
+    setDuplicateData({
+      name: selectedProduct.product?.name || '',
+      description: selectedProduct.product?.description || '',
+      category_id: selectedProduct.product?.category_id || '',
+      price_cost: selectedProduct.price_cost,
+      price_sale: selectedProduct.price_sale,
+      price_cost_usd: selectedProduct.price_cost_usd,
+      price_sale_usd: selectedProduct.price_sale_usd,
+      stock_min: selectedProduct.stock_min,
+    })
+    setIsDetailOpen(false)
+    setIsCreateOpen(true)
+  }
   const handleDeleteRequest = () => {
     if (!selectedProduct) return
     setIsDetailOpen(false)
     setDeleteConfirm({ product: selectedProduct, inputValue: '' })
   }
   const handleDeleteConfirm = async () => {
-    if (!deleteConfirm || deleteConfirm.inputValue !== deleteConfirm.product.name) return
+    // ✅ nombre viene de product.product.name
+    if (!deleteConfirm || deleteConfirm.inputValue !== getProductName(deleteConfirm.product)) return
     await deleteProduct(deleteConfirm.product.id)
     setDeleteConfirm(null)
     setSelectedProduct(null)
@@ -94,7 +152,64 @@ export default function Products() {
 
   const handleCreateClose = () => {
     setIsCreateOpen(false)
-    setScannedBarcode(null) // limpiar barcode prellenado
+    setScannedBarcode(null)
+    setDuplicateData(null)
+  }
+
+  // CSV Export
+  const handleExport = () => {
+    const products = filteredProducts
+    if (products.length === 0) return
+    exportProductsToCSV(products, selectedBranch?.name)
+  }
+
+  // CSV Import
+  const handleImportClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Reset
+    e.target.value = ''
+    setIsImporting(true)
+    setImportProgress(null)
+    setImportResult(null)
+
+    try {
+      const text = await file.text()
+      const rows = parseCSV(text)
+
+      if (rows.length === 0) {
+        setImportResult({
+          total: 0,
+          imported: 0,
+          skipped: 0,
+          errors: [{ row: 0, name: '', error: 'El archivo esta vacio o no tiene el formato correcto' }],
+        })
+        setIsImporting(false)
+        return
+      }
+
+      const result = await importProductsFromCSV(rows, (current, total) => {
+        setImportProgress({ current, total })
+      })
+
+      setImportResult(result)
+      // Refrescar lista de productos
+      await fetchProducts()
+    } catch (err: any) {
+      setImportResult({
+        total: 0,
+        imported: 0,
+        skipped: 0,
+        errors: [{ row: 0, name: '', error: err.message || 'Error al procesar el archivo' }],
+      })
+    } finally {
+      setIsImporting(false)
+    }
   }
 
   return (
@@ -116,6 +231,45 @@ export default function Products() {
               >
                 <Tag className="w-5 h-5" /> Categorías
               </button>
+
+              {/* CSV Export */}
+              <button
+                onClick={handleExport}
+                disabled={filteredProducts.length === 0}
+                className="flex items-center gap-2 px-4 py-2 bg-green-100 hover:bg-green-200 text-green-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition font-medium"
+                title="Exportar productos a CSV"
+              >
+                <Download className="w-5 h-5" /> Exportar
+              </button>
+
+              {/* Bulk Price Update */}
+              <button
+                onClick={() => setIsBulkPriceOpen(true)}
+                disabled={filteredProducts.length === 0}
+                className="flex items-center gap-2 px-4 py-2 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition font-medium"
+                title="Actualizar precios masivamente"
+              >
+                <Percent className="w-5 h-5" /> Precios
+              </button>
+
+              {/* CSV Import */}
+              <button
+                onClick={handleImportClick}
+                disabled={isImporting}
+                className="flex items-center gap-2 px-4 py-2 bg-orange-100 hover:bg-orange-200 text-orange-700 disabled:opacity-50 rounded-lg transition font-medium"
+                title="Importar productos desde CSV"
+              >
+                {isImporting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
+                {isImporting ? 'Importando...' : 'Importar'}
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv"
+                onChange={handleFileSelected}
+                className="hidden"
+              />
+
               <button
                 onClick={() => fetchProducts()}
                 className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition"
@@ -123,7 +277,6 @@ export default function Products() {
                 <RefreshCw className="w-5 h-5" />
               </button>
 
-              {/* Botón scanner app */}
               <button
                 onClick={() => setScannerMode(!scannerMode)}
                 className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 transition font-medium ${
@@ -145,7 +298,6 @@ export default function Products() {
             </div>
           </div>
 
-          {/* Banner modo scanner activo */}
           {scannerMode && (
             <div className="mb-3 px-4 py-3 bg-green-50 border border-green-200 rounded-lg flex items-center justify-between">
               <div className="flex items-center gap-2 text-green-700">
@@ -153,16 +305,12 @@ export default function Products() {
                 <span className="font-medium">Listo para escanear</span>
                 <span className="text-sm text-green-600">— Escaneá un producto desde la app móvil</span>
               </div>
-              <button
-                onClick={() => setScannerMode(false)}
-                className="text-green-600 hover:text-green-800 transition"
-              >
+              <button onClick={() => setScannerMode(false)} className="text-green-600 hover:text-green-800 transition">
                 <X className="h-4 w-4" />
               </button>
             </div>
           )}
 
-          {/* Search Bar */}
           <div className="relative mb-3">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
@@ -174,15 +322,12 @@ export default function Products() {
             />
           </div>
 
-          {/* Category Filters */}
           {categories.length > 0 && (
             <div className="flex items-center gap-2 overflow-x-auto pb-2">
               <button
                 onClick={() => setSelectedCategory(null)}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition ${
-                  selectedCategory === null
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  selectedCategory === null ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
                 Todas
@@ -255,13 +400,14 @@ export default function Products() {
         onClose={() => setIsDetailOpen(false)} onEdit={handleEdit}
         onDelete={handleDeleteRequest} onMovement={handleMovement}
         onViewHistory={handleViewHistory}
+        onDuplicate={handleDuplicate}
       />
 
-      {/* CreateProductModal recibe el barcode prellenado si viene del scanner */}
       <CreateProductModal
         isOpen={isCreateOpen}
         onClose={handleCreateClose}
         initialBarcode={scannedBarcode || undefined}
+        duplicateFrom={duplicateData || undefined}
       />
 
       <EditProductModal
@@ -278,13 +424,102 @@ export default function Products() {
       />
       <ManageCategoriesModal isOpen={isCategoriesOpen} onClose={handleCategoriesClose} />
 
+      <BulkPriceUpdateModal
+        isOpen={isBulkPriceOpen}
+        onClose={() => setIsBulkPriceOpen(false)}
+        products={filteredProducts}
+        categories={categories}
+        onComplete={() => fetchProducts()}
+      />
+
+      {/* Import Progress */}
+      {isImporting && importProgress && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
+              <h3 className="text-lg font-bold text-gray-900">Importando productos...</h3>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-3 mb-2">
+              <div
+                className="bg-blue-600 h-3 rounded-full transition-all"
+                style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}
+              />
+            </div>
+            <p className="text-sm text-gray-500 text-center">
+              {importProgress.current} de {importProgress.total}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Import Result */}
+      {importResult && !isImporting && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-lg w-full p-6 max-h-[80vh] overflow-y-auto">
+            <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+              <FileText className="w-5 h-5" />
+              Resultado de importacion
+            </h3>
+
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="bg-blue-50 rounded-lg p-3 text-center">
+                <p className="text-2xl font-bold text-blue-700">{importResult.total}</p>
+                <p className="text-xs text-blue-600">Total filas</p>
+              </div>
+              <div className="bg-green-50 rounded-lg p-3 text-center">
+                <p className="text-2xl font-bold text-green-700">{importResult.imported}</p>
+                <p className="text-xs text-green-600">Importados</p>
+              </div>
+              <div className="bg-red-50 rounded-lg p-3 text-center">
+                <p className="text-2xl font-bold text-red-700">{importResult.skipped}</p>
+                <p className="text-xs text-red-600">Omitidos</p>
+              </div>
+            </div>
+
+            {importResult.imported > 0 && (
+              <div className="flex items-center gap-2 text-green-700 bg-green-50 px-3 py-2 rounded-lg mb-3">
+                <CheckCircle className="w-5 h-5" />
+                <span className="text-sm font-medium">{importResult.imported} productos importados correctamente</span>
+              </div>
+            )}
+
+            {importResult.errors.length > 0 && (
+              <div className="mb-4">
+                <p className="text-sm font-medium text-gray-700 mb-2">Errores ({importResult.errors.length}):</p>
+                <div className="max-h-48 overflow-y-auto border border-red-200 rounded-lg">
+                  {importResult.errors.map((err, i) => (
+                    <div key={i} className="flex items-start gap-2 px-3 py-2 text-sm border-b border-red-100 last:border-b-0">
+                      <XCircle className="w-4 h-4 text-red-500 mt-0.5 shrink-0" />
+                      <div>
+                        {err.row > 0 && <span className="text-gray-500">Fila {err.row}</span>}
+                        {err.name && <span className="text-gray-700 font-medium"> {err.name}</span>}
+                        <span className="text-red-600"> — {err.error}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={() => setImportResult(null)}
+              className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium"
+            >
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
+
       {deleteConfirm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-md w-full p-6">
             <h3 className="text-lg font-bold text-gray-900 mb-2">Eliminar producto</h3>
             <p className="text-gray-600 mb-4">Para confirmar, escribí el nombre exacto:</p>
+            {/* ✅ nombre viene de product.product.name */}
             <p className="font-mono font-semibold text-gray-900 bg-gray-100 px-3 py-2 rounded mb-4">
-              {deleteConfirm.product.name}
+              {getProductName(deleteConfirm.product)}
             </p>
             <input
               type="text" placeholder="Escribí el nombre..."
@@ -301,7 +536,7 @@ export default function Products() {
               </button>
               <button
                 onClick={handleDeleteConfirm}
-                disabled={deleteConfirm.inputValue !== deleteConfirm.product.name}
+                disabled={deleteConfirm.inputValue !== getProductName(deleteConfirm.product)}
                 className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white rounded-lg transition"
               >
                 Eliminar

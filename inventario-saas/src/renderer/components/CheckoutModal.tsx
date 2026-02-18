@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import { X, CreditCard, Banknote, DollarSign } from 'lucide-react'
-import { usePOSStore } from '@/store/pos'
+import { usePOSStore, getEffectivePrice, priceModeLabel } from '@/store/pos'
+import type { PriceMode } from '@/store/pos'
+import { useDollarStore } from '@/store/dollar'
+import { useAuthStore } from '@/store/auth'
 import jsPDF from 'jspdf'
 
 interface CheckoutModalProps {
@@ -10,12 +13,15 @@ interface CheckoutModalProps {
     cartTotal: number
     cartSubtotal: number
     cartDiscount: number
+    priceMode: PriceMode
 }
 
 type PaymentMethod = 'cash' | 'card' | 'mixed'
 
-export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, cartSubtotal, cartDiscount }: CheckoutModalProps) {
+export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, cartSubtotal, cartDiscount, priceMode }: CheckoutModalProps) {
     const store = usePOSStore()
+    const { blueRate } = useDollarStore()
+    const { organization, selectedBranch } = useAuthStore()
 
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash')
     const [cashAmount, setCashAmount] = useState('')
@@ -33,6 +39,9 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, c
     const discount = cartDiscount
 
     const formatCurrency = (amount: number) => {
+        if (priceMode === 'usd') {
+            return `US$ ${amount.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+        }
         return new Intl.NumberFormat('es-AR', {
             style: 'currency',
             currency: 'ARS',
@@ -66,43 +75,89 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, c
         return false
     }
 
-    const generatePDF = (saleTotal: number, saleSubtotal: number, saleDiscount: number, saleItems: any[]) => {
+    const generatePDF = async (saleTotal: number, saleSubtotal: number, saleDiscount: number, saleItems: any[]) => {
         const doc = new jsPDF({
             orientation: 'portrait',
             unit: 'mm',
             format: [80, 200], // Ancho de ticket térmico
         })
 
-        // Header
-        doc.setFontSize(14)
-        doc.setFont('helvetica', 'bold')
-        doc.text('COMPROBANTE DE VENTA', 40, 10, { align: 'center' })
+        const modeLabel = priceModeLabel(priceMode)
+        const companyName = organization?.name || 'Mi Negocio'
+        const branchName = selectedBranch?.name || 'Sucursal Principal'
 
-        // Info del negocio
+        let startY = 8
+
+        // Logo de la empresa (si existe)
+        if (organization?.logo_url) {
+            try {
+                const img = new Image()
+                img.crossOrigin = 'anonymous'
+                await new Promise<void>((resolve, reject) => {
+                    img.onload = () => resolve()
+                    img.onerror = () => reject()
+                    img.src = organization.logo_url!
+                })
+                // Centrar logo: max 20mm alto, proporcional
+                const maxH = 18
+                const maxW = 30
+                const ratio = Math.min(maxW / img.width, maxH / img.height)
+                const imgW = img.width * ratio
+                const imgH = img.height * ratio
+                const imgX = (80 - imgW) / 2
+                doc.addImage(img, 'PNG', imgX, startY, imgW, imgH)
+                startY += imgH + 5
+            } catch {
+                // Si falla la carga del logo, continuar sin él
+            }
+        }
+
+        // Nombre de la empresa
+        doc.setFontSize(11)
+        doc.setFont('helvetica', 'bold')
+        doc.text(companyName, 40, startY, { align: 'center' })
+        startY += 5
+
+        // Sucursal
         doc.setFontSize(9)
         doc.setFont('helvetica', 'normal')
-        doc.text('Mi Negocio', 40, 18, { align: 'center' })
-        doc.text('Sucursal Principal', 40, 23, { align: 'center' })
+        doc.text(branchName, 40, startY, { align: 'center' })
+        startY += 6
+
+        // Título del comprobante
+        doc.setFontSize(12)
+        doc.setFont('helvetica', 'bold')
+        doc.text('COMPROBANTE DE VENTA', 40, startY, { align: 'center' })
+        startY += 4
+
+        // Leyenda: documento no fiscal
+        doc.setFontSize(7)
+        doc.setFont('helvetica', 'italic')
+        doc.text('DOCUMENTO NO VALIDO COMO FACTURA', 40, startY, { align: 'center' })
+        startY += 5
 
         // Fecha y hora
         doc.setFontSize(8)
+        doc.setFont('helvetica', 'normal')
         const now = new Date()
-        // ✅ Fix - fuerza zona horaria Argentina
-        doc.text(`Fecha: ${now.toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}`, 5, 30)
-        doc.text(`Hora: ${now.toLocaleTimeString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}`, 5, 34)
+        doc.text(`Fecha: ${now.toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}`, 5, startY)
+        startY += 4
+        doc.text(`Hora: ${now.toLocaleTimeString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}`, 5, startY)
+        startY += 4
         // Separador
-        doc.line(5, 38, 75, 38)
+        doc.line(5, startY, 75, startY)
 
         // Items header
         doc.setFontSize(9)
         doc.setFont('helvetica', 'bold')
-        doc.text('PRODUCTOS', 5, 44)
+        doc.text('PRODUCTOS', 5, startY + 6)
 
         // Items
-        let yPos = 50
+        let yPos = startY + 12
         saleItems.forEach((item) => {
-            doc.text(`${item.product.name}`, 5, yPos)
-            doc.text(`${item.quantity} x ${formatCurrency(item.product.price_sale)}`, 5, yPos + 4, { align: 'left' })
+            const unitPrice = getEffectivePrice(item.product, priceMode, blueRate)
+            doc.text(`${item.product.product?.name || 'Sin nombre'}`, 5, yPos)
+            doc.text(`${item.quantity} x ${formatCurrency(unitPrice)}`, 5, yPos + 4, { align: 'left' })
             doc.text(formatCurrency(item.subtotal), 75, yPos + 4, { align: 'right' })
             yPos += 10
         })
@@ -141,16 +196,16 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, c
         doc.setFont('helvetica', 'normal')
 
         if (lastSaleData?.paymentMethod === 'cash') {
-            doc.text('Método de pago: Efectivo', 5, yPos)
+            doc.text('Metodo de pago: Efectivo', 5, yPos)
             yPos += 4
             doc.text(`Recibido: ${formatCurrency(lastSaleData.cashAmount)}`, 5, yPos)
             yPos += 4
             const change = Math.max(0, lastSaleData.cashAmount - saleTotal)
             doc.text(`Vuelto: ${formatCurrency(change)}`, 5, yPos)
         } else if (lastSaleData?.paymentMethod === 'card') {
-            doc.text('Método de pago: Tarjeta', 5, yPos)
+            doc.text('Metodo de pago: Tarjeta', 5, yPos)
         } else {
-            doc.text('Método de pago: Mixto', 5, yPos)
+            doc.text('Metodo de pago: Mixto', 5, yPos)
             yPos += 4
             doc.text(`Efectivo: ${formatCurrency(lastSaleData?.cashAmount || 0)}`, 5, yPos)
             yPos += 4
@@ -160,7 +215,13 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, c
 
         // Footer
         doc.setFontSize(8)
-        doc.text('¡Gracias por su compra!', 40, yPos, { align: 'center' })
+        doc.text('Gracias por su compra!', 40, yPos, { align: 'center' })
+        yPos += 5
+        doc.setFontSize(6)
+        doc.setFont('helvetica', 'italic')
+        doc.text('Este ticket no tiene validez fiscal. No constituye factura.', 40, yPos, { align: 'center' })
+        yPos += 3
+        doc.text('Segun Ley 11.683, RG AFIP 1415 y normativas vigentes.', 40, yPos, { align: 'center' })
 
         // Guardar
         doc.save(`ticket-${Date.now()}.pdf`)
@@ -289,6 +350,17 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, c
                 <div className="p-6 space-y-6">
                     {/* Summary */}
                     <div className="bg-gray-50 rounded-lg p-4 space-y-2">
+                        {priceMode !== 'ars' && (
+                            <div className={`flex justify-between text-xs -mx-1 px-1 py-1 rounded mb-1 ${
+                                priceMode === 'usd' ? 'text-green-700 bg-green-50' : 'text-purple-700 bg-purple-50'
+                            }`}>
+                                <span>Modo precio:</span>
+                                <span className="font-semibold">
+                                    {priceModeLabel(priceMode)}
+                                    {priceMode === 'usd_to_ars' && blueRate && ` · Blue $${blueRate.toLocaleString('es-AR')}`}
+                                </span>
+                            </div>
+                        )}
                         <div className="flex justify-between text-sm">
                             <span>Subtotal:</span>
                             <span>{formatCurrency(subtotal)}</span>

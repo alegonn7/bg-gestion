@@ -131,7 +131,7 @@ export default function InventoryMovementModal({ product, isOpen, onClose }: Inv
     }
   }
 
-  const productName = product.name
+  const productName = product.product?.name
   const currentOptions = MOVEMENT_OPTIONS[movementType]
 
   return (

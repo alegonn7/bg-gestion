@@ -64,7 +64,7 @@ export default function MovementHistoryModal({ product, isOpen, onClose }: Movem
 
   if (!isOpen || !product) return null
 
-  const productName =  product.name
+  const productName =  product.product?.name
 
   const getMovementIcon = (type: string) => {
     return type === 'entry' ? TrendingUp : TrendingDown

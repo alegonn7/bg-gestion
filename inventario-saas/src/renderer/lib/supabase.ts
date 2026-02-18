@@ -48,6 +48,7 @@ export interface Organization {
   max_products_per_branch: number
   max_users_per_branch: number
   is_active: boolean
+  logo_url: string | null
 }
 
 export interface User {

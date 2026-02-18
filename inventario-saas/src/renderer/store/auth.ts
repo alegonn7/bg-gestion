@@ -5,6 +5,8 @@ interface AuthState {
   user: User | null
   organization: Organization | null
   branch: Branch | null
+  branches: Branch[] // todas las sucursales de la org
+  selectedBranch: Branch | null // sucursal actualmente seleccionada
   isLoading: boolean
   isAuthenticated: boolean
   deviceId: string | null
@@ -14,18 +16,30 @@ interface AuthState {
   logout: () => Promise<void>
   checkAuth: () => Promise<void>
   setDeviceId: (id: string) => void
+  selectBranch: (branchId: string) => void
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   organization: null,
   branch: null,
+  branches: [],
+  selectedBranch: null,
   isLoading: true,
   isAuthenticated: false,
   deviceId: null,
 
   setDeviceId: (id: string) => {
     set({ deviceId: id })
+  },
+
+  selectBranch: (branchId: string) => {
+    const state = useAuthStore.getState()
+    const branch = state.branches.find(b => b.id === branchId)
+    if (branch) {
+      console.log('🏢 Sucursal seleccionada:', branch.name)
+      set({ selectedBranch: branch })
+    }
   },
 
   login: async (email: string, password: string) => {
@@ -54,16 +68,32 @@ export const useAuthStore = create<AuthState>((set) => ({
         throw new Error('Tu cuenta está suspendida. Contacta al administrador.')
       }
 
-      // 4. Actualizar estado
+      // 4. Cargar todas las sucursales de la organización
+      const { data: branchesData, error: branchesError } = await supabase
+        .from('branches')
+        .select('*')
+        .eq('organization_id', org.id)
+        .order('name')
+
+      if (branchesError) throw branchesError
+
+      const branches = (branchesData || []) as Branch[]
+      
+      // Si el usuario tiene una rama asignada, seleccionarla. Si no, seleccionar la primera disponible
+      const defaultBranch = userData.branches || (branches.length > 0 ? branches[0] : null)
+
+      // 5. Actualizar estado
       set({
         user: userData as User,
         organization: org,
         branch: userData.branches as Branch | null,
+        branches,
+        selectedBranch: defaultBranch,
         isAuthenticated: true,
         isLoading: false,
       })
 
-      // 5. Actualizar last_login
+      // 6. Actualizar last_login
       await supabase
         .from('users')
         .update({ last_login_at: new Date().toISOString() })
@@ -106,10 +136,24 @@ export const useAuthStore = create<AuthState>((set) => ({
 
       const org = userData.organizations as Organization
 
+      // Cargar todas las sucursales de la organización
+      const { data: branchesData, error: branchesError } = await supabase
+        .from('branches')
+        .select('*')
+        .eq('organization_id', org.id)
+        .order('name')
+
+      if (branchesError) throw branchesError
+
+      const branches = (branchesData || []) as Branch[]
+      const defaultBranch = userData.branches || (branches.length > 0 ? branches[0] : null)
+
       set({
         user: userData as User,
         organization: org,
         branch: userData.branches as Branch | null,
+        branches,
+        selectedBranch: defaultBranch,
         isAuthenticated: true,
         isLoading: false,
       })

@@ -1,5 +1,6 @@
-import { X, Barcode, TrendingUp, DollarSign, Clock } from 'lucide-react'
+import { X, Barcode, TrendingUp, DollarSign, Clock, Copy } from 'lucide-react'
 import type { Product } from '@/store/products'
+import { useDollarStore } from '@/store/dollar'
 
 interface ProductDetailModalProps {
   product: Product | null
@@ -9,17 +10,20 @@ interface ProductDetailModalProps {
   onDelete?: () => void
   onMovement?: () => void
   onViewHistory?: () => void
+  onDuplicate?: () => void
 }
 
-export default function ProductDetailModal({ product, isOpen, onClose, onEdit, onDelete, onMovement, onViewHistory }: ProductDetailModalProps) {
+export default function ProductDetailModal({ product, isOpen, onClose, onEdit, onDelete, onMovement, onViewHistory, onDuplicate }: ProductDetailModalProps) {
   if (!isOpen || !product) return null
 
+  const { blueRate, convertUsdToArs, lastUpdated } = useDollarStore()
+
   // Determinar datos según si es del maestro o propio
-  const displayName = product.name
+  const displayName = product.product?.name
 
   const displayBarcode =  product.barcode
 
-  const displayDescription = product.description
+  const displayDescription = product.product?.description
 
   // Calcular margen
   const margin = product.price_sale > 0
@@ -181,6 +185,61 @@ export default function ProductDetailModal({ product, isOpen, onClose, onEdit, o
                 </div>
               </div>
             </div>
+
+            {/* Precios en USD */}
+            {((product.price_sale_usd && product.price_sale_usd > 0) || (product.price_cost_usd && product.price_cost_usd > 0)) && (
+              <div className="mt-4 bg-purple-50 border border-purple-200 rounded-lg p-4">
+                <div className="flex items-center gap-2 text-purple-700 mb-3">
+                  <DollarSign className="w-4 h-4" />
+                  <span className="text-xs font-medium">Conversión USD → ARS (Blue)</span>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  {product.price_cost_usd && product.price_cost_usd > 0 && (
+                    <div>
+                      <div className="text-xs text-purple-600 mb-1">Costo</div>
+                      {blueRate ? (
+                        <div className="text-xl font-bold text-purple-800">
+                          ${convertUsdToArs(product.price_cost_usd)?.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        </div>
+                      ) : (
+                        <div className="text-sm text-gray-400">Sin cotización</div>
+                      )}
+                      <div className="text-xs text-green-600 mt-1">
+                        US$ {product.price_cost_usd.toFixed(2)}
+                      </div>
+                    </div>
+                  )}
+                  {product.price_sale_usd && product.price_sale_usd > 0 && (
+                    <div>
+                      <div className="text-xs text-purple-600 mb-1">Venta</div>
+                      {blueRate ? (
+                        <div className="text-xl font-bold text-purple-800">
+                          ${convertUsdToArs(product.price_sale_usd)?.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        </div>
+                      ) : (
+                        <div className="text-sm text-gray-400">Sin cotización</div>
+                      )}
+                      <div className="text-xs text-green-600 mt-1">
+                        US$ {product.price_sale_usd.toFixed(2)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {blueRate && (
+                  <div className="mt-3 pt-2 border-t border-purple-200">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-purple-600">Cotización Blue</span>
+                      <span className="text-sm font-semibold text-purple-800">${blueRate.toLocaleString('es-AR')}</span>
+                    </div>
+                    {lastUpdated && (
+                      <p className="text-xs text-purple-600 mt-1">
+                        {new Date(lastUpdated).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Metadata */}
@@ -245,6 +304,15 @@ export default function ProductDetailModal({ product, isOpen, onClose, onEdit, o
                 className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition"
               >
                 Editar
+              </button>
+            )}
+            {onDuplicate && (
+              <button
+                onClick={onDuplicate}
+                className="flex-1 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg transition flex items-center justify-center gap-2"
+              >
+                <Copy className="w-4 h-4" />
+                Duplicar
               </button>
             )}
             {onMovement && (

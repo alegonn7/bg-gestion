@@ -21,6 +21,7 @@ export interface Sale {
   payment_method: string
   cash_amount: number
   card_amount: number
+  status: 'completed' | 'voided'
   items: SaleItem[]
   created_at: string
   created_by: string
@@ -40,6 +41,7 @@ interface SalesState {
   
   // Actions
   fetchSales: () => Promise<void>
+  voidSale: (saleId: string) => Promise<{ success: boolean; error?: string }>
   setFilters: (filters: {
     branchId?: string | null
     startDate?: Date | null
@@ -94,6 +96,7 @@ export const useSalesStore = create<SalesState>((set, get) => ({
           payment_method,
           cash_amount,
           card_amount,
+          status,
           created_at,
           created_by,
           branches!inner(
@@ -112,7 +115,8 @@ export const useSalesStore = create<SalesState>((set, get) => ({
             subtotal,
             products_branch!inner(
               id,
-              name
+              barcode,
+              product:products(name)
             )
           )
         `)
@@ -120,8 +124,13 @@ export const useSalesStore = create<SalesState>((set, get) => ({
 
       if (user.role === 'manager' || user.role === 'employee') {
         query = query.eq('branch_id', user.branch_id)
-      } else if (selectedBranchId) {
-        query = query.eq('branch_id', selectedBranchId)
+      } else {
+        // Para owner/admin, usar la sucursal seleccionada del auth store
+        const { selectedBranch: authBranch } = useAuthStore.getState()
+        const branchFilter = selectedBranchId || authBranch?.id
+        if (branchFilter) {
+          query = query.eq('branch_id', branchFilter)
+        }
       }
 
       if (startDate) {
@@ -147,9 +156,10 @@ export const useSalesStore = create<SalesState>((set, get) => ({
         payment_method: sale.payment_method,
         cash_amount: sale.cash_amount,
         card_amount: sale.card_amount,
+        status: sale.status || 'completed',
         items: (sale.sale_items || []).map((item: any) => ({
           product_id: item.products_branch.id,
-          product_name: item.products_branch.name,
+          product_name: item.products_branch.product?.name || 'Sin nombre',
           quantity: item.quantity,
           price: item.price,
           cost: item.cost,
@@ -166,6 +176,76 @@ export const useSalesStore = create<SalesState>((set, get) => ({
     } catch (error: any) {
       console.error('Error fetching sales:', error)
       set({ error: error.message, isLoading: false })
+    }
+  },
+
+  voidSale: async (saleId: string) => {
+    try {
+      const sale = get().sales.find(s => s.id === saleId)
+      if (!sale) return { success: false, error: 'Venta no encontrada' }
+      if (sale.status === 'voided') return { success: false, error: 'La venta ya fue anulada' }
+
+      // 1. Marcar la venta como anulada
+      const { error: updateError } = await supabase
+        .from('sales')
+        .update({ status: 'voided' })
+        .eq('id', saleId)
+
+      if (updateError) throw updateError
+
+      // 2. Restaurar stock de cada producto vendido
+      for (const item of sale.items) {
+        // Obtener stock actual
+        const { data: productBranch, error: fetchError } = await supabase
+          .from('products_branch')
+          .select('id, stock_quantity')
+          .eq('id', item.product_id)
+          .single()
+
+        if (fetchError || !productBranch) continue
+
+        const newStock = productBranch.stock_quantity + item.quantity
+
+        // Actualizar stock
+        const { error: stockError } = await supabase
+          .from('products_branch')
+          .update({ stock_quantity: newStock })
+          .eq('id', item.product_id)
+
+        if (stockError) {
+          console.error('Error restoring stock for product:', item.product_id, stockError)
+          continue
+        }
+
+        // Registrar movimiento de inventario (devolución)
+        await supabase
+          .from('inventory_movements')
+          .insert({
+            product_branch_id: item.product_id,
+            branch_id: sale.branch_id,
+            movement_type: 'entry',
+            transaction_type: 'void',
+            quantity: item.quantity,
+            stock_before: productBranch.stock_quantity,
+            stock_after: newStock,
+            price_at_movement: item.price,
+            cost_at_movement: item.cost,
+            notes: `Devolucion por anulacion de venta ${saleId.slice(0, 8)}`,
+            created_by: useAuthStore.getState().user?.id
+          })
+      }
+
+      // 3. Actualizar el estado local
+      set({
+        sales: get().sales.map(s =>
+          s.id === saleId ? { ...s, status: 'voided' as const } : s
+        )
+      })
+
+      return { success: true }
+    } catch (error: any) {
+      console.error('Error voiding sale:', error)
+      return { success: false, error: error.message }
     }
   },
 

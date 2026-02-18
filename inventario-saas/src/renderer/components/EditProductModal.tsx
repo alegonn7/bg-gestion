@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
-import { X } from 'lucide-react'
+import { X, DollarSign } from 'lucide-react'
 import { useProductsStore, Product } from '@/store/products'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/auth'
+import { useDollarStore } from '@/store/dollar'
 
 interface EditProductModalProps {
   product: Product | null
@@ -19,6 +20,7 @@ interface Category {
 export default function EditProductModal({ product, isOpen, onClose }: EditProductModalProps) {
   const { updateProduct } = useProductsStore()
   const { organization } = useAuthStore()
+  const { blueRate, fetchBlueRate, convertUsdToArs, lastUpdated } = useDollarStore()
   
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -32,9 +34,14 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
     category_id: '',
     price_cost: '',
     price_sale: '',
+    price_cost_usd: '',
+    price_sale_usd: '',
     stock_quantity: '',
     stock_min: '',
   })
+
+  const [markupArs, setMarkupArs] = useState('')
+  const [markupUsd, setMarkupUsd] = useState('')
 
   // Cargar datos del producto cuando se abre el modal
   useEffect(() => {
@@ -43,16 +50,33 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
       
       setFormData({
         barcode: product.barcode || '',
-        name: product.name || '',
-        description: product.description || '',
-        category_id: product.category_id || '',
+        name: product.product?.name || '',
+        description: product.product?.description || '',
+        category_id: product.product?.category_id || '',
         price_cost: product.price_cost.toString(),
         price_sale: product.price_sale.toString(),
+        price_cost_usd: product.price_cost_usd ? product.price_cost_usd.toString() : '',
+        price_sale_usd: product.price_sale_usd ? product.price_sale_usd.toString() : '',
         stock_quantity: product.stock_quantity.toString(),
         stock_min: product.stock_min.toString(),
       })
+
+      // Calcular margen ARS inicial
+      if (product.price_cost > 0 && product.price_sale > 0) {
+        setMarkupArs(((product.price_sale - product.price_cost) / product.price_cost * 100).toFixed(1))
+      } else {
+        setMarkupArs('')
+      }
+
+      // Calcular margen USD inicial
+      if (product.price_cost_usd && product.price_sale_usd && product.price_cost_usd > 0) {
+        setMarkupUsd(((product.price_sale_usd - product.price_cost_usd) / product.price_cost_usd * 100).toFixed(1))
+      } else {
+        setMarkupUsd('')
+      }
       
       loadCategories()
+      fetchBlueRate()
     }
   }, [isOpen, product])
 
@@ -97,11 +121,18 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
 
       // Si el producto es del maestro, solo podemos editar precios y stock
       const updates: any = {
-        category_id: formData.category_id || null,
         price_cost: priceCost,
         price_sale: priceSale,
+        price_cost_usd: parseFloat(formData.price_cost_usd) || null,
+        price_sale_usd: parseFloat(formData.price_sale_usd) || null,
         stock_quantity: parseInt(formData.stock_quantity) || 0,
         stock_min: parseInt(formData.stock_min) || 0,
+        // Datos del producto maestro (nombre, descripción, categoría)
+        product: {
+          name: formData.name,
+          description: formData.description || null,
+          category_id: formData.category_id || null,
+        },
       }
 
 
@@ -117,7 +148,69 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target
-    setFormData(prev => ({ ...prev, [name]: value }))
+    setFormData(prev => {
+      const next = { ...prev, [name]: value }
+
+      // Si cambia precio costo ARS y hay margen, recalcular venta ARS
+      if (name === 'price_cost' && markupArs) {
+        const cost = parseFloat(value)
+        const pct = parseFloat(markupArs)
+        if (!isNaN(cost) && !isNaN(pct) && cost > 0) {
+          next.price_sale = Math.round(cost * (1 + pct / 100)).toString()
+        }
+      }
+
+      // Si cambia precio venta ARS, recalcular margen ARS
+      if (name === 'price_sale') {
+        const cost = parseFloat(prev.price_cost)
+        const sale = parseFloat(value)
+        if (!isNaN(cost) && !isNaN(sale) && cost > 0) {
+          setMarkupArs(((sale - cost) / cost * 100).toFixed(1))
+        } else {
+          setMarkupArs('')
+        }
+      }
+
+      // Si cambia precio costo USD y hay margen, recalcular venta USD
+      if (name === 'price_cost_usd' && markupUsd) {
+        const cost = parseFloat(value)
+        const pct = parseFloat(markupUsd)
+        if (!isNaN(cost) && !isNaN(pct) && cost > 0) {
+          next.price_sale_usd = (Math.round(cost * (1 + pct / 100) * 100) / 100).toString()
+        }
+      }
+
+      // Si cambia precio venta USD, recalcular margen USD
+      if (name === 'price_sale_usd') {
+        const cost = parseFloat(prev.price_cost_usd)
+        const sale = parseFloat(value)
+        if (!isNaN(cost) && !isNaN(sale) && cost > 0) {
+          setMarkupUsd(((sale - cost) / cost * 100).toFixed(1))
+        } else {
+          setMarkupUsd('')
+        }
+      }
+
+      return next
+    })
+  }
+
+  const handleMarkupArsChange = (value: string) => {
+    setMarkupArs(value)
+    const cost = parseFloat(formData.price_cost)
+    const pct = parseFloat(value)
+    if (!isNaN(cost) && !isNaN(pct) && cost > 0) {
+      setFormData(prev => ({ ...prev, price_sale: Math.round(cost * (1 + pct / 100)).toString() }))
+    }
+  }
+
+  const handleMarkupUsdChange = (value: string) => {
+    setMarkupUsd(value)
+    const cost = parseFloat(formData.price_cost_usd)
+    const pct = parseFloat(value)
+    if (!isNaN(cost) && !isNaN(pct) && cost > 0) {
+      setFormData(prev => ({ ...prev, price_sale_usd: (Math.round(cost * (1 + pct / 100) * 100) / 100).toString() }))
+    }
   }
 
   if (!isOpen || !product) return null
@@ -225,44 +318,147 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
           </div>
 
           {/* Precios */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label htmlFor="price_cost" className="block text-sm font-medium text-gray-700 mb-2">
-                Precio de Costo
-              </label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
-                <input
-                  type="number"
-                  id="price_cost"
-                  name="price_cost"
-                  value={formData.price_cost}
-                  onChange={handleChange}
-                  step="0.01"
-                  min="0"
-                  className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                />
+          <div>
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Precios</h3>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label htmlFor="price_cost" className="block text-sm font-medium text-gray-700 mb-2">
+                  Costo (ARS)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
+                  <input
+                    type="number" id="price_cost" name="price_cost"
+                    value={formData.price_cost} onChange={handleChange}
+                    step="0.01" min="0"
+                    className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Margen %</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    value={markupArs}
+                    onChange={(e) => handleMarkupArsChange(e.target.value)}
+                    placeholder="Ej: 30"
+                    step="0.1"
+                    min="0"
+                    className="w-full pl-4 pr-8 py-2 border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none bg-amber-50"
+                  />
+                  <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-amber-600 font-medium">%</span>
+                </div>
+                {markupArs && formData.price_cost && (
+                  <p className="text-xs text-amber-600 mt-1">
+                    +${(parseFloat(formData.price_sale || '0') - parseFloat(formData.price_cost)).toFixed(0)} ganancia
+                  </p>
+                )}
+              </div>
+              <div>
+                <label htmlFor="price_sale" className="block text-sm font-medium text-gray-700 mb-2">
+                  Venta (ARS)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
+                  <input
+                    type="number" id="price_sale" name="price_sale"
+                    value={formData.price_sale} onChange={handleChange}
+                    step="0.01" min="0"
+                    className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                  />
+                </div>
               </div>
             </div>
+          </div>
 
-            <div>
-              <label htmlFor="price_sale" className="block text-sm font-medium text-gray-700 mb-2">
-                Precio de Venta
-              </label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
-                <input
-                  type="number"
-                  id="price_sale"
-                  name="price_sale"
-                  value={formData.price_sale}
-                  onChange={handleChange}
-                  step="0.01"
-                  min="0"
-                  className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                />
+          {/* Precios en USD */}
+          <div>
+            <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
+              <DollarSign className="w-4 h-4 text-green-600" />
+              Precios en Dólares (USD)
+            </h3>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label htmlFor="price_cost_usd" className="block text-sm font-medium text-gray-700 mb-2">Costo (USD)</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-green-600 font-medium">US$</span>
+                  <input type="number" id="price_cost_usd" name="price_cost_usd" value={formData.price_cost_usd} onChange={handleChange}
+                    placeholder="0.00" step="0.01" min="0"
+                    className="w-full pl-14 pr-4 py-2 border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none bg-green-50" />
+                </div>
+                {formData.price_cost_usd && blueRate && (
+                  <p className="text-xs text-green-700 mt-1">
+                    ≈ ${convertUsdToArs(parseFloat(formData.price_cost_usd))?.toLocaleString('es-AR', { minimumFractionDigits: 2 })} ARS
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Margen %</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    value={markupUsd}
+                    onChange={(e) => handleMarkupUsdChange(e.target.value)}
+                    placeholder="Ej: 30"
+                    step="0.1"
+                    min="0"
+                    className="w-full pl-4 pr-8 py-2 border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none bg-amber-50"
+                  />
+                  <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-amber-600 font-medium">%</span>
+                </div>
+                {markupUsd && formData.price_cost_usd && (
+                  <p className="text-xs text-amber-600 mt-1">
+                    +US${(parseFloat(formData.price_sale_usd || '0') - parseFloat(formData.price_cost_usd)).toFixed(2)} ganancia
+                  </p>
+                )}
+              </div>
+              <div>
+                <label htmlFor="price_sale_usd" className="block text-sm font-medium text-gray-700 mb-2">Venta (USD)</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-green-600 font-medium">US$</span>
+                  <input type="number" id="price_sale_usd" name="price_sale_usd" value={formData.price_sale_usd} onChange={handleChange}
+                    placeholder="0.00" step="0.01" min="0"
+                    className="w-full pl-14 pr-4 py-2 border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none bg-green-50" />
+                </div>
+                {formData.price_sale_usd && blueRate && (
+                  <p className="text-xs text-green-700 mt-1">
+                    ≈ ${convertUsdToArs(parseFloat(formData.price_sale_usd))?.toLocaleString('es-AR', { minimumFractionDigits: 2 })} ARS
+                  </p>
+                )}
               </div>
             </div>
+            
+            {/* Conversión automática detallada */}
+            {(formData.price_cost_usd || formData.price_sale_usd) && blueRate && (
+              <div className="mt-2 bg-blue-50 border border-blue-200 rounded-lg p-3">
+                {formData.price_sale_usd && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-blue-700">
+                      💵 Venta: US$ {parseFloat(formData.price_sale_usd).toFixed(2)} × ${blueRate.toLocaleString('es-AR')} (blue)
+                    </span>
+                    <span className="font-bold text-blue-900 text-lg">
+                      = ${convertUsdToArs(parseFloat(formData.price_sale_usd))?.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                )}
+                {formData.price_cost_usd && (
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="text-sm text-blue-700">
+                      💵 Costo: US$ {parseFloat(formData.price_cost_usd).toFixed(2)} × ${blueRate.toLocaleString('es-AR')} (blue)
+                    </span>
+                    <span className="font-bold text-blue-900 text-lg">
+                      = ${convertUsdToArs(parseFloat(formData.price_cost_usd))?.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                )}
+                {lastUpdated && (
+                  <p className="text-xs text-blue-500 mt-1">
+                    Cotización actualizada: {new Date(lastUpdated).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Margen calculado */}

@@ -1,7 +1,38 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from './auth'
+import { useDollarStore } from './dollar'
 import type { Product } from './products'
+
+export type PriceMode = 'ars' | 'usd' | 'usd_to_ars'
+
+// Devuelve el precio efectivo según el modo.
+// 'ars' → price_sale (manual ARS)
+// 'usd' → price_sale_usd tal cual (en dólares). Fallback a price_sale.
+// 'usd_to_ars' → price_sale_usd × blueRate (conversión automática). Fallback a price_sale.
+export function getEffectivePrice(product: Product, mode: PriceMode, blueRate: number | null): number {
+  if (mode === 'usd' && product.price_sale_usd) {
+    return product.price_sale_usd // devuelve USD puro
+  }
+  if (mode === 'usd_to_ars' && product.price_sale_usd && blueRate) {
+    return product.price_sale_usd * blueRate
+  }
+  return product.price_sale
+}
+
+// Etiqueta legible del modo de precio
+export function priceModeLabel(mode: PriceMode): string {
+  switch (mode) {
+    case 'ars': return 'Pesos (ARS)'
+    case 'usd': return 'Dólares (USD)'
+    case 'usd_to_ars': return 'USD → ARS (Blue)'
+  }
+}
+
+// Símbolo de moneda según modo
+export function priceModeCurrency(mode: PriceMode): string {
+  return mode === 'usd' ? 'US$' : '$'
+}
 
 export interface CartItem {
   product: Product
@@ -13,6 +44,7 @@ interface POSState {
   items: CartItem[]
   discount: number
   discountType: 'amount' | 'percentage'
+  priceMode: PriceMode
   isProcessing: boolean
   error: string | null
 
@@ -21,6 +53,7 @@ interface POSState {
   updateQuantity: (productId: string, quantity: number) => void
   clearCart: () => void
   setDiscount: (value: number, type: 'amount' | 'percentage') => void
+  setPriceMode: (mode: PriceMode) => void
   
   getSubtotal: () => number
   getDiscountAmount: () => number
@@ -34,24 +67,27 @@ export const usePOSStore = create<POSState>((set, get) => ({
   items: [],
   discount: 0,
   discountType: 'amount',
+  priceMode: 'ars',
   isProcessing: false,
   error: null,
 
   addToCart: (product, quantity = 1) => {
-    const { items } = get()
+    const { items, priceMode } = get()
+    const blueRate = useDollarStore.getState().blueRate
+    const unitPrice = getEffectivePrice(product, priceMode, blueRate)
     const existingItem = items.find(item => item.product.id === product.id)
 
     if (existingItem) {
       set({
         items: items.map(item =>
           item.product.id === product.id
-            ? { ...item, quantity: item.quantity + quantity, subtotal: (item.quantity + quantity) * item.product.price_sale }
+            ? { ...item, quantity: item.quantity + quantity, subtotal: (item.quantity + quantity) * unitPrice }
             : item
         )
       })
     } else {
       set({
-        items: [...items, { product, quantity, subtotal: quantity * product.price_sale }]
+        items: [...items, { product, quantity, subtotal: quantity * unitPrice }]
       })
     }
   },
@@ -65,10 +101,12 @@ export const usePOSStore = create<POSState>((set, get) => ({
       get().removeFromCart(productId)
       return
     }
+    const { priceMode } = get()
+    const blueRate = useDollarStore.getState().blueRate
     set({
       items: get().items.map(item =>
         item.product.id === productId
-          ? { ...item, quantity, subtotal: quantity * item.product.price_sale }
+          ? { ...item, quantity, subtotal: quantity * getEffectivePrice(item.product, priceMode, blueRate) }
           : item
       )
     })
@@ -80,6 +118,19 @@ export const usePOSStore = create<POSState>((set, get) => ({
 
   setDiscount: (value, type) => {
     set({ discount: value, discountType: type })
+  },
+
+  setPriceMode: (mode) => {
+    const blueRate = useDollarStore.getState().blueRate
+    const { items } = get()
+    // Recalcular todos los subtotales con el nuevo modo
+    set({
+      priceMode: mode,
+      items: items.map(item => ({
+        ...item,
+        subtotal: item.quantity * getEffectivePrice(item.product, mode, blueRate)
+      }))
+    })
   },
 
   getSubtotal: () => get().items.reduce((sum, item) => sum + item.subtotal, 0),
@@ -95,8 +146,9 @@ export const usePOSStore = create<POSState>((set, get) => ({
   getTotalItems: () => get().items.reduce((sum, item) => sum + item.quantity, 0),
 
   processSale: async (paymentMethod, cashReceived = 0) => {
-    const { items, getTotal, getSubtotal, getDiscountAmount, clearCart } = get()
+    const { items, priceMode, getTotal, getSubtotal, getDiscountAmount, clearCart } = get()
     const { user } = useAuthStore.getState()
+    const blueRate = useDollarStore.getState().blueRate
 
     if (items.length === 0) {
       return { success: false, error: 'El carrito está vacío' }
@@ -136,15 +188,16 @@ export const usePOSStore = create<POSState>((set, get) => ({
       // 2. Crear items de venta y movimientos de inventario
       for (const item of items) {
         const { product, quantity } = item
+        const effectivePrice = getEffectivePrice(product, priceMode, blueRate)
         
-        // Insertar item de venta
+        // Insertar item de venta con precio efectivo
         const { error: itemError } = await supabase
           .from('sale_items')
           .insert({
             sale_id: sale.id,
             product_branch_id: product.id,
             quantity: quantity,
-            price: product.price_sale,
+            price: effectivePrice,
             cost: product.price_cost,
             subtotal: item.subtotal
           })
@@ -159,7 +212,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
           .single()
 
         if (!currentProduct) {
-          throw new Error(`Producto ${product.name} no encontrado`)
+          throw new Error(`Producto ${product.product?.name || 'desconocido'} no encontrado`)
         }
 
         const newStock = currentProduct.stock_quantity - quantity
@@ -175,11 +228,11 @@ export const usePOSStore = create<POSState>((set, get) => ({
             quantity: quantity,
             stock_before: currentProduct.stock_quantity,
             stock_after: newStock,
-            price_at_movement: product.price_sale,
+            price_at_movement: effectivePrice,
             cost_at_movement: product.price_cost,
-            sale_id: sale.id, // ← Vincular con la venta
+            sale_id: sale.id,
             reason: `Venta #${sale.id.slice(0, 8)}`,
-            notes: `Método: ${paymentMethod}`,
+            notes: `Método: ${paymentMethod} | Modo precio: ${priceMode}`,
             created_by: user.id
           })
 

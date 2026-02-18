@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { ShoppingCart, Search, Trash2, DollarSign, Hash, Scan } from 'lucide-react'
-import { usePOSStore } from '@/store/pos'
+import { usePOSStore, getEffectivePrice } from '@/store/pos'
 import { useProductsStore } from '@/store/products'
 import { useScannerStore } from '@/store/scanner'
+import { supabase } from '@/lib/supabase'
+import { useAuthStore } from '@/store/auth'
+import { useDollarStore } from '@/store/dollar'
 import CheckoutModal from '@/components/CheckoutModal'
 
 export default function POS() {
@@ -10,11 +13,13 @@ export default function POS() {
     items,
     discount,
     discountType,
+    priceMode,
     addToCart,
     removeFromCart,
     updateQuantity,
     clearCart,
     setDiscount,
+    setPriceMode,
     getSubtotal,
     getDiscountAmount,
     getTotal,
@@ -28,16 +33,19 @@ export default function POS() {
   const [searchQuery, setSearchQuery] = useState('')
   const [showCheckout, setShowCheckout] = useState(false)
   const [discountInput, setDiscountInput] = useState('')
-  const [scannerMode, setScannerMode] = useState(false) // true = esperando escaneo desde app
+  const [scannerMode, setScannerMode] = useState(false)
   const [lastProcessedScanId, setLastProcessedScanId] = useState<string | null>(null)
   const [scanFeedback, setScanFeedback] = useState<{ message: string, type: 'success' | 'error' } | null>(null)
   const barcodeRef = useRef<HTMLInputElement>(null)
+  const { selectedBranch } = useAuthStore()
+  const { blueRate, fetchBlueRate } = useDollarStore()
 
   useEffect(() => {
     fetchProducts()
-  }, [])
+    fetchBlueRate()
+    clearCart() // Limpiar carrito al cambiar de sucursal
+  }, [selectedBranch?.id])
 
-  // Auto-focus barcode input
   useEffect(() => {
     barcodeRef.current?.focus()
   }, [items])
@@ -46,25 +54,53 @@ export default function POS() {
   useEffect(() => {
     if (!scannerMode) return
     if (!lastScan) return
-    if (lastScan.id === lastProcessedScanId) return // evitar procesar el mismo escaneo dos veces
+    if (lastScan.id === lastProcessedScanId) return
 
     setLastProcessedScanId(lastScan.id)
 
     const barcode = lastScan.barcode
     if (!barcode) return
 
-    const product = products.find(p => p.barcode === barcode)
+    const checkProduct = async () => {
+      const { selectedBranch, user } = useAuthStore.getState()
+      const branchId = user?.role === 'owner' || user?.role === 'admin'
+        ? selectedBranch?.id
+        : user?.branch_id
 
-    if (product) {
-      addToCart(product, 1)
-      setScanFeedback({ message: `✅ ${product.name} agregado al carrito`, type: 'success' })
-    } else {
-      setScanFeedback({ message: `❌ Producto con código ${barcode} no encontrado`, type: 'error' })
+      if (!branchId) {
+        setScanFeedback({ message: 'No hay sucursal seleccionada', type: 'error' })
+        setTimeout(() => setScanFeedback(null), 3000)
+        return
+      }
+
+      const { data: product } = await supabase
+        .from('products_branch')
+        .select(`
+          *,
+          product:products(*),
+          branch:branches(id, name)
+        `)
+        .eq('barcode', barcode)
+        .eq('branch_id', branchId)
+        .single()
+
+      if (product) {
+        addToCart(product as any, 1)
+        setScanFeedback({ 
+          message: `✅ ${product.product?.name || barcode} agregado al carrito`, 
+          type: 'success' 
+        })
+      } else {
+        setScanFeedback({ 
+          message: `❌ Producto con código ${barcode} no encontrado en esta sucursal`, 
+          type: 'error' 
+        })
+      }
+
+      setTimeout(() => setScanFeedback(null), 3000)
     }
 
-    // Limpiar feedback después de 3 segundos
-    setTimeout(() => setScanFeedback(null), 3000)
-
+    checkProduct()
   }, [lastScan])
 
   const handleBarcodeSubmit = (e: React.FormEvent) => {
@@ -87,8 +123,9 @@ export default function POS() {
     setDiscount(value, discountType)
   }
 
+  // Ahora name viene de product.product.name
   const filteredProducts = products.filter(p =>
-    p.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    p.product?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     p.barcode?.includes(searchQuery)
   ).slice(0, 12)
 
@@ -116,7 +153,6 @@ export default function POS() {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Botón modo scanner app */}
             <button
               onClick={() => {
                 setScannerMode(!scannerMode)
@@ -132,7 +168,6 @@ export default function POS() {
               {scannerMode ? 'Escuchando app...' : 'Usar scanner app'}
             </button>
 
-            {/* Barcode manual Input */}
             <form onSubmit={handleBarcodeSubmit} className="flex items-center gap-3">
               <div className="relative">
                 <Hash className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
@@ -155,7 +190,6 @@ export default function POS() {
           </div>
         </div>
 
-        {/* Feedback del scanner */}
         {scannerMode && (
           <div className="mt-3">
             {scanFeedback ? (
@@ -176,13 +210,11 @@ export default function POS() {
         )}
       </div>
 
-      {/* Main Content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Products Grid */}
         <div className="flex-1 p-6 overflow-y-auto">
-          {/* Search */}
-          <div className="mb-6">
-            <div className="relative max-w-md">
+          <div className="mb-4 flex items-center gap-4">
+            <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
               <input
                 type="text"
@@ -192,42 +224,113 @@ export default function POS() {
                 className="pl-10 pr-4 py-3 border border-gray-300 rounded-lg w-full focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
+
+            {/* Selector de modo de precio */}
+            <div className="flex bg-gray-100 rounded-lg p-1 gap-1">
+              <button
+                onClick={() => setPriceMode('ars')}
+                className={`px-3 py-2 rounded-md text-xs font-semibold transition whitespace-nowrap ${
+                  priceMode === 'ars'
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                $ Pesos
+              </button>
+              <button
+                onClick={() => setPriceMode('usd')}
+                className={`px-3 py-2 rounded-md text-xs font-semibold transition whitespace-nowrap ${
+                  priceMode === 'usd'
+                    ? 'bg-green-600 text-white shadow-sm'
+                    : 'text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                US$ Dólar
+              </button>
+              <button
+                onClick={() => setPriceMode('usd_to_ars')}
+                className={`px-3 py-2 rounded-md text-xs font-semibold transition whitespace-nowrap ${
+                  priceMode === 'usd_to_ars'
+                    ? 'bg-purple-600 text-white shadow-sm'
+                    : 'text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                USD→ARS
+              </button>
+            </div>
           </div>
 
-          {/* Products */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {filteredProducts.map((product) => (
-              <button
-                key={product.id}
-                onClick={() => addToCart(product, 1)}
-                className="bg-white p-4 rounded-lg border border-gray-200 hover:border-blue-500 hover:shadow-md transition text-left"
-              >
-                <div className="flex flex-col h-full">
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-gray-900 line-clamp-2 mb-2">
-                      {product.name}
-                    </h3>
-                    {product.barcode && (
-                      <p className="text-xs text-gray-500 mb-2">{product.barcode}</p>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between mt-auto pt-2 border-t">
-                    <span className="text-lg font-bold text-blue-600">
-                      {formatCurrency(product.price_sale)}
+          {/* Indicador del modo de precio activo */}
+          {priceMode === 'usd' && (
+            <div className="mb-4 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-sm flex items-center gap-2">
+              <DollarSign className="h-4 w-4 text-green-600" />
+              <span className="text-green-700">
+                Modo <strong>Dólar Venta</strong> — precios y total en US$
+              </span>
+            </div>
+          )}
+          {priceMode === 'usd_to_ars' && blueRate && (
+            <div className="mb-4 px-3 py-2 bg-purple-50 border border-purple-200 rounded-lg text-sm flex items-center gap-2">
+              <DollarSign className="h-4 w-4 text-purple-600" />
+              <span className="text-purple-700">
+                Modo <strong>Conversión</strong> — USD × <strong>${blueRate.toLocaleString('es-AR')}</strong> (Blue) = ARS
+              </span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+            {filteredProducts.map((product) => {
+              const effectivePrice = getEffectivePrice(product, priceMode, blueRate)
+              return (
+                <button
+                  key={product.id}
+                  onClick={() => addToCart(product, 1)}
+                  className="bg-white p-4 rounded-xl border border-gray-200 hover:border-blue-500 hover:shadow-lg transition text-left"
+                >
+                  <h3 className="font-semibold text-gray-900 line-clamp-2 mb-1 text-sm">
+                    {product.product?.name}
+                  </h3>
+                  {product.barcode && (
+                    <p className="text-xs text-gray-400 font-mono mb-2">{product.barcode}</p>
+                  )}
+                  <div className="flex items-end justify-between pt-2 border-t border-gray-100">
+                    <div>
+                      <span className={`text-lg font-bold ${
+                        priceMode === 'ars' ? 'text-blue-600' :
+                        priceMode === 'usd' ? 'text-green-600' : 'text-purple-600'
+                      }`}>
+                        {priceMode === 'usd'
+                          ? `US$ ${effectivePrice.toFixed(2)}`
+                          : formatCurrency(effectivePrice)
+                        }
+                      </span>
+                      {priceMode === 'usd' && (
+                        <span className="block text-xs text-gray-400">
+                          ARS: {formatCurrency(product.price_sale)}
+                        </span>
+                      )}
+                      {priceMode === 'usd_to_ars' && product.price_sale_usd && (
+                        <span className="block text-xs text-gray-400">
+                          US$ {product.price_sale_usd.toFixed(2)} × blue
+                        </span>
+                      )}
+                    </div>
+                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                      product.stock_quantity <= product.stock_min
+                        ? 'bg-red-50 text-red-600'
+                        : 'bg-green-50 text-green-600'
+                    }`}>
+                      {product.stock_quantity}
                     </span>
-                    <span className="text-xs text-gray-500">
-                      Stock: {product.stock_quantity}
-                    </span>
                   </div>
-                </div>
-              </button>
-            ))}
+                </button>
+              )
+            })}
           </div>
         </div>
 
         {/* Cart Sidebar */}
         <div className="w-96 bg-white border-l flex flex-col">
-          {/* Cart Header */}
           <div className="p-4 border-b">
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-lg font-bold flex items-center gap-2">
@@ -246,7 +349,6 @@ export default function POS() {
             </div>
           </div>
 
-          {/* Cart Items */}
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             {items.length === 0 ? (
               <div className="text-center text-gray-400 py-12">
@@ -255,13 +357,20 @@ export default function POS() {
                 <p className="text-sm mt-1">Escanea o selecciona productos</p>
               </div>
             ) : (
-              items.map((item) => (
+              items.map((item) => {
+                const unitPrice = getEffectivePrice(item.product, priceMode, blueRate)
+                return (
                 <div key={item.product.id} className="bg-gray-50 rounded-lg p-3">
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex-1">
-                      <h3 className="font-medium text-sm">{item.product.name}</h3>
+                      <h3 className="font-medium text-sm">
+                        {item.product.product?.name}
+                      </h3>
                       <p className="text-xs text-gray-500">
-                        {formatCurrency(item.product.price_sale)} c/u
+                        {priceMode === 'usd'
+                          ? `US$ ${unitPrice.toFixed(2)} c/u`
+                          : `${formatCurrency(unitPrice)} c/u`
+                        }
                       </p>
                     </div>
                     <button
@@ -288,21 +397,23 @@ export default function POS() {
                         +
                       </button>
                     </div>
-                    <span className="font-bold">{formatCurrency(item.subtotal)}</span>
+                    <span className="font-bold">
+                      {priceMode === 'usd'
+                        ? `US$ ${item.subtotal.toFixed(2)}`
+                        : formatCurrency(item.subtotal)
+                      }
+                    </span>
                   </div>
                 </div>
-              ))
+                )
+              })
             )}
           </div>
 
-          {/* Cart Footer */}
           {items.length > 0 && (
             <div className="border-t p-4 space-y-4">
-              {/* Discount */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Descuento
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Descuento</label>
                 <div className="flex gap-2">
                   <div className="flex-1 flex gap-2">
                     <input
@@ -330,27 +441,25 @@ export default function POS() {
                 </div>
               </div>
 
-              {/* Totals */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-sm">
                   <span>Subtotal:</span>
-                  <span>{formatCurrency(subtotal)}</span>
+                  <span>{priceMode === 'usd' ? `US$ ${subtotal.toFixed(2)}` : formatCurrency(subtotal)}</span>
                 </div>
                 {discountAmount > 0 && (
                   <div className="flex items-center justify-between text-sm text-green-600">
                     <span>Descuento:</span>
-                    <span>-{formatCurrency(discountAmount)}</span>
+                    <span>-{priceMode === 'usd' ? `US$ ${discountAmount.toFixed(2)}` : formatCurrency(discountAmount)}</span>
                   </div>
                 )}
                 <div className="border-t pt-2 flex items-center justify-between">
                   <span className="font-bold text-lg">TOTAL:</span>
                   <span className="font-bold text-2xl text-blue-600">
-                    {formatCurrency(total)}
+                    {priceMode === 'usd' ? `US$ ${total.toFixed(2)}` : formatCurrency(total)}
                   </span>
                 </div>
               </div>
 
-              {/* Checkout Button */}
               <button
                 onClick={() => setShowCheckout(true)}
                 className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-lg flex items-center justify-center gap-2"
@@ -363,7 +472,6 @@ export default function POS() {
         </div>
       </div>
 
-      {/* Checkout Modal */}
       {showCheckout && (
         <CheckoutModal
           isOpen={showCheckout}
@@ -372,6 +480,7 @@ export default function POS() {
           cartTotal={total}
           cartSubtotal={subtotal}
           cartDiscount={discountAmount}
+          priceMode={priceMode}
         />
       )}
     </div>

@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
-import { Scan, Trash2, Package, Hash, Clock, Wifi } from 'lucide-react'
+import { Scan, Trash2, Package, Hash, Clock, Wifi, DollarSign } from 'lucide-react'
 import { useScannerStore } from '@/store/scanner'
+import { useDollarStore } from '@/store/dollar'
 
 export default function ScannerPage() {
   const {
@@ -13,8 +14,11 @@ export default function ScannerPage() {
     fetchHistory
   } = useScannerStore()
 
+  const { blueRate, fetchBlueRate, convertUsdToArs } = useDollarStore()
+
   useEffect(() => {
     fetchHistory()
+    fetchBlueRate()
   }, [])
 
   const formatCurrency = (value: number) => {
@@ -64,9 +68,9 @@ export default function ScannerPage() {
             {/* Limpiar historial */}
             {history.length > 0 && (
               <button
-                onClick={() => {
-                  if (confirm('¿Eliminar todo el historial de escaneos?')) {
-                    clearHistory()
+                onClick={async () => {
+                  if (confirm('¿Eliminar todo el historial de escaneos? Se borrarán permanentemente.')) {
+                    await clearHistory()
                   }
                 }}
                 className="flex items-center gap-2 px-3 py-1.5 text-red-600 hover:bg-red-50 rounded-lg text-sm transition"
@@ -105,7 +109,7 @@ export default function ScannerPage() {
                 <div className="space-y-4">
                   <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
                     <p className="text-xs text-green-600 font-medium mb-1">✅ Producto encontrado</p>
-                    <h3 className="font-bold text-gray-900 text-lg">{lastScan.product.name}</h3>
+                    <h3 className="font-bold text-gray-900 text-lg">{lastScan.product.product?.name || 'Sin nombre'}</h3>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
@@ -117,6 +121,45 @@ export default function ScannerPage() {
                       <p className="text-xs text-gray-500 mb-1">Precio costo</p>
                       <p className="font-bold text-gray-700">{formatCurrency(lastScan.product.price_cost)}</p>
                     </div>
+                    {/* Precios en USD */}
+                    {((lastScan.product.price_cost_usd && lastScan.product.price_cost_usd > 0) || (lastScan.product.price_sale_usd && lastScan.product.price_sale_usd > 0)) && (
+                      <>
+                        {lastScan.product.price_cost_usd && lastScan.product.price_cost_usd > 0 && (
+                          <div className="p-3 bg-purple-50 rounded-lg border border-purple-200">
+                            <p className="text-xs text-purple-600 mb-1 flex items-center gap-1">
+                              <DollarSign className="w-3 h-3" /> Costo USD→ARS
+                            </p>
+                            {blueRate ? (
+                              <p className="font-bold text-purple-700">
+                                ${convertUsdToArs(lastScan.product.price_cost_usd)?.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                              </p>
+                            ) : (
+                              <p className="text-sm text-gray-400">Sin cotización</p>
+                            )}
+                            <p className="text-xs text-green-600 mt-0.5">
+                              US$ {lastScan.product.price_cost_usd.toFixed(2)}
+                            </p>
+                          </div>
+                        )}
+                        {lastScan.product.price_sale_usd && lastScan.product.price_sale_usd > 0 && (
+                          <div className="p-3 bg-purple-50 rounded-lg border border-purple-200">
+                            <p className="text-xs text-purple-600 mb-1 flex items-center gap-1">
+                              <DollarSign className="w-3 h-3" /> Venta USD→ARS
+                            </p>
+                            {blueRate ? (
+                              <p className="font-bold text-purple-700">
+                                ${convertUsdToArs(lastScan.product.price_sale_usd)?.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                              </p>
+                            ) : (
+                              <p className="text-sm text-gray-400">Sin cotización</p>
+                            )}
+                            <p className="text-xs text-green-600 mt-0.5">
+                              US$ {lastScan.product.price_sale_usd.toFixed(2)}
+                            </p>
+                          </div>
+                        )}
+                      </>
+                    )}
                     <div className="p-3 bg-gray-50 rounded-lg col-span-2">
                       <p className="text-xs text-gray-500 mb-1">Stock actual</p>
                       <p className={`font-bold text-lg ${
@@ -192,7 +235,7 @@ export default function ScannerPage() {
 
                         <div>
                           <p className="font-medium text-sm text-gray-900">
-                            {item.product?.name || (
+                            {item.product?.product?.name || (
                               <span className="text-yellow-600">Producto no encontrado</span>
                             )}
                           </p>
@@ -202,9 +245,17 @@ export default function ScannerPage() {
 
                       <div className="text-right flex-shrink-0">
                         {item.product && (
-                          <p className="text-sm font-bold text-blue-600">
-                            {formatCurrency(item.product.price_sale)}
-                          </p>
+                          <>
+                            <p className="text-sm font-bold text-blue-600">
+                              {formatCurrency(item.product.price_sale)}
+                            </p>
+                            {item.product.price_sale_usd && item.product.price_sale_usd > 0 && blueRate && (
+                              <p className="text-xs font-semibold text-purple-600">
+                                ${convertUsdToArs(item.product.price_sale_usd)?.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                                <span className="text-gray-400 font-normal"> (blue)</span>
+                              </p>
+                            )}
+                          </>
                         )}
                         <p className="text-xs text-gray-400">{formatTime(item.created_at)}</p>
                       </div>

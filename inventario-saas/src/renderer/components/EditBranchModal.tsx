@@ -190,7 +190,7 @@ export default function EditBranchModal({ branch, isOpen, onClose, onSuccess }: 
                 ⚠️ ¿Estás seguro que quieres eliminar esta sucursal?
               </p>
               <p className="text-sm text-red-600 mb-4">
-                Esta acción no se puede deshacer. Solo se puede eliminar si no tiene productos ni usuarios asignados.
+                Esta acción no se puede deshacer. Se eliminarán todos los productos, ventas, movimientos de inventario y datos asociados a esta sucursal. Los usuarios asignados serán desvinculados.
               </p>
               <div className="flex gap-2">
                 <button

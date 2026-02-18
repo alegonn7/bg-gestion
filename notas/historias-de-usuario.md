@@ -1,216 +1,175 @@
-# Historias de Usuario SaaS Multi-Tenant - Índice
+# BG Gestión — Historias de Usuario (Índice)
 
-## Módulo: Autenticación y Registro
+## Convención de IDs
 
-1. HU-AUTH-001: Registrar nueva organización (negocio)
-2. HU-AUTH-002: Login con email y password
-3. HU-AUTH-003: Recuperar contraseña olvidada
-4. HU-AUTH-004: Cerrar sesión
-5. HU-AUTH-005: Ver información de mi sesión actual
+```
+HU-[MÓDULO]-[N]
+```
 
-## Módulo: Gestión de Organización (Owner/Admin)
+Módulos: AUTH, ORG, SUC, USR, CAT, PROD, MASTER, POS, VENTA, INV, SCAN, REPORT, CONFIG
 
-6. HU-ORG-001: Ver información de mi organización
-7. HU-ORG-002: Editar datos de la organización
-8. HU-ORG-003: Ver plan actual y límites
-9. HU-ORG-004: Ver uso actual (sucursales, productos, usuarios)
-10. HU-ORG-005: Solicitar upgrade de plan
+---
 
-## Módulo: Gestión de Sucursales
+## Estado: ✅ Implementado | ⬚ Pendiente
 
-11. HU-BRANCH-001: Crear nueva sucursal
-12. HU-BRANCH-002: Editar información de sucursal
-13. HU-BRANCH-003: Desactivar sucursal
-14. HU-BRANCH-004: Ver lista de sucursales
-15. HU-BRANCH-005: Ver detalle de una sucursal
-16. HU-BRANCH-006: Recibir alerta al alcanzar límite de sucursales
+---
 
-## Módulo: Gestión de Usuarios (Empleados)
+## AUTH — Autenticación
 
-17. HU-USER-001: Invitar nuevo empleado
-18. HU-USER-002: Empleado acepta invitación y crea cuenta
-19. HU-USER-003: Editar información de empleado
-20. HU-USER-004: Cambiar rol de empleado
-21. HU-USER-005: Reasignar empleado a otra sucursal
-22. HU-USER-006: Desactivar empleado
-23. HU-USER-007: Ver lista de empleados
-24. HU-USER-008: Ver actividad de un empleado
-25. HU-USER-009: Recibir alerta al alcanzar límite de usuarios
+| ID | Historia | Estado |
+|----|----------|--------|
+| HU-AUTH-1 | Iniciar sesión con email y contraseña | ✅ |
+| HU-AUTH-2 | Mantener sesión activa (JWT) | ✅ |
+| HU-AUTH-3 | Cerrar sesión | ✅ |
+| HU-AUTH-4 | Redirigir según estado de autenticación | ✅ |
 
-## Módulo: Catálogo Maestro (Owner/Admin)
+## ORG — Organización
 
-26. HU-MASTER-001: Crear producto en catálogo maestro
-27. HU-MASTER-002: Editar producto del catálogo maestro
-28. HU-MASTER-003: Desactivar producto del catálogo maestro
-29. HU-MASTER-004: Ver lista de productos maestros
-30. HU-MASTER-005: Buscar en catálogo maestro
-31. HU-MASTER-006: Importar productos al catálogo maestro desde CSV
-32. HU-MASTER-007: Exportar catálogo maestro a CSV
+| ID | Historia | Estado |
+|----|----------|--------|
+| HU-ORG-1 | Ver información de la organización | ✅ |
+| HU-ORG-2 | Editar nombre de la organización | ✅ |
+| HU-ORG-3 | Subir logo de la organización | ✅ |
+| HU-ORG-4 | Eliminar logo de la organización | ✅ |
 
-## Módulo: Productos de Sucursal
+## SUC — Sucursales
 
-33. HU-PROD-001: Agregar producto del catálogo maestro a mi sucursal
-34. HU-PROD-002: Crear producto propio de la sucursal
-35. HU-PROD-003: Editar stock de producto en sucursal
-36. HU-PROD-004: Editar precio de producto en sucursal (override del maestro)
-37. HU-PROD-005: Ver productos de mi sucursal
-38. HU-PROD-006: Buscar productos en mi sucursal
-39. HU-PROD-007: Ver productos de todas las sucursales (Owner/Admin)
-40. HU-PROD-008: Comparar stock entre sucursales (Owner/Admin)
-41. HU-PROD-009: Recibir alerta al alcanzar límite de productos
+| ID | Historia | Estado |
+|----|----------|--------|
+| HU-SUC-1 | Ver listado de sucursales | ✅ |
+| HU-SUC-2 | Crear nueva sucursal | ✅ |
+| HU-SUC-3 | Editar sucursal | ✅ |
+| HU-SUC-4 | Desactivar sucursal | ✅ |
+| HU-SUC-5 | Ver detalle de sucursal (estadísticas) | ✅ |
+| HU-SUC-6 | Seleccionar sucursal activa | ✅ |
 
-## Módulo: Escaneo de Productos
+## USR — Usuarios
 
-42. HU-SCAN-001: Escanear código de barras desde app móvil
-43. HU-SCAN-002: Ver producto escaneado inmediatamente
-44. HU-SCAN-003: Escanear producto que no existe en catálogo maestro
-45. HU-SCAN-004: Escanear producto del maestro no agregado a mi sucursal
-46. HU-SCAN-005: Ver historial de productos escaneados en mi sucursal
-47. HU-SCAN-006: Ver historial de escaneos de todas las sucursales (Owner/Admin)
-48. HU-SCAN-007: Filtrar escaneos por sucursal, empleado, fecha
-49. HU-SCAN-008: Escanear desde webcam en programa de escritorio
+| ID | Historia | Estado |
+|----|----------|--------|
+| HU-USR-1 | Ver listado de usuarios | ✅ |
+| HU-USR-2 | Invitar nuevo empleado (con creds temporales) | ✅ |
+| HU-USR-3 | Editar usuario (nombre, rol, sucursal) | ✅ |
+| HU-USR-4 | Desactivar usuario | ✅ |
+| HU-USR-5 | Ver detalle de usuario | ✅ |
+| HU-USR-6 | Filtrar usuarios por rol y sucursal | ✅ |
 
-## Módulo: Inventario
+## CAT — Categorías
 
-50. HU-INV-001: Registrar entrada de stock
-51. HU-INV-002: Registrar salida de stock
-52. HU-INV-003: Ajustar stock manualmente
-53. HU-INV-004: Ver historial de movimientos de un producto
-54. HU-INV-005: Ver historial de movimientos de mi sucursal
-55. HU-INV-006: Ver consolidado de movimientos de todas las sucursales (Owner/Admin)
-56. HU-INV-007: Recibir alerta de stock bajo en mi sucursal
-57. HU-INV-008: Ver productos con stock crítico por sucursal
-58. HU-INV-009: Hacer inventario físico con escaneo masivo
+| ID | Historia | Estado |
+|----|----------|--------|
+| HU-CAT-1 | Ver listado de categorías | ✅ |
+| HU-CAT-2 | Crear categoría con nombre y color | ✅ |
+| HU-CAT-3 | Editar categoría | ✅ |
+| HU-CAT-4 | Eliminar categoría | ✅ |
 
-## Módulo: Precios
+## PROD — Productos (por Sucursal)
 
-59. HU-PRICE-001: Establecer precio base en catálogo maestro
-60. HU-PRICE-002: Override de precio en sucursal específica
-61. HU-PRICE-003: Ver margen de ganancia por producto
-62. HU-PRICE-004: Actualizar precios masivamente en catálogo maestro
-63. HU-PRICE-005: Sincronizar precios del maestro a sucursales
-64. HU-PRICE-006: Ver historial de cambios de precio
+| ID | Historia | Estado |
+|----|----------|--------|
+| HU-PROD-1 | Ver listado de productos de la sucursal | ✅ |
+| HU-PROD-2 | Crear producto en sucursal (barcode, nombre, precios, stock) | ✅ |
+| HU-PROD-3 | Editar producto (precios, stock, datos) | ✅ |
+| HU-PROD-4 | Eliminar/desactivar producto | ✅ |
+| HU-PROD-5 | Ver detalle de producto con historial | ✅ |
+| HU-PROD-6 | Buscar producto por nombre o código | ✅ |
+| HU-PROD-7 | Filtrar productos por categoría | ✅ |
+| HU-PROD-8 | Duplicar producto existente | ⬚ |
+| HU-PROD-9 | Importar productos desde CSV | ⬚ |
+| HU-PROD-10 | Exportar productos a CSV | ⬚ |
+| HU-PROD-11 | Actualización masiva de precios | ⬚ |
 
-## Módulo: Categorización
+## MASTER — Catálogo Maestro
 
-65. HU-CAT-001: Crear categoría (nivel organización)
-66. HU-CAT-002: Editar categoría
-67. HU-CAT-003: Eliminar categoría
-68. HU-CAT-004: Asignar producto a categoría
-69. HU-CAT-005: Crear subcategorías
-70. HU-CAT-006: Filtrar productos por categoría
+| ID | Historia | Estado |
+|----|----------|--------|
+| HU-MASTER-1 | Ver catálogo maestro de la organización | ✅ |
+| HU-MASTER-2 | Crear producto en catálogo maestro | ✅ |
+| HU-MASTER-3 | Editar producto del catálogo maestro | ✅ |
+| HU-MASTER-4 | Buscar en catálogo maestro | ✅ |
+| HU-MASTER-5 | Filtrar catálogo por categoría | ✅ |
+| HU-MASTER-6 | Ver detalle de producto maestro | ✅ |
 
-## Módulo: Sincronización
+## POS — Punto de Venta
 
-71. HU-SYNC-001: Trabajar sin conexión a internet
-72. HU-SYNC-002: Sincronizar cambios automáticamente al recuperar conexión
-73. HU-SYNC-003: Ver estado de sincronización en tiempo real
-74. HU-SYNC-004: Forzar sincronización manual
-75. HU-SYNC-005: Ver cambios pendientes de sincronizar
-76. HU-SYNC-006: Recibir notificación de sincronización exitosa
-77. HU-SYNC-007: Recibir alerta de error en sincronización
-78. HU-SYNC-008: Ver cambios de otros dispositivos en tiempo real
+| ID | Historia | Estado |
+|----|----------|--------|
+| HU-POS-1 | Buscar producto para agregar al carrito | ✅ |
+| HU-POS-2 | Escanear código de barras (webcam) | ✅ |
+| HU-POS-3 | Agregar producto al carrito | ✅ |
+| HU-POS-4 | Modificar cantidad en el carrito | ✅ |
+| HU-POS-5 | Eliminar producto del carrito | ✅ |
+| HU-POS-6 | Aplicar descuento a la venta | ✅ |
+| HU-POS-7 | Seleccionar modo de precio (ARS/USD/Blue) | ✅ |
+| HU-POS-8 | Vaciar carrito completo | ✅ |
 
-## Módulo: Resolución de Conflictos
+## VENTA — Checkout y Ventas
 
-79. HU-CONFLICT-001: Detectar conflicto de edición concurrente
-80. HU-CONFLICT-002: Ver detalles de ambas versiones en conflicto
-81. HU-CONFLICT-003: Elegir mi versión en caso de conflicto
-82. HU-CONFLICT-004: Elegir la otra versión en caso de conflicto
-83. HU-CONFLICT-005: Combinar manualmente ambas versiones
-84. HU-CONFLICT-006: Ver historial de conflictos resueltos
+| ID | Historia | Estado |
+|----|----------|--------|
+| HU-VENTA-1 | Completar venta con método de pago | ✅ |
+| HU-VENTA-2 | Pago mixto (efectivo + tarjeta) | ✅ |
+| HU-VENTA-3 | Calcular vuelto automáticamente | ✅ |
+| HU-VENTA-4 | Generar ticket PDF al finalizar venta | ✅ |
+| HU-VENTA-5 | Ver historial de ventas con filtros | ✅ |
+| HU-VENTA-6 | Descargar ticket PDF desde historial | ✅ |
+| HU-VENTA-7 | Exportar ventas a CSV | ⬚ |
 
-## Módulo: Permisos y Roles
+## INV — Inventario
 
-85. HU-PERM-001: Owner ve y administra todo el negocio
-86. HU-PERM-002: Admin general ve todo pero no puede crear sucursales
-87. HU-PERM-003: Manager solo ve y administra su sucursal asignada
-88. HU-PERM-004: Empleado solo puede escanear y registrar movimientos
-89. HU-PERM-005: Validar permisos antes de cada acción
-90. HU-PERM-006: Mostrar/ocultar funciones según rol
+| ID | Historia | Estado |
+|----|----------|--------|
+| HU-INV-1 | Registrar entrada de stock | ✅ |
+| HU-INV-2 | Registrar salida de stock | ✅ |
+| HU-INV-3 | Registrar ajuste de inventario | ✅ |
+| HU-INV-4 | Ver historial de movimientos de un producto | ✅ |
+| HU-INV-5 | Descuento automático de stock al vender | ✅ |
+| HU-INV-6 | Alertas de stock bajo | ⬚ |
+| HU-INV-7 | Alertas de stock crítico | ⬚ |
 
-## Módulo: Dashboard y Reportes
+## SCAN — Escáner Móvil
 
-91. HU-DASH-001: Ver resumen general de mi sucursal (Manager/Employee)
-92. HU-DASH-002: Ver resumen consolidado de todas las sucursales (Owner/Admin)
-93. HU-DASH-003: Ver productos más escaneados por sucursal
-94. HU-DASH-004: Ver estadísticas de movimientos de stock
-95. HU-DASH-005: Exportar listado de productos a CSV
-96. HU-DASH-006: Ver valor total del inventario por sucursal
-97. HU-DASH-007: Comparar performance entre sucursales
+| ID | Historia | Estado |
+|----|----------|--------|
+| HU-SCAN-1 | Escanear código desde app móvil | ✅ |
+| HU-SCAN-2 | Recibir escaneo en tiempo real (desktop) | ✅ |
+| HU-SCAN-3 | Ver historial de escaneos | ✅ |
+| HU-SCAN-4 | Identificar dispositivo (desktop vs mobile) | ✅ |
 
-## Módulo: Límites de Plan
+## REPORT — Reportes
 
-98. HU-LIMIT-001: Ver advertencia al acercarse a límite de sucursales
-99. HU-LIMIT-002: Bloquear creación de sucursal al alcanzar límite
-100. HU-LIMIT-003: Ver advertencia al acercarse a límite de productos
-101. HU-LIMIT-004: Bloquear creación de producto al alcanzar límite
-102. HU-LIMIT-005: Ver advertencia al acercarse a límite de usuarios
-103. HU-LIMIT-006: Bloquear invitación de usuario al alcanzar límite
-104. HU-LIMIT-007: Ver banner con llamado a acción para upgrade
+| ID | Historia | Estado |
+|----|----------|--------|
+| HU-REPORT-1 | Ver reporte de ingresos por período | ✅ |
+| HU-REPORT-2 | Ver top productos más vendidos | ✅ |
+| HU-REPORT-3 | Ver gráficos de ventas | ✅ |
+| HU-REPORT-4 | Ver alertas de stock en reportes | ✅ |
 
-## Módulo: Suspensión de Cuenta
+## CONFIG — Configuración
 
-105. HU-SUSP-001: Recibir notificación de cuenta suspendida al iniciar sesión
-106. HU-SUSP-002: Modo solo lectura cuando cuenta está suspendida
-107. HU-SUSP-003: Bloquear sincronización cuando cuenta está suspendida
-108. HU-SUSP-004: Reactivación automática al pagar
+| ID | Historia | Estado |
+|----|----------|--------|
+| HU-CONFIG-1 | Editar nombre de la empresa | ✅ |
+| HU-CONFIG-2 | Subir/eliminar logo de empresa | ✅ |
+| HU-CONFIG-3 | Ver cotización dólar blue actual | ✅ |
+| HU-CONFIG-4 | Refrescar cotización dólar blue | ✅ |
+| HU-CONFIG-5 | Ver datos del usuario logueado | ✅ |
+| HU-CONFIG-6 | Activar modo oscuro | ⬚ |
 
-## Módulo: Dispositivos
+## UI — Interfaz General
 
-109. HU-DEV-001: Ver lista de mis dispositivos sincronizados
-110. HU-DEV-002: Vincular nuevo dispositivo con código
-111. HU-DEV-003: Desvincular dispositivo
-112. HU-DEV-004: Identificar qué dispositivo hizo un cambio
-113. HU-DEV-005: Ver última actividad de cada dispositivo
+| ID | Historia | Estado |
+|----|----------|--------|
+| HU-UI-1 | Navegación por menú lateral según rol | ✅ |
+| HU-UI-2 | Dashboard con métricas del negocio | ⬚ |
+| HU-UI-3 | Shortcuts de teclado en POS | ⬚ |
 
-## Módulo: Configuración
+---
 
-114. HU-CONFIG-001: Configurar stock mínimo por defecto
-115. HU-CONFIG-002: Configurar formato de visualización de precios
-116. HU-CONFIG-003: Activar/desactivar notificaciones
-117. HU-CONFIG-004: Configurar tiempo de retención de escaneos
-118. HU-CONFIG-005: Ver información técnica del dispositivo
-119. HU-CONFIG-006: Realizar backup manual de datos locales
+## Resumen
 
-## Módulo: Búsqueda y Filtros
-
-120. HU-SEARCH-001: Buscar producto por nombre
-121. HU-SEARCH-002: Buscar producto por código de barras
-122. HU-SEARCH-003: Filtrar productos por categoría
-123. HU-SEARCH-004: Filtrar productos por sucursal (Owner/Admin)
-124. HU-SEARCH-005: Filtrar por rango de precio
-125. HU-SEARCH-006: Filtrar por stock disponible
-126. HU-SEARCH-007: Ordenar productos por diferentes criterios
-127. HU-SEARCH-008: Guardar búsquedas/filtros favoritos
-
-## Módulo: Auditoría (Owner/Admin)
-
-128. HU-AUDIT-001: Ver log de acciones de usuarios
-129. HU-AUDIT-002: Ver quién modificó un producto
-130. HU-AUDIT-003: Ver historial de cambios de un producto
-131. HU-AUDIT-004: Filtrar logs por usuario, acción, fecha
-132. HU-AUDIT-005: Exportar logs de auditoría
-
-## Módulo: Onboarding
-
-133. HU-ONBOARD-001: Tutorial al usar el programa por primera vez
-134. HU-ONBOARD-002: Wizard de configuración inicial (crear primera sucursal)
-135. HU-ONBOARD-003: Importar productos iniciales desde CSV
-136. HU-ONBOARD-004: Invitar primer empleado desde onboarding
-137. HU-ONBOARD-005: Tour guiado según rol (Owner vs Employee)
-
-## Módulo: Super Admin Panel (Futuro)
-
-138. HU-SUPER-001: Ver dashboard con todas las organizaciones
-139. HU-SUPER-002: Ver detalle de una organización
-140. HU-SUPER-003: Activar organización
-141. HU-SUPER-004: Suspender organización
-142. HU-SUPER-005: Cambiar plan de una organización
-143. HU-SUPER-006: Extender período de prueba
-144. HU-SUPER-007: Ver estadísticas de uso del sistema
-145. HU-SUPER-008: Ver logs de errores globales
-146. HU-SUPER-009: Impersonar usuario para soporte
-147. HU-SUPER-010: Configurar planes y límites
-
-Total: 147 Historias de Usuario
+| Estado | Cantidad |
+|--------|----------|
+| ✅ Implementado | 62 |
+| ⬚ Pendiente | 12 |
+| **Total** | **74** |
