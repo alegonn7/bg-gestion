@@ -157,52 +157,48 @@ export default function SettingsPage() {
         <p className="text-gray-500 mt-1">Ajustes generales de la empresa</p>
       </div>
 
-      {/* Datos de la Empresa */}
-      <section className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
-        <div className="flex items-center gap-3 mb-5">
-          <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-            <Building2 className="w-5 h-5 text-blue-600" />
+      {/* Datos de la Empresa: solo owner/admin */}
+      {isOwnerOrAdmin && (
+        <section className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+              <Building2 className="w-5 h-5 text-blue-600" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Empresa</h2>
+              <p className="text-sm text-gray-500">Información de tu organización</p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">Empresa</h2>
-            <p className="text-sm text-gray-500">Información de tu organización</p>
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          {/* Nombre */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Nombre de la empresa</label>
-            <input
-              type="text"
-              value={companyName}
-              onChange={(e) => setCompanyName(e.target.value)}
-              disabled={!isOwnerOrAdmin}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500"
-            />
-          </div>
-
-          {/* Logo de la empresa */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Logo de la empresa</label>
-            <p className="text-xs text-gray-400 mb-2">Se mostrará en los tickets de venta. PNG, JPG o WEBP, máx. 2 MB.</p>
-
-            <div className="flex items-center gap-4">
-              {/* Preview */}
-              <div className="w-20 h-20 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center overflow-hidden bg-gray-50 flex-shrink-0">
-                {logoUrl ? (
-                  <img
-                    src={logoUrl}
-                    alt="Logo de la empresa"
-                    className="w-full h-full object-contain"
-                    onError={() => setLogoUrl(null)}
-                  />
-                ) : (
-                  <Building2 className="w-8 h-8 text-gray-300" />
-                )}
-              </div>
-
-              {isOwnerOrAdmin && (
+          <div className="space-y-4">
+            {/* Nombre */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre de la empresa</label>
+              <input
+                type="text"
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                disabled={!isOwnerOrAdmin}
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-500"
+              />
+            </div>
+            {/* Logo de la empresa */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Logo de la empresa</label>
+              <p className="text-xs text-gray-400 mb-2">Se mostrará en los tickets de venta. PNG, JPG o WEBP, máx. 2 MB.</p>
+              <div className="flex items-center gap-4">
+                {/* Preview */}
+                <div className="w-20 h-20 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center overflow-hidden bg-gray-50 flex-shrink-0">
+                  {logoUrl ? (
+                    <img
+                      src={logoUrl}
+                      alt="Logo de la empresa"
+                      className="w-full h-full object-contain"
+                      onError={() => setLogoUrl(null)}
+                    />
+                  ) : (
+                    <Building2 className="w-8 h-8 text-gray-300" />
+                  )}
+                </div>
                 <div className="flex flex-col gap-2">
                   <input
                     ref={fileInputRef}
@@ -234,56 +230,50 @@ export default function SettingsPage() {
                     </button>
                   )}
                 </div>
+              </div>
+              {logoError && (
+                <p className="text-sm text-red-500 mt-2">{logoError}</p>
               )}
             </div>
-
-            {logoError && (
-              <p className="text-sm text-red-500 mt-2">{logoError}</p>
-            )}
-          </div>
-
-          {/* Info de solo lectura */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Plan</label>
-              <div className="px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 uppercase text-sm font-medium">
-                {organization?.plan || '—'}
+            {/* Info de solo lectura */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Plan</label>
+                <div className="px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 uppercase text-sm font-medium">
+                  {organization?.plan || '—'}
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Estado suscripción</label>
+                <div className={`px-4 py-2.5 rounded-lg border text-sm font-medium ${
+                  organization?.subscription_status === 'active'
+                    ? 'bg-green-50 border-green-200 text-green-700'
+                    : 'bg-yellow-50 border-yellow-200 text-yellow-700'
+                }`}>
+                  {organization?.subscription_status === 'active' ? 'Activo' : organization?.subscription_status || '—'}
+                </div>
               </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Estado suscripción</label>
-              <div className={`px-4 py-2.5 rounded-lg border text-sm font-medium ${
-                organization?.subscription_status === 'active'
-                  ? 'bg-green-50 border-green-200 text-green-700'
-                  : 'bg-yellow-50 border-yellow-200 text-yellow-700'
-              }`}>
-                {organization?.subscription_status === 'active' ? 'Activo' : organization?.subscription_status || '—'}
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Máx. sucursales</label>
+                <div className="px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 text-sm">
+                  {organization?.max_branches ?? '—'}
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Máx. productos/suc.</label>
+                <div className="px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 text-sm">
+                  {organization?.max_products_per_branch ?? '—'}
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Máx. usuarios/suc.</label>
+                <div className="px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 text-sm">
+                  {organization?.max_users_per_branch ?? '—'}
+                </div>
               </div>
             </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Máx. sucursales</label>
-              <div className="px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 text-sm">
-                {organization?.max_branches ?? '—'}
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Máx. productos/suc.</label>
-              <div className="px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 text-sm">
-                {organization?.max_products_per_branch ?? '—'}
-              </div>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Máx. usuarios/suc.</label>
-              <div className="px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 text-sm">
-                {organization?.max_users_per_branch ?? '—'}
-              </div>
-            </div>
-          </div>
-
-          {isOwnerOrAdmin && (
             <div className="flex items-center gap-3 pt-2">
               <button
                 onClick={handleSaveCompany}
@@ -297,16 +287,9 @@ export default function SettingsPage() {
                 <span className="text-sm text-green-600 font-medium">✓ Guardado</span>
               )}
             </div>
-          )}
-
-          {!isOwnerOrAdmin && (
-            <div className="flex items-center gap-2 text-sm text-gray-500 bg-gray-50 p-3 rounded-lg">
-              <Info className="w-4 h-4 flex-shrink-0" />
-              Solo el dueño o administrador puede editar la configuración de la empresa.
-            </div>
-          )}
-        </div>
-      </section>
+          </div>
+        </section>
+      )}
 
       {/* Cotización Dólar */}
       <section className="bg-white rounded-xl border border-gray-200 p-6 mb-6">

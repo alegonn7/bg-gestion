@@ -83,11 +83,11 @@
 - HU-INV-6: Alertas de stock bajo ⬚
 - HU-INV-7: Alertas de stock crítico ⬚
 
-## SCAN — Escáner Móvil
-- HU-SCAN-1: Escanear código desde app móvil ✅
-- HU-SCAN-2: Recibir escaneo en tiempo real en desktop ✅
-- HU-SCAN-3: Ver historial de escaneos ✅
-- HU-SCAN-4: Identificar dispositivo (desktop vs mobile) ✅
+## ~~SCAN — Escáner Móvil~~ (DEPRECADO - 5/3/2026, reemplazado por escáner físico ProSoft S224)
+- ~~HU-SCAN-1: Escanear código desde app móvil~~ DEPRECADO
+- ~~HU-SCAN-2: Recibir escaneo en tiempo real en desktop~~ DEPRECADO
+- ~~HU-SCAN-3: Ver historial de escaneos~~ DEPRECADO
+- ~~HU-SCAN-4: Identificar dispositivo (desktop vs mobile)~~ DEPRECADO
 
 ## REPORT — Reportes
 - HU-REPORT-1: Ver reporte de ingresos por período ✅

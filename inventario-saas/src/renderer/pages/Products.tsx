@@ -1,12 +1,14 @@
-import { useEffect, useState, useRef } from 'react'
-import { Plus, Search, Package, AlertTriangle, RefreshCw, Tag, X, Scan, Download, Upload, FileText, Loader2, CheckCircle, XCircle, Percent } from 'lucide-react'
+import { useEffect, useState, useRef, useCallback } from 'react'
+import { Plus, Search, Package, AlertTriangle, RefreshCw, Tag, X, Download, Upload, FileText, Loader2, CheckCircle, XCircle, Percent } from 'lucide-react'
 import { useProductsStore, type Product } from '@/store/products'
+import { useSuppliersStore } from '@/store/suppliers'
 import { useCategoriesStore } from '@/store/categories'
-import { useScannerStore } from '@/store/scanner'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/auth'
 import { useDollarStore } from '@/store/dollar'
 import { exportProductsToCSV, parseCSV, importProductsFromCSV, type ImportResult } from '@/lib/csv'
+import { useBarcodeScanner } from '@/hooks/useBarcodeScanner'
+import { playScanSuccess, playScanError } from '@/lib/scan-sound'
 import ProductCard from '@/components/ProductCard'
 import ProductDetailModal from '@/components/ProductDetailModal'
 import CreateProductModal from '@/components/CreateProductModal'
@@ -19,10 +21,11 @@ import BulkPriceUpdateModal from '@/components/BulkPriceUpdateModal'
 export default function Products() {
   const { isLoading, error, searchQuery, fetchProducts, setSearchQuery, getFilteredProducts, deleteProduct } = useProductsStore()
   const { categories, fetchCategories } = useCategoriesStore()
-  const { lastScan } = useScannerStore()
+  const { suppliers, fetchSuppliers } = useSuppliersStore()
 
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+  const [selectedSupplier, setSelectedSupplier] = useState<string | null>(null)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [isEditOpen, setIsEditOpen] = useState(false)
@@ -35,10 +38,6 @@ export default function Products() {
   // Duplicar producto
   const [duplicateData, setDuplicateData] = useState<any | null>(null)
 
-  // Scanner
-  const [scannerMode, setScannerMode] = useState(false)
-  const [lastProcessedScanId, setLastProcessedScanId] = useState<string | null>(null)
-  const [scannedBarcode, setScannedBarcode] = useState<string | null>(null)
   const { selectedBranch } = useAuthStore()
   const { fetchBlueRate } = useDollarStore()
 
@@ -47,65 +46,43 @@ export default function Products() {
   const [isImporting, setIsImporting] = useState(false)
   const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null)
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
+  const [scannedBarcode, setScannedBarcode] = useState<string | null>(null)
+  const [scanFeedback, setScanFeedback] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null)
+
+  // Escáner físico: busca producto o abre modal de creación
+  const handleBarcodeScan = useCallback((barcode: string) => {
+    const allProducts = getFilteredProducts()
+    const product = allProducts.find(p => p.barcode === barcode)
+    if (product) {
+      setSelectedProduct(product)
+      setIsDetailOpen(true)
+      setScanFeedback({ type: 'success', message: `✓ ${product.product?.name || barcode}` })
+      playScanSuccess()
+    } else {
+      setScannedBarcode(barcode)
+      setIsCreateOpen(true)
+      setScanFeedback({ type: 'info', message: `Producto no encontrado, creando con código: ${barcode}` })
+      playScanError()
+    }
+  }, [getFilteredProducts])
+
+  useBarcodeScanner(handleBarcodeScan)
 
   useEffect(() => {
     fetchProducts()
     fetchCategories()
+    fetchSuppliers()
     fetchBlueRate()
   }, [fetchProducts, selectedBranch?.id])
 
-  // ✅ Escuchar escaneos desde la app cuando scannerMode está activo
-  useEffect(() => {
-    if (!scannerMode) return
-    if (!lastScan) return
-    if (lastScan.id === lastProcessedScanId) return
-
-    setLastProcessedScanId(lastScan.id)
-
-    const barcode = lastScan.barcode
-    if (!barcode) return
-
-    const checkProduct = async () => {
-      const { selectedBranch, user } = useAuthStore.getState()
-      const branchId = user?.role === 'owner' || user?.role === 'admin'
-        ? selectedBranch?.id
-        : user?.branch_id
-
-      if (!branchId) {
-        alert('No hay sucursal seleccionada')
-        setScannerMode(false)
-        return
-      }
-
-      const { data: existingProduct } = await supabase
-        .from('products_branch')
-        .select(`
-          *,
-          product:products(*),
-          branch:branches(id, name)
-        `)
-        .eq('barcode', barcode)
-        .eq('branch_id', branchId)
-        .single()
-
-      if (existingProduct) {
-        setSelectedProduct(existingProduct as Product)
-        setIsDetailOpen(true)
-        setScannerMode(false)
-      } else {
-        setScannedBarcode(barcode)
-        setIsCreateOpen(true)
-        setScannerMode(false)
-      }
-    }
-
-    checkProduct()
-  }, [lastScan])
-
   // ✅ Ahora category_id viene de product.product.category_id
-  const filteredProducts = selectedCategory
-    ? getFilteredProducts().filter(p => p.product?.category_id === selectedCategory)
-    : getFilteredProducts()
+  let filteredProducts = getFilteredProducts()
+  if (selectedCategory) {
+    filteredProducts = filteredProducts.filter(p => p.product?.category_id === selectedCategory)
+  }
+  if (selectedSupplier) {
+    filteredProducts = filteredProducts.filter(p => p.product?.supplier_id === selectedSupplier)
+  }
 
   const lowStockCount = filteredProducts.filter(p => p.stock_quantity <= p.stock_min).length
 
@@ -152,9 +129,17 @@ export default function Products() {
 
   const handleCreateClose = () => {
     setIsCreateOpen(false)
-    setScannedBarcode(null)
     setDuplicateData(null)
+    setScannedBarcode(null)
   }
+
+  // Auto-ocultar feedback del escáner
+  useEffect(() => {
+    if (scanFeedback) {
+      const timer = setTimeout(() => setScanFeedback(null), 3000)
+      return () => clearTimeout(timer)
+    }
+  }, [scanFeedback])
 
   // CSV Export
   const handleExport = () => {
@@ -190,7 +175,6 @@ export default function Products() {
           errors: [{ row: 0, name: '', error: 'El archivo esta vacio o no tiene el formato correcto' }],
         })
         setIsImporting(false)
-        return
       }
 
       const result = await importProductsFromCSV(rows, (current, total) => {
@@ -214,6 +198,15 @@ export default function Products() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Feedback del escáner */}
+      {scanFeedback && (
+        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg text-white text-sm font-medium ${
+          scanFeedback.type === 'success' ? 'bg-green-600' : scanFeedback.type === 'error' ? 'bg-red-600' : 'bg-blue-600'
+        }`}>
+          {scanFeedback.message}
+        </div>
+      )}
+
       <div className="bg-white border-b border-gray-200">
         <div className="px-6 py-4">
           <div className="flex items-center justify-between mb-4">
@@ -278,18 +271,6 @@ export default function Products() {
               </button>
 
               <button
-                onClick={() => setScannerMode(!scannerMode)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 transition font-medium ${
-                  scannerMode
-                    ? 'border-green-500 bg-green-50 text-green-700'
-                    : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'
-                }`}
-              >
-                <Scan className={`w-5 h-5 ${scannerMode ? 'animate-pulse' : ''}`} />
-                {scannerMode ? 'Esperando escaneo...' : 'Agregar con scanner'}
-              </button>
-
-              <button
                 onClick={() => setIsCreateOpen(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium"
               >
@@ -298,28 +279,28 @@ export default function Products() {
             </div>
           </div>
 
-          {scannerMode && (
-            <div className="mb-3 px-4 py-3 bg-green-50 border border-green-200 rounded-lg flex items-center justify-between">
-              <div className="flex items-center gap-2 text-green-700">
-                <Scan className="h-5 w-5 animate-pulse" />
-                <span className="font-medium">Listo para escanear</span>
-                <span className="text-sm text-green-600">— Escaneá un producto desde la app móvil</span>
-              </div>
-              <button onClick={() => setScannerMode(false)} className="text-green-600 hover:text-green-800 transition">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          )}
 
-          <div className="relative mb-3">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Buscar por nombre, código de barras..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
+          <div className="flex gap-3 mb-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Buscar por nombre, código de barras..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <select
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none min-w-[180px]"
+              value={selectedSupplier || ''}
+              onChange={e => setSelectedSupplier(e.target.value || null)}
+            >
+              <option value="">Todos los proveedores</option>
+              {suppliers.map(sup => (
+                <option key={sup.id} value={sup.id}>{sup.name}</option>
+              ))}
+            </select>
           </div>
 
           {categories.length > 0 && (

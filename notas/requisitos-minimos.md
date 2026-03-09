@@ -32,27 +32,17 @@
 
 ---
 
-## App Móvil (Escáner)
+## ~~App Móvil (Escáner)~~ — DEPRECADO (5/3/2026)
 
-### Hardware Mínimo
+> Reemplazado por escáner físico ProSoft S224. La app móvil ya no se utiliza.
 
-| Componente | Mínimo |
-|------------|--------|
-| **Cámara** | Trasera con autofocus |
-| **RAM** | 2 GB |
-| **Almacenamiento** | 100 MB libres |
+## Escáner Físico
 
-### Sistema Operativo
-
-| SO | Versión Mínima |
-|----|---------------|
-| **Android** | 6.0 (Marshmallow) / API 23 |
-| **iOS** | 13.0 |
-
-### Red
-
-- Conexión a Internet obligatoria (WiFi o datos móviles)
-- Mismo requisito de acceso a `*.supabase.co`
+| Componente | Detalle |
+|------------|---------|
+| **Modelo** | ProSoft S224 |
+| **Conexión** | USB HID (actúa como teclado) |
+| **Compatibilidad** | Windows / Mac / Linux |
 
 ---
 
@@ -120,10 +110,8 @@ npm run dist         # Generar instalador (.exe / .dmg)
 
 ## Resumen de Dependencias Críticas
 
-| Dependencia | Uso | Sin ella... |
-|-------------|-----|-------------|
+| **Dependencia** | **Uso** | **Sin ella...** |
 | **Internet** | Toda la operación | No funciona nada |
-| **Supabase** | Auth, DB, Realtime, Storage | No funciona nada |
+| **Supabase** | Auth, DB, Storage | No funciona nada |
 | **dolarapi.com** | Cotización blue | POS funciona, pero sin conversión USD→ARS |
-| **Webcam** | Escaneo desktop | Se puede buscar por nombre/código manualmente |
-| **App móvil** | Escaneo rápido | Se puede operar 100% desde desktop |
+| **Escáner ProSoft S224** | Escaneo rápido | Se puede buscar por nombre/código manualmente |

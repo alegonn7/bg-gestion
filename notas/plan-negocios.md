@@ -97,8 +97,8 @@ Los comercios argentinos (almacenes, kioscos, tiendas de ropa, ferreterías, etc
 
 ### Arquitectura
 - **Desktop**: Electron + React + TypeScript
-- **Móvil**: React Native + Expo (escáner)
-- **Backend**: Supabase (PostgreSQL, Auth, Realtime, Storage)
+- **Escáner**: ProSoft S224 (USB HID, reemplaza app móvil)
+- **Backend**: Supabase (PostgreSQL, Auth, Storage)
 - **Sin servidor propio**: Supabase maneja todo el backend
 
 ### Costos de Infraestructura
@@ -178,3 +178,20 @@ Los comercios argentinos (almacenes, kioscos, tiendas de ropa, ferreterías, etc
 ## Resumen
 
 BG Gestión apunta a ser la **herramienta de gestión de referencia para comercios argentinos**, combinando facilidad de uso con funcionalidades pensadas para la realidad local (multi-moneda, dólar blue, multi-sucursal). El modelo SaaS con plan gratuito permite tracción orgánica, y la arquitectura cloud-first minimiza costos de infraestructura.
+
+---
+
+## Impacto operativo y oportunidades comerciales — Arqueo y Movimientos Extraordinarios
+
+Reciente desarrollo técnico: se implementó la capacidad de registrar "movimientos extraordinarios" (gastos/ingresos) por arqueo de caja y un visor que combina ventas + estos movimientos en orden cronológico.
+
+Oportunidades:
+- Mejora del control operativo: reduce ambigüedad en faltantes/sobrantes y facilita auditorías internas por empleado.
+- Valor para clientes: permite detectar patrones (p. ej. repetidos gastos sin justificar) y mejora la confianza en el sistema de cierre de caja.
+- Producto para monetizar: reportes avanzados por empleado/periodo (historial de arqueos, métricas de discrepancias, export CSV) pueden ofrecerse en planes `Pro` o como add-on.
+
+Recomendaciones comerciales:
+1. Incluir el visor básico en todos los planes como valor agregado.
+2. Reservar reportes exportables / dashboards históricos de arqueos como feature premium para `Pro` o add-on.
+3. Usar esta funcionalidad en marketing: "Auditoría de caja y control de movimientos extraordinarios" como beneficio para comercios con manejo de efectivo.
+

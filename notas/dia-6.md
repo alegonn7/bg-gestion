@@ -1,13 +1,15 @@
 # 📋 Documentación de Progreso - Sesión 6
 ## 📅 Fecha: 16 de Febrero, 2026
 
+> **⚠️ DEPRECADO (5 de marzo de 2026):** Todo el sistema de escaneo móvil descrito en esta sesión fue reemplazado por un escáner físico ProSoft S224. La app móvil, Supabase Realtime y la tabla `scanned_items` ya no se usan.
+
 > **Punto de partida:** PROGRESO-5.md  
 > Al inicio de esta sesión el sistema contaba con: Auth, Sucursales, Usuarios, Productos, Categorías, Movimientos, Catálogo Maestro, Reportes, POS e Historial de Ventas.
 
 ---
 
-## 🎯 Objetivo de la Sesión
-Diseñar e implementar el **Sistema de Escaneo Inalámbrico** — permite usar un celular Android como escáner de códigos de barras que se comunica en tiempo real con el programa de escritorio (PC) a través de Supabase Realtime.
+## 🎯 Objetivo de la Sesión (DEPRECADO)
+~~Diseñar e implementar el **Sistema de Escaneo Inalámbrico** — permite usar un celular Android como escáner de códigos de barras que se comunica en tiempo real con el programa de escritorio (PC) a través de Supabase Realtime.~~
 
 ---
 

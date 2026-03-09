@@ -16,7 +16,7 @@ interface CheckoutModalProps {
     priceMode: PriceMode
 }
 
-type PaymentMethod = 'cash' | 'card' | 'mixed'
+type PaymentMethod = 'cash' | 'card' | 'mixed' | 'transfer'
 
 export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, cartSubtotal, cartDiscount, priceMode }: CheckoutModalProps) {
     const store = usePOSStore()
@@ -26,6 +26,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, c
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash')
     const [cashAmount, setCashAmount] = useState('')
     const [cardAmount, setCardAmount] = useState('')
+    const [transferAmount, setTransferAmount] = useState('')
     const [isProcessing, setIsProcessing] = useState(false)
     const [saleCompleted, setSaleCompleted] = useState(false)
     const [lastSaleData, setLastSaleData] = useState<any>(null)
@@ -33,10 +34,21 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, c
     if (!isOpen) return null
 
     // Usar valores de props (ya calculados en POS.tsx)
-    const items = cartItems
-    const total = cartTotal
-    const subtotal = cartSubtotal
-    const discount = cartDiscount
+    let items = cartItems
+    let total = cartTotal
+    let subtotal = cartSubtotal
+    let discount = cartDiscount
+    let usdInfo = null
+    if (priceMode === 'usd' && blueRate) {
+        items = cartItems.map(item => ({
+            ...item,
+            subtotal: Math.round(item.subtotal * blueRate * 100) / 100
+        }))
+        total = Math.round(cartTotal * blueRate * 100) / 100
+        subtotal = Math.round(cartSubtotal * blueRate * 100) / 100
+        discount = Math.round(cartDiscount * blueRate * 100) / 100
+        usdInfo = { usdTotal: cartTotal, usdRate: blueRate }
+    }
 
     const formatCurrency = (amount: number) => {
         if (priceMode === 'usd') {
@@ -67,10 +79,13 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, c
             return cash >= total
         } else if (paymentMethod === 'card') {
             return true
+        } else if (paymentMethod === 'transfer') {
+            return true
         } else if (paymentMethod === 'mixed') {
             const cash = parseFloat(cashAmount) || 0
             const card = parseFloat(cardAmount) || 0
-            return (cash + card) >= total
+            const transfer = parseFloat(transferAmount) || 0
+            return (cash + card + transfer) >= total
         }
         return false
     }
@@ -204,12 +219,16 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, c
             doc.text(`Vuelto: ${formatCurrency(change)}`, 5, yPos)
         } else if (lastSaleData?.paymentMethod === 'card') {
             doc.text('Metodo de pago: Tarjeta', 5, yPos)
+        } else if (lastSaleData?.paymentMethod === 'transfer') {
+            doc.text('Metodo de pago: Transferencia', 5, yPos)
         } else {
             doc.text('Metodo de pago: Mixto', 5, yPos)
             yPos += 4
             doc.text(`Efectivo: ${formatCurrency(lastSaleData?.cashAmount || 0)}`, 5, yPos)
             yPos += 4
             doc.text(`Tarjeta: ${formatCurrency(lastSaleData?.cardAmount || 0)}`, 5, yPos)
+            yPos += 4
+            doc.text(`Transferencia: ${formatCurrency(lastSaleData?.transferAmount || 0)}`, 5, yPos)
         }
         yPos += 8
 
@@ -240,18 +259,20 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, c
 
         try {
             const paymentMethodStr = paymentMethod === 'cash' ? 'Efectivo' :
-                paymentMethod === 'card' ? 'Tarjeta' : 'Mixto'
+                paymentMethod === 'card' ? 'Tarjeta' :
+                paymentMethod === 'transfer' ? 'Transferencia' : 'Mixto'
 
             const result = await store.processSale(
                 paymentMethodStr,
-                paymentMethod !== 'card' ? parseFloat(cashAmount) : 0
+                paymentMethod !== 'card' && paymentMethod !== 'transfer' ? parseFloat(cashAmount) : 0
             )
 
             if (result.success) {
                 const saleData = {
                     paymentMethod,
-                    cashAmount: paymentMethod !== 'card' ? parseFloat(cashAmount) : 0,
-                    cardAmount: paymentMethod !== 'cash' ? parseFloat(cardAmount || String(total)) : 0,
+                    cashAmount: paymentMethod !== 'card' && paymentMethod !== 'transfer' ? parseFloat(cashAmount) : 0,
+                    cardAmount: paymentMethod !== 'cash' && paymentMethod !== 'transfer' ? parseFloat(cardAmount || String(total)) : 0,
+                    transferAmount: paymentMethod === 'mixed' ? parseFloat(transferAmount) || 0 : paymentMethod === 'transfer' ? parseFloat(transferAmount) || total : 0,
                     total: saleTotal,
                     subtotal: saleSubtotal,
                     discount: saleDiscount,
@@ -276,6 +297,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, c
         setLastSaleData(null)
         setCashAmount('')
         setCardAmount('')
+        setTransferAmount('')
         setPaymentMethod('cash')
         onClose()
     }
@@ -386,8 +408,8 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, c
                             <button
                                 onClick={() => setPaymentMethod('cash')}
                                 className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${paymentMethod === 'cash'
-                                        ? 'border-blue-600 bg-blue-50'
-                                        : 'border-gray-200 hover:border-gray-300'
+                                    ? 'border-blue-600 bg-blue-50'
+                                    : 'border-gray-200 hover:border-gray-300'
                                     }`}
                             >
                                 <Banknote className="h-6 w-6" />
@@ -397,8 +419,8 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, c
                             <button
                                 onClick={() => setPaymentMethod('card')}
                                 className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${paymentMethod === 'card'
-                                        ? 'border-blue-600 bg-blue-50'
-                                        : 'border-gray-200 hover:border-gray-300'
+                                    ? 'border-blue-600 bg-blue-50'
+                                    : 'border-gray-200 hover:border-gray-300'
                                     }`}
                             >
                                 <CreditCard className="h-6 w-6" />
@@ -406,10 +428,21 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, c
                             </button>
 
                             <button
+                                onClick={() => setPaymentMethod('transfer')}
+                                className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${paymentMethod === 'transfer'
+                                    ? 'border-blue-600 bg-blue-50'
+                                    : 'border-gray-200 hover:border-gray-300'
+                                    }`}
+                            >
+                                <DollarSign className="h-6 w-6" />
+                                <span className="text-sm font-medium">Transferencia</span>
+                            </button>
+
+                            <button
                                 onClick={() => setPaymentMethod('mixed')}
                                 className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${paymentMethod === 'mixed'
-                                        ? 'border-blue-600 bg-blue-50'
-                                        : 'border-gray-200 hover:border-gray-300'
+                                    ? 'border-blue-600 bg-blue-50'
+                                    : 'border-gray-200 hover:border-gray-300'
                                     }`}
                             >
                                 <DollarSign className="h-6 w-6" />
@@ -462,6 +495,17 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, c
                         </div>
                     )}
 
+                    {paymentMethod === 'transfer' && (
+                        <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                            <div className="flex items-center gap-3">
+                                <DollarSign className="h-5 w-5 text-green-600" />
+                                <span className="text-sm text-green-700">
+                                    💸 Transferencia bancaria recibida
+                                </span>
+                            </div>
+                        </div>
+                    )}
+
                     {paymentMethod === 'mixed' && (
                         <div className="space-y-4">
                             <div>
@@ -490,8 +534,21 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, c
                                     step="0.01"
                                 />
                             </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Transferencia
+                                </label>
+                                <input
+                                    type="number"
+                                    value={transferAmount || ''}
+                                    onChange={(e) => setTransferAmount(e.target.value)}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    placeholder="0.00"
+                                    step="0.01"
+                                />
+                            </div>
                             <div className="text-sm">
-                                Total ingresado: {formatCurrency((parseFloat(cashAmount) || 0) + (parseFloat(cardAmount) || 0))}
+                                Total ingresado: {formatCurrency((parseFloat(cashAmount) || 0) + (parseFloat(cardAmount) || 0) + (parseFloat(transferAmount) || 0))}
                             </div>
                         </div>
                     )}

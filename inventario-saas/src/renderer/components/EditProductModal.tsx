@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { X, DollarSign } from 'lucide-react'
 import { useProductsStore, Product } from '@/store/products'
+import { useSuppliersStore } from '@/store/suppliers'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/auth'
 import { useDollarStore } from '@/store/dollar'
@@ -26,6 +27,9 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
   const [error, setError] = useState('')
   const [categories, setCategories] = useState<Category[]>([])
   
+  // Proveedores
+  const { suppliers, fetchSuppliers, isLoading: loadingSuppliers } = useSuppliersStore()
+  const [selectedSupplier, setSelectedSupplier] = useState('')
   // Form state
   const [formData, setFormData] = useState({
     barcode: '',
@@ -42,12 +46,12 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
 
   const [markupArs, setMarkupArs] = useState('')
   const [markupUsd, setMarkupUsd] = useState('')
+  // Autofill toggle para sincronizar costos
+  const [autofillCost, setAutofillCost] = useState(true)
 
   // Cargar datos del producto cuando se abre el modal
   useEffect(() => {
     if (isOpen && product) {
-      // Determinar datos según si es del maestro o propio
-      
       setFormData({
         barcode: product.barcode || '',
         name: product.product?.name || '',
@@ -60,23 +64,22 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
         stock_quantity: product.stock_quantity.toString(),
         stock_min: product.stock_min.toString(),
       })
-
+      setSelectedSupplier(product.product?.supplier_id || '')
       // Calcular margen ARS inicial
       if (product.price_cost > 0 && product.price_sale > 0) {
         setMarkupArs(((product.price_sale - product.price_cost) / product.price_cost * 100).toFixed(1))
       } else {
         setMarkupArs('')
       }
-
       // Calcular margen USD inicial
       if (product.price_cost_usd && product.price_sale_usd && product.price_cost_usd > 0) {
         setMarkupUsd(((product.price_sale_usd - product.price_cost_usd) / product.price_cost_usd * 100).toFixed(1))
       } else {
         setMarkupUsd('')
       }
-      
       loadCategories()
       fetchBlueRate()
+      fetchSuppliers()
     }
   }, [isOpen, product])
 
@@ -127,11 +130,12 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
         price_sale_usd: parseFloat(formData.price_sale_usd) || null,
         stock_quantity: parseInt(formData.stock_quantity) || 0,
         stock_min: parseInt(formData.stock_min) || 0,
-        // Datos del producto maestro (nombre, descripción, categoría)
+        // Datos del producto maestro (nombre, descripción, categoría, proveedor)
         product: {
           name: formData.name,
           description: formData.description || null,
           category_id: formData.category_id || null,
+          supplier_id: selectedSupplier || null,
         },
       }
 
@@ -149,11 +153,33 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target
     setFormData(prev => {
-      const next = { ...prev, [name]: value }
+      let next = { ...prev, [name]: value }
+
+      // --- AUTOFILL COSTOS ---
+      if (autofillCost && blueRate) {
+        if (name === 'price_cost') {
+          // Si se edita costo ARS, autocompletar USD
+          const costArs = parseFloat(value)
+          if (!isNaN(costArs) && costArs > 0) {
+            next.price_cost_usd = (costArs / blueRate).toFixed(2)
+          } else {
+            next.price_cost_usd = ''
+          }
+        }
+        if (name === 'price_cost_usd') {
+          // Si se edita costo USD, autocompletar ARS
+          const costUsd = parseFloat(value)
+          if (!isNaN(costUsd) && costUsd > 0) {
+            next.price_cost = Math.round(costUsd * blueRate).toString()
+          } else {
+            next.price_cost = ''
+          }
+        }
+      }
 
       // Si cambia precio costo ARS y hay margen, recalcular venta ARS
       if (name === 'price_cost' && markupArs) {
-        const cost = parseFloat(value)
+        const cost = parseFloat(next.price_cost)
         const pct = parseFloat(markupArs)
         if (!isNaN(cost) && !isNaN(pct) && cost > 0) {
           next.price_sale = Math.round(cost * (1 + pct / 100)).toString()
@@ -162,7 +188,7 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
 
       // Si cambia precio venta ARS, recalcular margen ARS
       if (name === 'price_sale') {
-        const cost = parseFloat(prev.price_cost)
+        const cost = parseFloat(next.price_cost)
         const sale = parseFloat(value)
         if (!isNaN(cost) && !isNaN(sale) && cost > 0) {
           setMarkupArs(((sale - cost) / cost * 100).toFixed(1))
@@ -173,7 +199,7 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
 
       // Si cambia precio costo USD y hay margen, recalcular venta USD
       if (name === 'price_cost_usd' && markupUsd) {
-        const cost = parseFloat(value)
+        const cost = parseFloat(next.price_cost_usd)
         const pct = parseFloat(markupUsd)
         if (!isNaN(cost) && !isNaN(pct) && cost > 0) {
           next.price_sale_usd = (Math.round(cost * (1 + pct / 100) * 100) / 100).toString()
@@ -182,7 +208,7 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
 
       // Si cambia precio venta USD, recalcular margen USD
       if (name === 'price_sale_usd') {
-        const cost = parseFloat(prev.price_cost_usd)
+        const cost = parseFloat(next.price_cost_usd)
         const sale = parseFloat(value)
         if (!isNaN(cost) && !isNaN(sale) && cost > 0) {
           setMarkupUsd(((sale - cost) / cost * 100).toFixed(1))
@@ -296,30 +322,56 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
             />
           </div>
 
-          {/* Categoría */}
-          <div>
-            <label htmlFor="category_id" className="block text-sm font-medium text-gray-700 mb-2">
-              Categoría
-            </label>
-            <select
-              id="category_id"
-              name="category_id"
-              value={formData.category_id}
-              onChange={handleChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-            >
-              <option value="">Sin categoría</option>
-              {categories.map(cat => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.name}
-                </option>
-              ))}
-            </select>
+          {/* Categoría y Proveedor */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="category_id" className="block text-sm font-medium text-gray-700 mb-2">
+                Categoría
+              </label>
+              <select
+                id="category_id"
+                name="category_id"
+                value={formData.category_id}
+                onChange={handleChange}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+              >
+                <option value="">Sin categoría</option>
+                {categories.map(cat => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="supplier_id" className="block text-sm font-medium text-gray-700 mb-2">Proveedor</label>
+              <select
+                id="supplier_id"
+                name="supplier_id"
+                value={selectedSupplier}
+                onChange={e => setSelectedSupplier(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                disabled={loadingSuppliers}
+              >
+                <option value="">Sin proveedor</option>
+                {suppliers.map(sup => (
+                  <option key={sup.id} value={sup.id}>{sup.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* Precios */}
           <div>
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Precios</h3>
+            <div className="flex items-center gap-3 mb-1">
+              <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                Precios en Pesos (ARS)
+              </h3>
+              <label className="flex items-center gap-1 text-xs select-none cursor-pointer">
+                <input type="checkbox" checked={autofillCost} onChange={e => setAutofillCost(e.target.checked)} className="accent-blue-600" />
+                Autofill
+              </label>
+            </div>
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <label htmlFor="price_cost" className="block text-sm font-medium text-gray-700 mb-2">

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { X, Scan, DollarSign } from 'lucide-react'
 import { useProductsStore } from '@/store/products'
+import { useSuppliersStore } from '@/store/suppliers'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/auth'
 import { useDollarStore } from '@/store/dollar'
@@ -33,6 +34,8 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
   const { createProduct } = useProductsStore()
   const { organization } = useAuthStore()
   const { blueRate, fetchBlueRate, convertUsdToArs, lastUpdated } = useDollarStore()
+  const { suppliers, fetchSuppliers, isLoading: loadingSuppliers } = useSuppliersStore()
+  const [selectedSupplier, setSelectedSupplier] = useState('')
   
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -49,11 +52,12 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
     price_cost_usd: '',
     price_sale_usd: '',
     stock_quantity: '',
-    stock_min: '10',
+    stock_min: '1',
   })
 
   const [markupArs, setMarkupArs] = useState('')
   const [markupUsd, setMarkupUsd] = useState('')
+  const [autofillCost, setAutofillCost] = useState(true)
 
   useEffect(() => {
     if (isOpen && organization) {
@@ -64,6 +68,7 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
 
   useEffect(() => {
     if (isOpen && initialBarcode) {
+        fetchSuppliers()
       setFormData(prev => ({ ...prev, barcode: initialBarcode }))
     }
   }, [isOpen, initialBarcode])
@@ -110,7 +115,7 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
         price_cost_usd: '',
         price_sale_usd: '',
         stock_quantity: '',
-        stock_min: '10',
+        stock_min: '1',
       })
       setMarkupArs('')
       setMarkupUsd('')
@@ -175,7 +180,7 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
         price_cost_usd: '',
         price_sale_usd: '',
         stock_quantity: '', 
-        stock_min: '10' 
+        stock_min: '1' 
       })
       onClose()
     } catch (err: any) {
@@ -188,7 +193,29 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target
     setFormData(prev => {
-      const next = { ...prev, [name]: value }
+      let next = { ...prev, [name]: value }
+
+      // --- AUTOFILL COSTOS ---
+      if (autofillCost && blueRate) {
+        if (name === 'price_cost') {
+          // Si se edita costo ARS, autocompletar USD
+          const costArs = parseFloat(value)
+          if (!isNaN(costArs) && costArs > 0) {
+            next.price_cost_usd = (costArs / blueRate).toFixed(2)
+          } else {
+            next.price_cost_usd = ''
+          }
+        }
+        if (name === 'price_cost_usd') {
+          // Si se edita costo USD, autocompletar ARS
+          const costUsd = parseFloat(value)
+          if (!isNaN(costUsd) && costUsd > 0) {
+            next.price_cost = Math.round(costUsd * blueRate).toString()
+          } else {
+            next.price_cost = ''
+          }
+        }
+      }
 
       // Si cambia precio costo ARS y hay margen, recalcular venta ARS
       if (name === 'price_cost' && markupArs) {
@@ -383,6 +410,10 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
             <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-1.5">
               <DollarSign className="w-4 h-4 text-green-600" />
               Precios en Dólares (USD)
+              <label className="flex items-center gap-1 text-xs select-none cursor-pointer">
+                <input type="checkbox" checked={autofillCost} onChange={e => setAutofillCost(e.target.checked)} className="accent-blue-600" />
+                Autofill
+              </label>
             </h3>
             <div className="grid grid-cols-3 gap-4">
               <div>

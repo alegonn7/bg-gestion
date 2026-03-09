@@ -247,7 +247,7 @@ export const useBranchesStore = create<BranchesState>((set, get) => ({
         if (saleItemsBySaleError) throw saleItemsBySaleError
       }
 
-      // 7. Eliminar scanned_items de esta sucursal
+      // 7. Eliminar scanned_items de esta sucursal (tabla legacy, puede tener datos históricos)
       const { error: scannedError } = await supabase
         .from('scanned_items')
         .delete()

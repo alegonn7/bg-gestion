@@ -1,264 +1,239 @@
-import { useEffect } from 'react'
-import { Scan, Trash2, Package, Hash, Clock, Wifi, DollarSign } from 'lucide-react'
-import { useScannerStore } from '@/store/scanner'
+import { useState, useCallback } from 'react'
+import { ScanLine, Package, AlertTriangle, DollarSign, Hash, Tag, Building2, TrendingUp, TrendingDown, Box } from 'lucide-react'
+import { useProductsStore, type Product } from '@/store/products'
 import { useDollarStore } from '@/store/dollar'
+import { useBarcodeScanner } from '@/hooks/useBarcodeScanner'
+import { playScanSuccess, playScanError } from '@/lib/scan-sound'
 
 export default function ScannerPage() {
-  const {
-    lastScan,
-    history,
-    isListening,
-    unviewedCount,
-    markAsViewed,
-    clearHistory,
-    fetchHistory
-  } = useScannerStore()
+  const { products } = useProductsStore()
+  const { blueRate } = useDollarStore()
+  const [scannedProduct, setScannedProduct] = useState<Product | null>(null)
+  const [lastBarcode, setLastBarcode] = useState<string | null>(null)
+  const [scanStatus, setScanStatus] = useState<'waiting' | 'found' | 'not-found'>('waiting')
+  const [scanHistory, setScanHistory] = useState<{ barcode: string; name: string | null; time: Date }[]>([])
 
-  const { blueRate, fetchBlueRate, convertUsdToArs } = useDollarStore()
+  const handleBarcodeScan = useCallback((barcode: string) => {
+    setLastBarcode(barcode)
+    const product = products.find(p => p.barcode === barcode)
 
-  useEffect(() => {
-    fetchHistory()
-    fetchBlueRate()
-  }, [])
+    if (product) {
+      setScannedProduct(product)
+      setScanStatus('found')
+      playScanSuccess()
+      setScanHistory(prev => [
+        { barcode, name: product.product?.name || barcode, time: new Date() },
+        ...prev.slice(0, 19)
+      ])
+    } else {
+      setScannedProduct(null)
+      setScanStatus('not-found')
+      playScanError()
+      setScanHistory(prev => [
+        { barcode, name: null, time: new Date() },
+        ...prev.slice(0, 19)
+      ])
+    }
+  }, [products])
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('es-AR', {
-      style: 'currency',
-      currency: 'ARS',
-      minimumFractionDigits: 0
-    }).format(value)
-  }
+  useBarcodeScanner(handleBarcodeScan)
 
-  const formatTime = (dateString: string) => {
-    return new Date(dateString).toLocaleTimeString('es-AR', {
-      timeZone: 'America/Argentina/Buenos_Aires',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    })
-  }
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(value)
 
+  const formatUSD = (value: number) =>
+    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(value)
+
+  const margin = scannedProduct
+    ? ((scannedProduct.price_sale - scannedProduct.price_cost) / scannedProduct.price_cost * 100)
+    : 0
 
   return (
     <div className="h-full flex flex-col bg-gray-50">
       {/* Header */}
-      <div className="bg-white border-b px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-100 rounded-lg">
-              <Scan className="h-6 w-6 text-blue-600" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Escaneados</h1>
-              <p className="text-sm text-gray-500">Productos escaneados desde la app móvil</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {/* Estado de conexión */}
-            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium ${
-              isListening
-                ? 'bg-green-100 text-green-700'
-                : 'bg-gray-100 text-gray-600'
-            }`}>
-              <Wifi className="h-4 w-4" />
-              {isListening ? 'Escuchando...' : 'Desconectado'}
-            </div>
-
-            {/* Limpiar historial */}
-            {history.length > 0 && (
-              <button
-                onClick={async () => {
-                  if (confirm('¿Eliminar todo el historial de escaneos? Se borrarán permanentemente.')) {
-                    await clearHistory()
-                  }
-                }}
-                className="flex items-center gap-2 px-3 py-1.5 text-red-600 hover:bg-red-50 rounded-lg text-sm transition"
-              >
-                <Trash2 className="h-4 w-4" />
-                Limpiar
-              </button>
-            )}
+      <div className="bg-white border-b border-gray-200 px-6 py-4">
+        <div className="flex items-center gap-3">
+          <ScanLine className="h-6 w-6 text-blue-600" />
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Escáner</h1>
+            <p className="text-sm text-gray-500">Escaneá un producto para ver su información detallada</p>
           </div>
         </div>
       </div>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Panel izquierdo: último escaneo */}
-        <div className="w-96 bg-white border-r flex flex-col">
-          <div className="p-4 border-b">
-            <h2 className="font-semibold text-gray-700 flex items-center gap-2">
-              <Clock className="h-4 w-4" />
-              Último escaneo
-            </h2>
-          </div>
+        {/* Panel principal */}
+        <div className="flex-1 p-6 overflow-y-auto">
+          {scanStatus === 'waiting' && (
+            <div className="flex flex-col items-center justify-center h-full text-gray-400">
+              <ScanLine className="h-24 w-24 mb-6 animate-pulse" />
+              <h2 className="text-2xl font-semibold mb-2">Esperando escaneo...</h2>
+              <p className="text-gray-500">Usá el escáner físico para leer un código de barras</p>
+            </div>
+          )}
 
-          {lastScan ? (
-            <div className="p-4 flex-1">
-              {/* Código de barras */}
-              <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                <div className="flex items-center gap-2 text-blue-700">
-                  <Hash className="h-4 w-4" />
-                  <span className="font-mono font-bold text-lg">{lastScan.barcode}</span>
+          {scanStatus === 'not-found' && (
+            <div className="flex flex-col items-center justify-center h-full">
+              <AlertTriangle className="h-20 w-20 text-amber-500 mb-6" />
+              <h2 className="text-2xl font-semibold text-gray-900 mb-2">Producto no encontrado</h2>
+              <p className="text-gray-500 mb-2">No se encontró ningún producto con el código:</p>
+              <span className="font-mono text-xl bg-gray-100 px-4 py-2 rounded-lg">{lastBarcode}</span>
+              <p className="text-sm text-gray-400 mt-6">Podés darlo de alta desde la sección de Productos</p>
+            </div>
+          )}
+
+          {scanStatus === 'found' && scannedProduct && (
+            <div className="max-w-3xl mx-auto space-y-6">
+              {/* Nombre y código */}
+              <div className="bg-white rounded-xl shadow-sm border p-6">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-900">
+                      {scannedProduct.product?.name || 'Sin nombre'}
+                    </h2>
+                    {scannedProduct.product?.description && (
+                      <p className="text-gray-500 mt-1">{scannedProduct.product.description}</p>
+                    )}
+                  </div>
+                  {scannedProduct.stock_quantity <= scannedProduct.stock_min && (
+                    <span className="flex items-center gap-1 bg-red-100 text-red-700 text-xs font-semibold px-3 py-1 rounded-full">
+                      <AlertTriangle className="h-3 w-3" />
+                      Stock bajo
+                    </span>
+                  )}
                 </div>
-                <p className="text-xs text-blue-500 mt-1">{formatTime(lastScan.created_at)}</p>
+
+                <div className="flex flex-wrap gap-3 mt-4">
+                  {scannedProduct.barcode && (
+                    <span className="flex items-center gap-1 bg-gray-100 text-gray-700 text-sm px-3 py-1.5 rounded-lg">
+                      <Hash className="h-4 w-4" />
+                      {scannedProduct.barcode}
+                    </span>
+                  )}
+                  {scannedProduct.product?.sku && (
+                    <span className="flex items-center gap-1 bg-gray-100 text-gray-700 text-sm px-3 py-1.5 rounded-lg">
+                      <Tag className="h-4 w-4" />
+                      SKU: {scannedProduct.product.sku}
+                    </span>
+                  )}
+                  {scannedProduct.category && (
+                    <span
+                      className="text-sm px-3 py-1.5 rounded-lg font-medium"
+                      style={{ backgroundColor: scannedProduct.category.color + '20', color: scannedProduct.category.color }}
+                    >
+                      {scannedProduct.category.name}
+                    </span>
+                  )}
+                  {scannedProduct.branch && (
+                    <span className="flex items-center gap-1 bg-blue-50 text-blue-700 text-sm px-3 py-1.5 rounded-lg">
+                      <Building2 className="h-4 w-4" />
+                      {scannedProduct.branch.name}
+                    </span>
+                  )}
+                </div>
               </div>
 
-              {lastScan.product ? (
-                // Producto encontrado
-                <div className="space-y-4">
-                  <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-                    <p className="text-xs text-green-600 font-medium mb-1">✅ Producto encontrado</p>
-                    <h3 className="font-bold text-gray-900 text-lg">{lastScan.product.product?.name || 'Sin nombre'}</h3>
+              {/* Precios */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-white rounded-xl shadow-sm border p-4">
+                  <div className="flex items-center gap-2 text-gray-500 text-sm mb-1">
+                    <DollarSign className="h-4 w-4" />
+                    Costo (ARS)
                   </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="p-3 bg-gray-50 rounded-lg">
-                      <p className="text-xs text-gray-500 mb-1">Precio venta</p>
-                      <p className="font-bold text-blue-600">{formatCurrency(lastScan.product.price_sale)}</p>
-                    </div>
-                    <div className="p-3 bg-gray-50 rounded-lg">
-                      <p className="text-xs text-gray-500 mb-1">Precio costo</p>
-                      <p className="font-bold text-gray-700">{formatCurrency(lastScan.product.price_cost)}</p>
-                    </div>
-                    {/* Precios en USD */}
-                    {((lastScan.product.price_cost_usd && lastScan.product.price_cost_usd > 0) || (lastScan.product.price_sale_usd && lastScan.product.price_sale_usd > 0)) && (
-                      <>
-                        {lastScan.product.price_cost_usd && lastScan.product.price_cost_usd > 0 && (
-                          <div className="p-3 bg-purple-50 rounded-lg border border-purple-200">
-                            <p className="text-xs text-purple-600 mb-1 flex items-center gap-1">
-                              <DollarSign className="w-3 h-3" /> Costo USD→ARS
-                            </p>
-                            {blueRate ? (
-                              <p className="font-bold text-purple-700">
-                                ${convertUsdToArs(lastScan.product.price_cost_usd)?.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                              </p>
-                            ) : (
-                              <p className="text-sm text-gray-400">Sin cotización</p>
-                            )}
-                            <p className="text-xs text-green-600 mt-0.5">
-                              US$ {lastScan.product.price_cost_usd.toFixed(2)}
-                            </p>
-                          </div>
-                        )}
-                        {lastScan.product.price_sale_usd && lastScan.product.price_sale_usd > 0 && (
-                          <div className="p-3 bg-purple-50 rounded-lg border border-purple-200">
-                            <p className="text-xs text-purple-600 mb-1 flex items-center gap-1">
-                              <DollarSign className="w-3 h-3" /> Venta USD→ARS
-                            </p>
-                            {blueRate ? (
-                              <p className="font-bold text-purple-700">
-                                ${convertUsdToArs(lastScan.product.price_sale_usd)?.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                              </p>
-                            ) : (
-                              <p className="text-sm text-gray-400">Sin cotización</p>
-                            )}
-                            <p className="text-xs text-green-600 mt-0.5">
-                              US$ {lastScan.product.price_sale_usd.toFixed(2)}
-                            </p>
-                          </div>
-                        )}
-                      </>
-                    )}
-                    <div className="p-3 bg-gray-50 rounded-lg col-span-2">
-                      <p className="text-xs text-gray-500 mb-1">Stock actual</p>
-                      <p className={`font-bold text-lg ${
-                        lastScan.product.stock_quantity <= 0 ? 'text-red-600' :
-                        lastScan.product.stock_quantity <= 5 ? 'text-yellow-600' :
-                        'text-green-600'
-                      }`}>
-                        {lastScan.product.stock_quantity} unidades
-                      </p>
-                    </div>
-                  </div>
+                  <p className="text-xl font-bold text-gray-900">{formatCurrency(scannedProduct.price_cost)}</p>
                 </div>
-              ) : (
-                // Producto no encontrado
-                <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <p className="text-sm font-medium text-yellow-700">⚠️ Producto no encontrado</p>
-                  <p className="text-xs text-yellow-600 mt-1">
-                    El código <span className="font-mono font-bold">{lastScan.barcode}</span> no está registrado en esta sucursal.
+                <div className="bg-white rounded-xl shadow-sm border p-4">
+                  <div className="flex items-center gap-2 text-gray-500 text-sm mb-1">
+                    <DollarSign className="h-4 w-4" />
+                    Venta (ARS)
+                  </div>
+                  <p className="text-xl font-bold text-green-600">{formatCurrency(scannedProduct.price_sale)}</p>
+                </div>
+                {scannedProduct.price_cost_usd != null && (
+                  <div className="bg-white rounded-xl shadow-sm border p-4">
+                    <div className="flex items-center gap-2 text-gray-500 text-sm mb-1">
+                      <DollarSign className="h-4 w-4" />
+                      Costo (USD)
+                    </div>
+                    <p className="text-xl font-bold text-gray-900">{formatUSD(scannedProduct.price_cost_usd)}</p>
+                  </div>
+                )}
+                {scannedProduct.price_sale_usd != null && (
+                  <div className="bg-white rounded-xl shadow-sm border p-4">
+                    <div className="flex items-center gap-2 text-gray-500 text-sm mb-1">
+                      <DollarSign className="h-4 w-4" />
+                      Venta (USD)
+                    </div>
+                    <p className="text-xl font-bold text-green-600">{formatUSD(scannedProduct.price_sale_usd)}</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Stock y Margen */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-white rounded-xl shadow-sm border p-4">
+                  <div className="flex items-center gap-2 text-gray-500 text-sm mb-1">
+                    <Box className="h-4 w-4" />
+                    Stock actual
+                  </div>
+                  <p className={`text-3xl font-bold ${scannedProduct.stock_quantity <= scannedProduct.stock_min ? 'text-red-600' : 'text-gray-900'}`}>
+                    {scannedProduct.stock_quantity}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">Mínimo: {scannedProduct.stock_min}</p>
+                </div>
+                <div className="bg-white rounded-xl shadow-sm border p-4">
+                  <div className="flex items-center gap-2 text-gray-500 text-sm mb-1">
+                    {margin >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
+                    Margen
+                  </div>
+                  <p className={`text-3xl font-bold ${margin >= 30 ? 'text-green-600' : margin >= 15 ? 'text-yellow-600' : 'text-red-600'}`}>
+                    {scannedProduct.price_cost > 0 ? `${margin.toFixed(1)}%` : 'N/A'}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Ganancia: {formatCurrency(scannedProduct.price_sale - scannedProduct.price_cost)}
                   </p>
                 </div>
-              )}
-            </div>
-          ) : (
-            // Sin escaneos
-            <div className="flex-1 flex items-center justify-center p-6">
-              <div className="text-center text-gray-400">
-                <Scan className="h-16 w-16 mx-auto mb-3 opacity-20" />
-                <p className="font-medium">Esperando escaneo...</p>
-                <p className="text-sm mt-1">Escaneá un producto desde la app móvil</p>
+                {blueRate && (
+                  <div className="bg-white rounded-xl shadow-sm border p-4">
+                    <div className="flex items-center gap-2 text-gray-500 text-sm mb-1">
+                      <DollarSign className="h-4 w-4" />
+                      Precio en USD (blue)
+                    </div>
+                    <p className="text-3xl font-bold text-blue-600">
+                      {formatUSD(scannedProduct.price_sale / blueRate)}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      Cotización: {formatCurrency(blueRate)}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           )}
         </div>
 
-        {/* Panel derecho: historial */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="p-4 border-b bg-white flex items-center justify-between">
-            <h2 className="font-semibold text-gray-700">
-              Historial del día
-              {unviewedCount > 0 && (
-                <span className="ml-2 bg-blue-600 text-white text-xs px-2 py-0.5 rounded-full">
-                  {unviewedCount} nuevos
-                </span>
-              )}
-            </h2>
-            <span className="text-sm text-gray-500">{history.length} escaneos</span>
+        {/* Historial lateral */}
+        <div className="w-72 bg-white border-l border-gray-200 flex flex-col">
+          <div className="px-4 py-3 border-b border-gray-200">
+            <h3 className="font-semibold text-gray-900 text-sm">Historial de escaneos</h3>
           </div>
-
-          <div className="flex-1 overflow-y-auto p-4">
-            {history.length === 0 ? (
-              <div className="text-center py-12 text-gray-400">
-                <Package className="h-12 w-12 mx-auto mb-3 opacity-20" />
-                <p>No hay escaneos hoy</p>
+          <div className="flex-1 overflow-y-auto">
+            {scanHistory.length === 0 ? (
+              <div className="p-4 text-center text-gray-400 text-sm">
+                Los productos escaneados aparecerán aquí
               </div>
             ) : (
-              <div className="space-y-2">
-                {history.map((item) => (
-                  <div
-                    key={item.id}
-                    onClick={() => !item.is_viewed && markAsViewed(item.id)}
-                    className={`p-3 rounded-lg border cursor-pointer transition ${
-                      item.is_viewed
-                        ? 'bg-white border-gray-200 opacity-70'
-                        : 'bg-blue-50 border-blue-200 hover:bg-blue-100'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        {/* Indicador visto/no visto */}
-                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                          item.is_viewed ? 'bg-gray-300' : 'bg-blue-500'
-                        }`} />
-
-                        <div>
-                          <p className="font-medium text-sm text-gray-900">
-                            {item.product?.product?.name || (
-                              <span className="text-yellow-600">Producto no encontrado</span>
-                            )}
-                          </p>
-                          <p className="text-xs text-gray-500 font-mono">{item.barcode}</p>
-                        </div>
-                      </div>
-
-                      <div className="text-right flex-shrink-0">
-                        {item.product && (
-                          <>
-                            <p className="text-sm font-bold text-blue-600">
-                              {formatCurrency(item.product.price_sale)}
-                            </p>
-                            {item.product.price_sale_usd && item.product.price_sale_usd > 0 && blueRate && (
-                              <p className="text-xs font-semibold text-purple-600">
-                                ${convertUsdToArs(item.product.price_sale_usd)?.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                                <span className="text-gray-400 font-normal"> (blue)</span>
-                              </p>
-                            )}
-                          </>
-                        )}
-                        <p className="text-xs text-gray-400">{formatTime(item.created_at)}</p>
-                      </div>
+              <div className="divide-y divide-gray-100">
+                {scanHistory.map((item, i) => (
+                  <div key={i} className="px-4 py-3 hover:bg-gray-50">
+                    <p className={`text-sm font-medium ${item.name ? 'text-gray-900' : 'text-red-600'}`}>
+                      {item.name || 'No encontrado'}
+                    </p>
+                    <div className="flex items-center justify-between mt-1">
+                      <span className="text-xs font-mono text-gray-500">{item.barcode}</span>
+                      <span className="text-xs text-gray-400">
+                        {item.time.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                      </span>
                     </div>
                   </div>
                 ))}

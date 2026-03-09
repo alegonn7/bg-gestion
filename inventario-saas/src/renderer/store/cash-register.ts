@@ -232,7 +232,19 @@ export const useCashRegisterStore = create<CashRegisterState>((set, get) => ({
         .reduce((sum, s) => sum + s.total, 0)
       const salesCount = activeSales.length
 
-      const expectedAmount = current.opening_amount + cashSales
+      // Obtener movimientos extraordinarios
+      let extraIncomes = 0
+      let extraExpenses = 0
+      try {
+        const { useExtraMovementsStore } = await import('./extra-movements')
+        const extraMovements = useExtraMovementsStore.getState().movements.filter(m => m.cash_register_id === current.id)
+        extraIncomes = extraMovements.filter(m => m.type === 'ingreso').reduce((sum, m) => sum + m.amount, 0)
+        extraExpenses = extraMovements.filter(m => m.type === 'gasto').reduce((sum, m) => sum + m.amount, 0)
+      } catch (e) {
+        // Si falla, no suma nada
+      }
+
+      const expectedAmount = current.opening_amount + cashSales + extraIncomes - extraExpenses
       const difference = closingAmount - expectedAmount
 
       const { error } = await db

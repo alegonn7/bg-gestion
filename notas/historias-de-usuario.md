@@ -127,14 +127,14 @@ Módulos: AUTH, ORG, SUC, USR, CAT, PROD, MASTER, POS, VENTA, INV, SCAN, REPORT,
 | HU-INV-6 | Alertas de stock bajo | ⬚ |
 | HU-INV-7 | Alertas de stock crítico | ⬚ |
 
-## SCAN — Escáner Móvil
+## ~~SCAN — Escáner Móvil~~ (DEPRECADO - 5/3/2026, reemplazado por escáner físico ProSoft S224)
 
 | ID | Historia | Estado |
 |----|----------|--------|
-| HU-SCAN-1 | Escanear código desde app móvil | ✅ |
-| HU-SCAN-2 | Recibir escaneo en tiempo real (desktop) | ✅ |
-| HU-SCAN-3 | Ver historial de escaneos | ✅ |
-| HU-SCAN-4 | Identificar dispositivo (desktop vs mobile) | ✅ |
+| ~~HU-SCAN-1~~ | ~~Escanear código desde app móvil~~ | DEPRECADO |
+| ~~HU-SCAN-2~~ | ~~Recibir escaneo en tiempo real (desktop)~~ | DEPRECADO |
+| ~~HU-SCAN-3~~ | ~~Ver historial de escaneos~~ | DEPRECADO |
+| ~~HU-SCAN-4~~ | ~~Identificar dispositivo (desktop vs mobile)~~ | DEPRECADO |
 
 ## REPORT — Reportes
 

@@ -2,7 +2,7 @@
 
 ## Visión General
 
-BG Gestión es un sistema SaaS multi-tenant de gestión de inventario y punto de venta para comercios argentinos. Consta de un **programa de escritorio (Electron)** como sistema principal y una **app móvil (escáner)** que se vincula vía Supabase en tiempo real.
+BG Gestión es un sistema SaaS multi-tenant de gestión de inventario y punto de venta para comercios argentinos. Consta de un **programa de escritorio (Electron)** como sistema principal, con soporte para **escáner físico de códigos de barras** (ProSoft S224).
 
 ---
 
@@ -18,22 +18,12 @@ Aplicación instalable para Windows (y compilable para Mac/Linux):
 - Reportes con gráficos (ingresos, top productos, alertas stock, etc.)
 - Configuración de empresa (nombre, logo para tickets)
 - Cotización dólar blue automática (dolarapi.com)
-- Scanner por webcam integrado
+- Soporte para escáner físico ProSoft S224 (entrada por teclado/HID)
 
-### 2. App Móvil (Escáner)
-
-Aplicación móvil dedicada al escaneo de códigos de barras:
-
-- Escaneo rápido mediante cámara del dispositivo
-- Los códigos escaneados se insertan en Supabase (`scanned_items`)
-- El programa de escritorio los recibe en **tiempo real** via Supabase Realtime
-- No requiere sincronización offline compleja — trabaja directo contra Supabase
-
-### 3. Backend (Supabase)
+### 2. Backend (Supabase)
 
 - **PostgreSQL**: Base de datos principal
 - **Supabase Auth**: Autenticación con email/password + JWT
-- **Supabase Realtime**: WebSockets para recibir escaneos en tiempo real
 - **Supabase Storage**: Almacenamiento de logos de empresa
 - **Row Level Security (RLS)**: Aislamiento de datos por organización/sucursal
 
@@ -83,13 +73,15 @@ ORGANIZACIÓN (Negocio/Cliente)
 | Iconos | Lucide React |
 | Empaquetado | electron-builder (NSIS para Windows) |
 
-### App Móvil (Escáner)
+### App Móvil (Escáner) — DEPRECADA
 
 | Capa | Tecnología |
 |------|-----------|
-| Framework | React Native + Expo |
-| Escáner | expo-barcode-scanner |
-| Backend | Supabase (inserción directa en `scanned_items`) |
+| ~~Framework~~ | ~~React Native + Expo~~ |
+| ~~Escáner~~ | ~~expo-barcode-scanner~~ |
+| ~~Backend~~ | ~~Supabase (inserción directa en `scanned_items`)~~ |
+
+> **NOTA:** La app móvil fue reemplazada por un escáner físico ProSoft S224 (5 de marzo de 2026).
 
 ### Backend
 
@@ -97,7 +89,6 @@ ORGANIZACIÓN (Negocio/Cliente)
 |----------|-----|
 | Supabase Auth | Autenticación JWT |
 | Supabase PostgreSQL | Base de datos principal |
-| Supabase Realtime | WebSockets para escaneos en tiempo real |
 | Supabase Storage | Logos de empresa (bucket `organization-logos`) |
 | API externa | dolarapi.com (cotización dólar blue) |
 
@@ -126,7 +117,7 @@ inventario-saas/
 │       │   ├── Branches.tsx    # Gestión de sucursales
 │       │   ├── Users.tsx       # Gestión de usuarios
 │       │   ├── Reports.tsx     # Reportes con gráficos
-│       │   ├── ScannerPage.tsx # Historial de escaneos (Realtime)
+│       │   ├── ScannerPage.tsx # DEPRECADO (reemplazado por escáner físico)
 │       │   └── Settings.tsx    # Configuración: empresa, logo, dólar
 │       │
 │       ├── components/         # 15 modales y componentes
@@ -157,7 +148,7 @@ inventario-saas/
 │       │   ├── dollar.ts
 │       │   ├── master-catalog.ts
 │       │   ├── reports.ts
-│       │   └── scanner.ts
+│       │   └── scanner.ts      # DEPRECADO (reemplazado por escáner físico)
 │       │
 │       └── lib/
 │           └── supabase.ts     # Cliente Supabase + tipos
@@ -287,7 +278,7 @@ inventario-saas/
 | created_by | UUID FK | → users |
 | created_at | TIMESTAMP | |
 
-### scanned_items
+### scanned_items — DEPRECADA (ya no se usa desde 5/3/2026)
 | Campo | Tipo | Descripción |
 |-------|------|-------------|
 | id | UUID PK | |
@@ -338,9 +329,11 @@ La cotización blue se obtiene de `dolarapi.com/v1/dolares/blue` con cache de 5 
 
 ---
 
-## Comunicación Desktop ↔ Móvil
+## ~~Comunicación Desktop ↔ Móvil~~ (DEPRECADO)
 
-```
+> Esta sección fue deprecada el 5 de marzo de 2026. La app móvil fue reemplazada por un escáner físico ProSoft S224 que funciona como entrada HID (teclado) directamente en el campo de código de barras del POS.
+
+~~```
 App Móvil (escáner)
       │
       │ INSERT → scanned_items (barcode, branch_id, device_type='mobile')
@@ -352,7 +345,7 @@ App Móvil (escáner)
 Programa Electron (ScannerPage)
       │
       └─ Muestra el producto escaneado en tiempo real
-```
+```~~
 
 ---
 
@@ -386,7 +379,7 @@ Formato de ticket térmico (80mm) generado con jsPDF:
 - POS con carrito, descuentos, multi-moneda
 - Historial de ventas con filtros y PDF
 - Reportes con gráficos
-- Scanner (webcam + app móvil vía Realtime)
+- Scanner físico ProSoft S224 (reemplaza app móvil y webcam)
 - Cotización dólar blue automática
 - Logo de empresa en tickets
 - Tickets con leyenda no fiscal
@@ -398,5 +391,21 @@ Formato de ticket térmico (80mm) generado con jsPDF:
 - Actualización masiva de precios
 - Dashboard con datos reales
 - Modo oscuro
+
+---
+
+## Cambios recientes: Arqueo de Caja y Movimientos Extraordinarios
+
+- Se añadió soporte para registrar "movimientos extraordinarios" asociados a un arqueo de caja: gastos o ingresos que no provienen directamente de una venta.
+- Nuevo store: `useExtraMovementsStore` para gestionar `extra_movements` (fetch por caja, alta de movimiento).
+- Nueva UI en la página de `Arqueo de Caja` (`src/renderer/pages/CashRegister.tsx`):
+    - Modal para crear movimientos extraordinarios mientras la caja está abierta.
+    - Visor por arqueo que combina las `sales` con los `extra_movements` en orden cronológico.
+- Cálculo de cierre: la función de cierre de caja ahora incluye ingresos extraordinarios y resta gastos extraordinarios al `expected_amount`, afectando la `difference` mostrada.
+
+Notas operativas:
+- Es necesario crear la tabla `extra_movements` en la base de datos si aún no existe y revisar RLS/permissions.
+- Recomendación: probar en entorno de desarrollo antes de desplegar a producción.
+
 - Shortcuts de teclado
 - Panel de super admin

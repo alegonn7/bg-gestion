@@ -1,8 +1,10 @@
 # 📋 Documentación de Progreso - Sesión 7
 ## 📅 Fecha: 17 de Febrero, 2026
 
+> **⚠️ NOTA (5 de marzo de 2026):** Las secciones de esta sesión relacionadas con la app móvil y el escaneo inalámbrico fueron deprecadas. El sistema ahora usa escáner físico ProSoft S224.
+
 > **Punto de partida:** dia-6.md  
-> Al inicio de esta sesión el sistema contaba con: Auth, Sucursales, Usuarios, Productos, Categorías, Movimientos, Catálogo Maestro, Reportes, POS, Historial de Ventas, Sistema de Escaneo Inalámbrico (PC + App Android).
+> Al inicio de esta sesión el sistema contaba con: Auth, Sucursales, Usuarios, Productos, Categorías, Movimientos, Catálogo Maestro, Reportes, POS, Historial de Ventas, ~~Sistema de Escaneo Inalámbrico (PC + App Android)~~.
 
 ---
 

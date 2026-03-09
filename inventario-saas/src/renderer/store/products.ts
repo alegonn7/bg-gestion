@@ -11,6 +11,7 @@ export interface MasterProduct {
   name: string
   description: string | null
   category_id: string | null
+  supplier_id: string | null
   is_active: boolean
   created_at: string
   updated_at: string
@@ -63,6 +64,7 @@ interface ProductsState {
     name: string
     description?: string
     category_id?: string
+    supplier_id?: string | null
     price_cost: number
     price_sale: number
     price_cost_usd?: number | null
@@ -188,6 +190,7 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
             name: productData.name,
             description: productData.description || null,
             category_id: productData.category_id || null,
+            supplier_id: productData.supplier_id || null,
             created_by: user.id,
             updated_by: user.id,
           })
@@ -196,6 +199,13 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
 
         if (masterError) throw masterError
         masterProduct = newMaster
+      } else if (productData.supplier_id && masterProduct.supplier_id !== productData.supplier_id) {
+        // Si el producto maestro existe pero el proveedor cambió, actualizar supplier_id
+        await supabase
+          .from('products')
+          .update({ supplier_id: productData.supplier_id })
+          .eq('id', masterProduct.id)
+        masterProduct.supplier_id = productData.supplier_id
       }
 
       // 3. Crear products_branch con referencia al maestro
@@ -285,6 +295,7 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
         if (updates.product.name) masterUpdates.name = updates.product.name
         if (updates.product.description !== undefined) masterUpdates.description = updates.product.description
         if (updates.product.category_id !== undefined) masterUpdates.category_id = updates.product.category_id
+        if (updates.product.supplier_id !== undefined) masterUpdates.supplier_id = updates.product.supplier_id
         
         if (Object.keys(masterUpdates).length > 0) {
           const { error: masterError } = await supabase

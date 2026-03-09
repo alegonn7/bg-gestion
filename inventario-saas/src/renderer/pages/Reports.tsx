@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { RefreshCw, Calendar, Filter, TrendingUp, DollarSign, Package, AlertTriangle } from 'lucide-react'
 import { useReportsStore } from '@/store/reports'
+import { useCashRegisterStore } from '@/store/cash-register'
 import { useBranchesStore } from '@/store/branches'
 import { useAuthStore } from '@/store/auth'
 import {
@@ -30,6 +31,7 @@ type ChartType =
   | 'stock-alerts'
   | 'inventory-value'
   | 'movements'
+  | 'cash-register-summary'
 
 interface ChartOption {
   id: ChartType
@@ -40,6 +42,13 @@ interface ChartOption {
 }
 
 const chartOptions: ChartOption[] = [
+  {
+    id: 'cash-register-summary',
+    label: 'Arqueo de Caja por Usuario',
+    icon: DollarSign,
+    description: 'Faltantes/sobrantes y ranking de ventas por empleado',
+    category: 'commercial'
+  },
   {
     id: 'revenue-period',
     label: 'Ingresos por Período',
@@ -137,6 +146,7 @@ export default function Reports() {
   } = useReportsStore()
 
   const { branches, fetchBranches } = useBranchesStore()
+  const { registers: cashRegisters, isLoading: isLoadingCashRegisters, fetchRegisters } = useCashRegisterStore()
 
   const [selectedChart, setSelectedChart] = useState<ChartType>('revenue-period')
   const [selectedPeriod, setSelectedPeriod] = useState<'7d' | '30d' | '90d' | 'custom'>('30d')
@@ -149,6 +159,12 @@ export default function Reports() {
     fetchBranches()
     handlePeriodChange('30d')
   }, [authSelectedBranch?.id])
+
+  useEffect(() => {
+    if (selectedChart === 'cash-register-summary' && cashRegisters.length === 0) {
+      fetchRegisters()
+    }
+  }, [selectedChart])
 
   const handlePeriodChange = (period: typeof selectedPeriod) => {
     setSelectedPeriod(period)
@@ -171,7 +187,7 @@ export default function Reports() {
 
   const handleBranchChange = (branchId: string) => {
     setSelectedBranch(branchId)
-    
+
     const end = new Date()
     let start = new Date()
 
@@ -216,6 +232,65 @@ export default function Reports() {
 
   const renderChart = () => {
     switch (selectedChart) {
+      case 'cash-register-summary': {
+        const resumenPorUsuario: Record<string, {
+          nombre: string
+          arqueos: number
+          ventas: number
+          diferencia: number
+        }> = {}
+
+        cashRegisters
+          .filter((r: any) => r.status === 'closed')
+          .forEach((r: any) => {
+            const key = r.closed_by_name || r.opened_by_name || 'Desconocido'
+            if (!resumenPorUsuario[key]) {
+              resumenPorUsuario[key] = { nombre: key, arqueos: 0, ventas: 0, diferencia: 0 }
+            }
+            resumenPorUsuario[key].arqueos += 1
+            resumenPorUsuario[key].ventas += r.sales_count || 0
+            resumenPorUsuario[key].diferencia += r.difference || 0
+          })
+
+        const resumenArray = Object.values(resumenPorUsuario).sort((a, b) => b.ventas - a.ventas)
+
+        return (
+          <div className="bg-white rounded-lg p-6 shadow-sm">
+            <h3 className="text-lg font-semibold mb-4">Arqueo de Caja por Usuario</h3>
+            {isLoadingCashRegisters ? (
+              <div className="text-center py-12 text-gray-500">Cargando arqueos...</div>
+            ) : resumenArray.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">No hay datos de arqueos cerrados.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-3 px-4">Empleado</th>
+                      <th className="text-right py-3 px-4">Arqueos</th>
+                      <th className="text-right py-3 px-4">Ventas</th>
+                      <th className="text-right py-3 px-4">Neto Faltante/Sobrante</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {resumenArray.map((u) => (
+                      <tr key={u.nombre}>
+                        <td className="py-3 px-4 font-medium">{u.nombre}</td>
+                        <td className="text-right py-3 px-4">{u.arqueos}</td>
+                        <td className="text-right py-3 px-4">{u.ventas}</td>
+                        <td className={`text-right py-3 px-4 font-semibold ${u.diferencia < 0 ? 'text-red-600' : u.diferencia > 0 ? 'text-blue-600' : 'text-gray-700'}`}>
+                          {formatCurrency(u.diferencia)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )
+      }
+
       case 'revenue-period':
         return (
           <div className="bg-white rounded-lg p-6 shadow-sm">
@@ -271,8 +346,7 @@ export default function Reports() {
                     return `${data.category_name}: ${formatCurrency(data.total_revenue)}`
                   }}
                 >
-                  {revenueByCategory.map((_
-                  , index) => (
+                  {revenueByCategory.map((_, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
@@ -578,62 +652,62 @@ export default function Reports() {
             <div className="p-4 max-h-[600px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400">
               {/* Comerciales */}
               <div className="mb-4">
-              <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Análisis Comercial</p>
-              <div className="space-y-1">
-                {chartOptions
-                  .filter((opt) => opt.category === 'commercial')
-                  .map((option) => (
-                    <button
-                      key={option.id}
-                      onClick={() => setSelectedChart(option.id)}
-                      className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                        selectedChart === option.id
-                          ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                          : 'hover:bg-gray-50'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <option.icon className="h-4 w-4" />
-                        <div className="flex-1">
-                          <p className="text-sm font-medium">{option.label}</p>
-                          <p className="text-xs text-gray-500">{option.description}</p>
+                <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Análisis Comercial</p>
+                <div className="space-y-1">
+                  {chartOptions
+                    .filter((opt) => opt.category === 'commercial')
+                    .map((option) => (
+                      <button
+                        key={option.id}
+                        onClick={() => setSelectedChart(option.id)}
+                        className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                          selectedChart === option.id
+                            ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                            : 'hover:bg-gray-50'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <option.icon className="h-4 w-4" />
+                          <div className="flex-1">
+                            <p className="text-sm font-medium">{option.label}</p>
+                            <p className="text-xs text-gray-500">{option.description}</p>
+                          </div>
                         </div>
-                      </div>
-                    </button>
-                  ))}
+                      </button>
+                    ))}
+                </div>
               </div>
-            </div>
 
-            {/* Inventario */}
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Análisis de Inventario</p>
-              <div className="space-y-1">
-                {chartOptions
-                  .filter((opt) => opt.category === 'inventory')
-                  .map((option) => (
-                    <button
-                      key={option.id}
-                      onClick={() => setSelectedChart(option.id)}
-                      className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                        selectedChart === option.id
-                          ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                          : 'hover:bg-gray-50'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <option.icon className="h-4 w-4" />
-                        <div className="flex-1">
-                          <p className="text-sm font-medium">{option.label}</p>
-                          <p className="text-xs text-gray-500">{option.description}</p>
+              {/* Inventario */}
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Análisis de Inventario</p>
+                <div className="space-y-1">
+                  {chartOptions
+                    .filter((opt) => opt.category === 'inventory')
+                    .map((option) => (
+                      <button
+                        key={option.id}
+                        onClick={() => setSelectedChart(option.id)}
+                        className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                          selectedChart === option.id
+                            ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                            : 'hover:bg-gray-50'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <option.icon className="h-4 w-4" />
+                          <div className="flex-1">
+                            <p className="text-sm font-medium">{option.label}</p>
+                            <p className="text-xs text-gray-500">{option.description}</p>
+                          </div>
                         </div>
-                      </div>
-                    </button>
-                  ))}
+                      </button>
+                    ))}
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
 
         {/* Chart Display */}
         <div className="lg:col-span-3">

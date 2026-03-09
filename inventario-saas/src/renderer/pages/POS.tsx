@@ -1,11 +1,12 @@
-import { useState, useEffect, useRef } from 'react'
-import { ShoppingCart, Search, Trash2, DollarSign, Hash, Scan } from 'lucide-react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { ShoppingCart, Search, Trash2, DollarSign, Hash } from 'lucide-react'
 import { usePOSStore, getEffectivePrice } from '@/store/pos'
 import { useProductsStore } from '@/store/products'
-import { useScannerStore } from '@/store/scanner'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/auth'
 import { useDollarStore } from '@/store/dollar'
+import { useBarcodeScanner } from '@/hooks/useBarcodeScanner'
+import { playScanSuccess, playScanError } from '@/lib/scan-sound'
 import CheckoutModal from '@/components/CheckoutModal'
 
 export default function POS() {
@@ -27,18 +28,32 @@ export default function POS() {
   } = usePOSStore()
 
   const { products, fetchProducts } = useProductsStore()
-  const { lastScan } = useScannerStore()
 
   const [barcodeInput, setBarcodeInput] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [showCheckout, setShowCheckout] = useState(false)
   const [discountInput, setDiscountInput] = useState('')
-  const [scannerMode, setScannerMode] = useState(false)
-  const [lastProcessedScanId, setLastProcessedScanId] = useState<string | null>(null)
-  const [scanFeedback, setScanFeedback] = useState<{ message: string, type: 'success' | 'error' } | null>(null)
   const barcodeRef = useRef<HTMLInputElement>(null)
   const { selectedBranch } = useAuthStore()
   const { blueRate, fetchBlueRate } = useDollarStore()
+  const [scanFeedback, setScanFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+
+  // Escáner físico: captura cuando ningún input tiene foco
+  const handleBarcodeScan = useCallback((barcode: string) => {
+    const product = products.find(p => p.barcode === barcode)
+    if (product) {
+      addToCart(product, 1)
+      setScanFeedback({ type: 'success', message: `✓ ${product.product?.name || barcode}` })
+      playScanSuccess()
+    } else {
+      setScanFeedback({ type: 'error', message: `Producto no encontrado: ${barcode}` })
+      playScanError()
+    }
+    // Re-enfocar el input de código de barras
+    barcodeRef.current?.focus()
+  }, [products, addToCart])
+
+  useBarcodeScanner(handleBarcodeScan)
 
   useEffect(() => {
     fetchProducts()
@@ -50,58 +65,13 @@ export default function POS() {
     barcodeRef.current?.focus()
   }, [items])
 
-  // ✅ Escuchar escaneos desde la app móvil cuando scannerMode está activo
+  // Auto-ocultar feedback del escáner
   useEffect(() => {
-    if (!scannerMode) return
-    if (!lastScan) return
-    if (lastScan.id === lastProcessedScanId) return
-
-    setLastProcessedScanId(lastScan.id)
-
-    const barcode = lastScan.barcode
-    if (!barcode) return
-
-    const checkProduct = async () => {
-      const { selectedBranch, user } = useAuthStore.getState()
-      const branchId = user?.role === 'owner' || user?.role === 'admin'
-        ? selectedBranch?.id
-        : user?.branch_id
-
-      if (!branchId) {
-        setScanFeedback({ message: 'No hay sucursal seleccionada', type: 'error' })
-        setTimeout(() => setScanFeedback(null), 3000)
-        return
-      }
-
-      const { data: product } = await supabase
-        .from('products_branch')
-        .select(`
-          *,
-          product:products(*),
-          branch:branches(id, name)
-        `)
-        .eq('barcode', barcode)
-        .eq('branch_id', branchId)
-        .single()
-
-      if (product) {
-        addToCart(product as any, 1)
-        setScanFeedback({ 
-          message: `✅ ${product.product?.name || barcode} agregado al carrito`, 
-          type: 'success' 
-        })
-      } else {
-        setScanFeedback({ 
-          message: `❌ Producto con código ${barcode} no encontrado en esta sucursal`, 
-          type: 'error' 
-        })
-      }
-
-      setTimeout(() => setScanFeedback(null), 3000)
+    if (scanFeedback) {
+      const timer = setTimeout(() => setScanFeedback(null), 3000)
+      return () => clearTimeout(timer)
     }
-
-    checkProduct()
-  }, [lastScan])
+  }, [scanFeedback])
 
   const handleBarcodeSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -112,9 +82,12 @@ export default function POS() {
     if (product) {
       addToCart(product, 1)
       setBarcodeInput('')
+      setScanFeedback({ type: 'success', message: `✓ ${product.product?.name || barcodeInput}` })
+      playScanSuccess()
     } else {
-      alert(`Producto con código ${barcodeInput} no encontrado`)
+      setScanFeedback({ type: 'error', message: `Producto no encontrado: ${barcodeInput}` })
       setBarcodeInput('')
+      playScanError()
     }
   }
 
@@ -143,7 +116,21 @@ export default function POS() {
   const totalItems = getTotalItems()
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
+    <div className="h-screen flex flex-col bg-gray-50" onClick={(e) => {
+      const target = e.target as HTMLElement
+      if (target.tagName !== 'INPUT' && target.tagName !== 'BUTTON' && target.tagName !== 'TEXTAREA') {
+        barcodeRef.current?.focus()
+      }
+    }}>
+      {/* Feedback del escáner */}
+      {scanFeedback && (
+        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg text-white text-sm font-medium transition-all ${
+          scanFeedback.type === 'success' ? 'bg-green-600' : 'bg-red-600'
+        }`}>
+          {scanFeedback.message}
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-white border-b px-6 py-4">
         <div className="flex items-center justify-between">
@@ -153,21 +140,6 @@ export default function POS() {
           </div>
 
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => {
-                setScannerMode(!scannerMode)
-                setScanFeedback(null)
-              }}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 transition font-medium ${
-                scannerMode
-                  ? 'border-green-500 bg-green-50 text-green-700'
-                  : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'
-              }`}
-            >
-              <Scan className="h-5 w-5" />
-              {scannerMode ? 'Escuchando app...' : 'Usar scanner app'}
-            </button>
-
             <form onSubmit={handleBarcodeSubmit} className="flex items-center gap-3">
               <div className="relative">
                 <Hash className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
@@ -189,25 +161,6 @@ export default function POS() {
             </form>
           </div>
         </div>
-
-        {scannerMode && (
-          <div className="mt-3">
-            {scanFeedback ? (
-              <div className={`px-4 py-2 rounded-lg text-sm font-medium ${
-                scanFeedback.type === 'success'
-                  ? 'bg-green-100 text-green-700'
-                  : 'bg-red-100 text-red-700'
-              }`}>
-                {scanFeedback.message}
-              </div>
-            ) : (
-              <div className="px-4 py-2 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700 flex items-center gap-2">
-                <Scan className="h-4 w-4 animate-pulse" />
-                Listo para recibir escaneos desde la app móvil...
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       <div className="flex-1 flex overflow-hidden">

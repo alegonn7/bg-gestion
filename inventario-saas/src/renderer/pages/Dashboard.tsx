@@ -1,8 +1,8 @@
+import SuppliersPage from './Suppliers'
 import { useAuthStore } from '@/store/auth'
-import { useScannerStore } from '@/store/scanner'
 import { useReportsStore } from '@/store/reports'
 import { useSalesStore } from '@/store/sales'
-import { Package, LayoutDashboard, Building2, Users, Settings, LogOut, BarChart3, BookOpen, CreditCard, Receipt, Scan, ChevronLeft, ChevronRight, AlertTriangle, TrendingUp, DollarSign, ShoppingCart, ArrowUp, ArrowDown, Wallet } from 'lucide-react'
+import { Package, LayoutDashboard, Building2, Users, Settings, LogOut, BarChart3, BookOpen, CreditCard, Receipt, ChevronLeft, ChevronRight, AlertTriangle, TrendingUp, DollarSign, ShoppingCart, ArrowUp, ArrowDown, Wallet, ScanLine } from 'lucide-react'
 import { useState, useEffect, useMemo } from 'react'
 import Products from './Products'
 import MasterCatalog from './MasterCatalog'
@@ -11,29 +11,23 @@ import UsersPage from './Users'
 import Reports from './Reports'
 import POS from './POS'
 import SalesHistory from './SalesHistory'
-import ScannerPage from './ScannerPage'
 import SettingsPage from './Settings'
 import CashRegisterPage from './CashRegister'
+import ScannerPage from './ScannerPage'
 import logoImg from '@/assets/logo.png'
 
-type Page = 'dashboard' | 'products' | 'master-catalog' | 'branches' | 'users' | 'reports' | 'pos' | 'sales-history' | 'scanner' | 'settings' | 'cash-register'
+type Page = 'dashboard' | 'products' | 'master-catalog' | 'branches' | 'users' | 'reports' | 'pos' | 'sales-history' | 'settings' | 'cash-register' | 'scanner' | 'suppliers'
 
 export default function Dashboard() {
   const { user, organization, logout, branches, selectedBranch, selectBranch } = useAuthStore()
-  const { startListening, stopListening, unviewedCount } = useScannerStore()
   const { lowStockCount, outOfStockCount, fetchReports } = useReportsStore()
   const [currentPage, setCurrentPage] = useState<Page>('dashboard')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   const stockAlertTotal = lowStockCount + outOfStockCount
 
-  // Iniciar/reiniciar listener cuando monta o cambia la sucursal seleccionada
   useEffect(() => {
-    startListening()
     fetchReports()
-    return () => {
-      stopListening()
-    }
   }, [selectedBranch?.id])
 
   const menuItems = [
@@ -41,12 +35,13 @@ export default function Dashboard() {
     { id: 'pos' as Page, label: 'Punto de Venta', icon: CreditCard, roles: ['owner', 'admin', 'manager', 'employee'] },
     { id: 'sales-history' as Page, label: 'Historial de Ventas', icon: Receipt, roles: ['owner', 'admin', 'manager', 'employee'] },
     { id: 'cash-register' as Page, label: 'Arqueo de Caja', icon: Wallet, roles: ['owner', 'admin', 'manager'] },
-    { id: 'scanner' as Page, label: 'Escaneados', icon: Scan, roles: ['owner', 'admin', 'manager', 'employee'], badge: true },
+    { id: 'scanner' as Page, label: 'Escáner', icon: ScanLine, roles: ['owner', 'admin', 'manager', 'employee'] },
     { id: 'products' as Page, label: 'Productos', icon: Package, stockBadge: true },
-    { id: 'master-catalog' as Page, label: 'Catálogo Maestro', icon: BookOpen, roles: ['owner', 'admin'] },
+    { id: 'master-catalog' as Page, label: 'Catálogo Maestro', icon: BookOpen, roles: ['owner', 'admin', 'manager', 'employee'] },
     { id: 'branches' as Page, label: 'Sucursales', icon: Building2, roles: ['owner', 'admin'] },
-    { id: 'users' as Page, label: 'Usuarios', icon: Users, roles: ['owner', 'admin'] },
-    { id: 'reports' as Page, label: 'Reportes', icon: BarChart3 },
+    { id: 'users' as Page, label: 'Usuarios', icon: Users, roles: ['owner', 'admin', 'manager'] },
+    { id: 'suppliers' as Page, label: 'Proveedores', icon: Building2, roles: ['owner', 'admin', 'manager'] },
+    { id: 'reports' as Page, label: 'Reportes', icon: BarChart3, roles: ['owner', 'admin', 'manager'] },
     { id: 'settings' as Page, label: 'Configuración', icon: Settings },
   ]
 
@@ -65,6 +60,8 @@ export default function Dashboard() {
         return <Branches />
       case 'users':
         return <UsersPage />
+      case 'suppliers':
+        return <SuppliersPage />
       case 'reports':
         return <Reports />
       case 'pos':
@@ -149,7 +146,6 @@ export default function Dashboard() {
           {filteredMenu.map((item) => {
             const Icon = item.icon
             const isActive = currentPage === item.id
-            const showBadge = item.badge && unviewedCount > 0
             const showStockBadge = (item as any).stockBadge && stockAlertTotal > 0
 
             return (
@@ -165,10 +161,6 @@ export default function Dashboard() {
               >
                 <Icon className={`w-5 h-5 flex-shrink-0 ${isActive ? 'text-blue-700' : 'text-gray-400'}`} />
                 {!sidebarCollapsed && <span className="flex-1 text-left">{item.label}</span>}
-                {/* Indicador de no vistos (punto) */}
-                {showBadge && (
-                  <span className={`w-2.5 h-2.5 bg-blue-600 rounded-full flex-shrink-0 ${sidebarCollapsed ? 'absolute top-1.5 right-1.5' : ''}`} />
-                )}
                 {/* Badge de stock bajo */}
                 {showStockBadge && (
                   <span className={`flex items-center justify-center min-w-[20px] h-5 px-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full flex-shrink-0 ${sidebarCollapsed ? 'absolute -top-0.5 -right-0.5' : ''}`}>
@@ -217,7 +209,6 @@ export default function Dashboard() {
 // Dashboard Home Component
 function DashboardHome() {
   const { user, organization, branches } = useAuthStore()
-  const { lastScan } = useScannerStore()
   const { 
     totalProducts, totalStock, totalStockValueCost, totalStockValueSale, totalPotentialProfit,
     lowStockCount, outOfStockCount, stockAlerts, branchStats,
@@ -270,90 +261,121 @@ function DashboardHome() {
         )}
       </div>
 
-      {/* KPIs principales - 5 cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <div className="bg-white rounded-lg border border-gray-200 p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-              <Package className="w-5 h-5 text-blue-600" />
+      {/* KPIs principales - solo para owner/admin/manager */}
+      {(user?.role === 'owner' || user?.role === 'admin' || user?.role === 'manager') ? (
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="bg-white rounded-lg border border-gray-200 p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                <Package className="w-5 h-5 text-blue-600" />
+              </div>
+              <span className="text-2xl font-bold text-gray-900">{totalProducts}</span>
             </div>
-            <span className="text-2xl font-bold text-gray-900">{totalProducts}</span>
+            <h3 className="text-sm font-medium text-gray-600">Productos</h3>
+            <p className="text-xs text-gray-400 mt-1">{totalStock} unidades en stock</p>
           </div>
-          <h3 className="text-sm font-medium text-gray-600">Productos</h3>
-          <p className="text-xs text-gray-400 mt-1">{totalStock} unidades en stock</p>
-        </div>
 
-        <div className="bg-white rounded-lg border border-gray-200 p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-              <ShoppingCart className="w-5 h-5 text-green-600" />
+          <div className="bg-white rounded-lg border border-gray-200 p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                <ShoppingCart className="w-5 h-5 text-green-600" />
+              </div>
+              <span className="text-2xl font-bold text-gray-900">{todayStats.count}</span>
             </div>
-            <span className="text-2xl font-bold text-gray-900">{todayStats.count}</span>
+            <h3 className="text-sm font-medium text-gray-600">Ventas Hoy</h3>
+            <p className="text-xs text-gray-400 mt-1">{formatCurrency(todayStats.revenue)}</p>
           </div>
-          <h3 className="text-sm font-medium text-gray-600">Ventas Hoy</h3>
-          <p className="text-xs text-gray-400 mt-1">{formatCurrency(todayStats.revenue)}</p>
-        </div>
 
-        <div className="bg-white rounded-lg border border-gray-200 p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-emerald-600" />
+          <div className="bg-white rounded-lg border border-gray-200 p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center">
+                <TrendingUp className="w-5 h-5 text-emerald-600" />
+              </div>
+              <span className="text-2xl font-bold text-emerald-700">{formatCurrency(todayStats.profit)}</span>
             </div>
-            <span className="text-2xl font-bold text-emerald-700">{formatCurrency(todayStats.profit)}</span>
+            <h3 className="text-sm font-medium text-gray-600">Ganancia Hoy</h3>
           </div>
-          <h3 className="text-sm font-medium text-gray-600">Ganancia Hoy</h3>
-        </div>
 
-        <div className="bg-white rounded-lg border border-gray-200 p-5">
-          <div className="flex items-center justify-between mb-3">
-            <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-              <Building2 className="w-5 h-5 text-purple-600" />
+          <div className="bg-white rounded-lg border border-gray-200 p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                <Building2 className="w-5 h-5 text-purple-600" />
+              </div>
+              <span className="text-2xl font-bold text-gray-900">{branches.length}</span>
             </div>
-            <span className="text-2xl font-bold text-gray-900">{branches.length}</span>
+            <h3 className="text-sm font-medium text-gray-600">Sucursales</h3>
           </div>
-          <h3 className="text-sm font-medium text-gray-600">Sucursales</h3>
-        </div>
 
-        <div className={`rounded-lg border p-5 ${(lowStockCount + outOfStockCount) > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200'}`}>
-          <div className="flex items-center justify-between mb-3">
-            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${(lowStockCount + outOfStockCount) > 0 ? 'bg-red-100' : 'bg-gray-100'}`}>
-              <AlertTriangle className={`w-5 h-5 ${(lowStockCount + outOfStockCount) > 0 ? 'text-red-600' : 'text-gray-400'}`} />
+          <div className={`rounded-lg border p-5 ${(lowStockCount + outOfStockCount) > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200'}`}>
+            <div className="flex items-center justify-between mb-3">
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${(lowStockCount + outOfStockCount) > 0 ? 'bg-red-100' : 'bg-gray-100'}`}>
+                <AlertTriangle className={`w-5 h-5 ${(lowStockCount + outOfStockCount) > 0 ? 'text-red-600' : 'text-gray-400'}`} />
+              </div>
+              <span className={`text-2xl font-bold ${(lowStockCount + outOfStockCount) > 0 ? 'text-red-700' : 'text-gray-900'}`}>
+                {lowStockCount + outOfStockCount}
+              </span>
             </div>
-            <span className={`text-2xl font-bold ${(lowStockCount + outOfStockCount) > 0 ? 'text-red-700' : 'text-gray-900'}`}>
-              {lowStockCount + outOfStockCount}
-            </span>
+            <h3 className="text-sm font-medium text-gray-600">Alertas Stock</h3>
+            {outOfStockCount > 0 && (
+              <p className="text-xs text-red-500 mt-1">{outOfStockCount} sin stock</p>
+            )}
           </div>
-          <h3 className="text-sm font-medium text-gray-600">Alertas Stock</h3>
-          {outOfStockCount > 0 && (
-            <p className="text-xs text-red-500 mt-1">{outOfStockCount} sin stock</p>
-          )}
         </div>
-      </div>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-2 gap-4">
+          <div className="bg-white rounded-lg border border-gray-200 p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                <Package className="w-5 h-5 text-blue-600" />
+              </div>
+              <span className="text-2xl font-bold text-gray-900">{totalProducts}</span>
+            </div>
+            <h3 className="text-sm font-medium text-gray-600">Productos</h3>
+            <p className="text-xs text-gray-400 mt-1">{totalStock} unidades en stock</p>
+          </div>
+          <div className={`rounded-lg border p-5 ${(lowStockCount + outOfStockCount) > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-gray-200'}`}>
+            <div className="flex items-center justify-between mb-3">
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${(lowStockCount + outOfStockCount) > 0 ? 'bg-red-100' : 'bg-gray-100'}`}>
+                <AlertTriangle className={`w-5 h-5 ${(lowStockCount + outOfStockCount) > 0 ? 'text-red-600' : 'text-gray-400'}`} />
+              </div>
+              <span className={`text-2xl font-bold ${(lowStockCount + outOfStockCount) > 0 ? 'text-red-700' : 'text-gray-900'}`}>
+                {lowStockCount + outOfStockCount}
+              </span>
+            </div>
+            <h3 className="text-sm font-medium text-gray-600">Alertas Stock</h3>
+            {outOfStockCount > 0 && (
+              <p className="text-xs text-red-500 mt-1">{outOfStockCount} sin stock</p>
+            )}
+          </div>
+        </div>
+      )}
 
-      {/* Valor del inventario */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-gradient-to-br from-blue-500 to-blue-700 rounded-lg p-5 text-white">
-          <div className="flex items-center gap-2 mb-2 opacity-80">
-            <DollarSign className="w-4 h-4" />
-            <span className="text-sm">Valor Inventario (Costo)</span>
+      {/* Valor del inventario: solo owner/admin/manager */}
+      {(user?.role === 'owner' || user?.role === 'admin' || user?.role === 'manager') && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-gradient-to-br from-blue-500 to-blue-700 rounded-lg p-5 text-white">
+            <div className="flex items-center gap-2 mb-2 opacity-80">
+              <DollarSign className="w-4 h-4" />
+              <span className="text-sm">Valor Inventario (Costo)</span>
+            </div>
+            <p className="text-2xl font-bold">{formatCurrency(totalStockValueCost)}</p>
           </div>
-          <p className="text-2xl font-bold">{formatCurrency(totalStockValueCost)}</p>
-        </div>
-        <div className="bg-gradient-to-br from-green-500 to-green-700 rounded-lg p-5 text-white">
-          <div className="flex items-center gap-2 mb-2 opacity-80">
-            <DollarSign className="w-4 h-4" />
-            <span className="text-sm">Valor Inventario (Venta)</span>
+          <div className="bg-gradient-to-br from-green-500 to-green-700 rounded-lg p-5 text-white">
+            <div className="flex items-center gap-2 mb-2 opacity-80">
+              <DollarSign className="w-4 h-4" />
+              <span className="text-sm">Valor Inventario (Venta)</span>
+            </div>
+            <p className="text-2xl font-bold">{formatCurrency(totalStockValueSale)}</p>
           </div>
-          <p className="text-2xl font-bold">{formatCurrency(totalStockValueSale)}</p>
-        </div>
-        <div className="bg-gradient-to-br from-purple-500 to-purple-700 rounded-lg p-5 text-white">
-          <div className="flex items-center gap-2 mb-2 opacity-80">
-            <TrendingUp className="w-4 h-4" />
-            <span className="text-sm">Ganancia Potencial</span>
+          <div className="bg-gradient-to-br from-purple-500 to-purple-700 rounded-lg p-5 text-white">
+            <div className="flex items-center gap-2 mb-2 opacity-80">
+              <TrendingUp className="w-4 h-4" />
+              <span className="text-sm">Ganancia Potencial</span>
+            </div>
+            <p className="text-2xl font-bold">{formatCurrency(totalPotentialProfit)}</p>
           </div>
-          <p className="text-2xl font-bold">{formatCurrency(totalPotentialProfit)}</p>
         </div>
-      </div>
+      )}
 
       {/* Dos columnas: Alertas Stock + Últimas ventas */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -472,36 +494,22 @@ function DashboardHome() {
           </div>
         </div>
 
-        {/* Último escaneo en el dashboard */}
         <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Scan className="h-5 w-5 text-blue-600" />
-            Último producto escaneado
-          </h3>
-          {lastScan ? (
-            <div className="space-y-2">
-              <p className="font-bold text-gray-900">
-                {lastScan.product?.product?.name || 'Producto no encontrado'}
-              </p>
-              <p className="text-sm text-gray-500 font-mono">{lastScan.barcode}</p>
-              {lastScan.product && (
-                <p className="text-lg font-bold text-blue-600">
-                  {formatCurrency(lastScan.product.price_sale)}
-                </p>
-              )}
-              <p className="text-xs text-gray-400">
-                {new Date(lastScan.created_at).toLocaleTimeString('es-AR', {
-                  timeZone: 'America/Argentina/Buenos_Aires',
-                  hour: '2-digit', minute: '2-digit'
-                })}
-              </p>
+          <h3 className="text-lg font-semibold mb-4">Información del Sistema</h3>
+          <div className="space-y-3">
+            <div className="flex justify-between">
+              <span className="text-gray-600">Sucursales activas:</span>
+              <span className="font-medium">{branches.length}</span>
             </div>
-          ) : (
-            <div className="text-center py-4 text-gray-400">
-              <Scan className="h-10 w-10 mx-auto mb-2 opacity-20" />
-              <p className="text-sm">Ningún escaneo aún</p>
+            <div className="flex justify-between">
+              <span className="text-gray-600">Total productos:</span>
+              <span className="font-medium">{totalProducts}</span>
             </div>
-          )}
+            <div className="flex justify-between">
+              <span className="text-gray-600">Unidades en stock:</span>
+              <span className="font-medium">{totalStock}</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>

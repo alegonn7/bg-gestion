@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Search, Package, Store, RefreshCw, BarChart, Tag, X } from 'lucide-react'
 import { useMasterCatalogStore } from '@/store/master-catalog'
 import { useCategoriesStore } from '@/store/categories'
+import { useBarcodeScanner } from '@/hooks/useBarcodeScanner'
+import { playScanSuccess, playScanError } from '@/lib/scan-sound'
 import MasterProductDetailModal from '../components/MasterProductDetailModal'
 import type { MasterProduct } from '@/store/master-catalog'
 
@@ -20,11 +22,37 @@ export default function MasterCatalog() {
   const [selectedProduct, setSelectedProduct] = useState<MasterProduct | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [showDetailModal, setShowDetailModal] = useState(false)
+  const [scanFeedback, setScanFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+
+  // Escáner físico: buscar producto por código de barras
+  const handleBarcodeScan = useCallback((barcode: string) => {
+    const allProducts = getFilteredProducts()
+    const product = allProducts.find(p => p.barcode === barcode)
+    if (product) {
+      setSelectedProduct(product)
+      setShowDetailModal(true)
+      setScanFeedback({ type: 'success', message: `✓ ${product.name}` })
+      playScanSuccess()
+    } else {
+      setScanFeedback({ type: 'error', message: `Producto no encontrado: ${barcode}` })
+      playScanError()
+    }
+  }, [getFilteredProducts])
+
+  useBarcodeScanner(handleBarcodeScan)
 
   useEffect(() => {
     fetchMasterProducts()
     fetchCategories()
   }, [])
+
+  // Auto-ocultar feedback del escáner
+  useEffect(() => {
+    if (scanFeedback) {
+      const timer = setTimeout(() => setScanFeedback(null), 3000)
+      return () => clearTimeout(timer)
+    }
+  }, [scanFeedback])
 
   // Filtrar productos primero por búsqueda y luego por categoría
   const baseFilteredProducts = getFilteredProducts()
@@ -52,6 +80,15 @@ export default function MasterCatalog() {
 
   return (
     <div className="h-full flex flex-col bg-gray-50">
+      {/* Feedback del escáner */}
+      {scanFeedback && (
+        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg text-white text-sm font-medium ${
+          scanFeedback.type === 'success' ? 'bg-green-600' : 'bg-red-600'
+        }`}>
+          {scanFeedback.message}
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-white border-b border-gray-200 p-6">
         <div className="flex items-center justify-between mb-4">

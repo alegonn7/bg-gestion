@@ -4,6 +4,7 @@ import { useSalesStore } from '@/store/sales'
 import { useBranchesStore } from '@/store/branches'
 import { useAuthStore } from '@/store/auth'
 import jsPDF from 'jspdf'
+import { useUsersStore } from '@/store/users'
 
 export default function SalesHistory() {
   const {
@@ -19,6 +20,7 @@ export default function SalesHistory() {
 
   const { branches, fetchBranches } = useBranchesStore()
   const { user, selectedBranch, organization } = useAuthStore()
+  const { users, fetchUsers } = useUsersStore()
 
   const [showFilters, setShowFilters] = useState(false)
   const [localStartDate, setLocalStartDate] = useState('')
@@ -26,13 +28,16 @@ export default function SalesHistory() {
   const [localSearchQuery, setLocalSearchQuery] = useState('')
   const [voidConfirmId, setVoidConfirmId] = useState<string | null>(null)
   const [isVoiding, setIsVoiding] = useState(false)
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
 
   const isOwnerOrAdmin = user?.role === 'owner' || user?.role === 'admin'
+  const canVoidSale = user?.role === 'owner' || user?.role === 'manager'
 
   useEffect(() => {
     fetchSales()
     if (isOwnerOrAdmin) {
       fetchBranches()
+      fetchUsers()
     }
   }, [selectedBranch?.id])
 
@@ -62,7 +67,8 @@ export default function SalesHistory() {
       branchId: selectedBranchId,
       startDate: localStartDate ? new Date(localStartDate) : null,
       endDate: localEndDate ? new Date(localEndDate) : null,
-      searchQuery: localSearchQuery
+      searchQuery: localSearchQuery,
+      userId: selectedUserId || undefined
     })
     setShowFilters(false)
   }
@@ -71,6 +77,7 @@ export default function SalesHistory() {
     setLocalStartDate('')
     setLocalEndDate('')
     setLocalSearchQuery('')
+    setSelectedUserId(null)
     clearFilters()
   }
 
@@ -363,15 +370,18 @@ export default function SalesHistory() {
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Buscar
+                Vendedor
               </label>
-              <input
-                type="text"
-                value={localSearchQuery}
-                onChange={(e) => setLocalSearchQuery(e.target.value)}
-                placeholder="Producto, sucursal..."
+              <select
+                value={selectedUserId || ''}
+                onChange={e => setSelectedUserId(e.target.value || null)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
+              >
+                <option value="">Todos</option>
+                {users.filter(u => u.is_active).map(user => (
+                  <option key={user.id} value={user.id}>{user.full_name || user.email}</option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -435,7 +445,7 @@ export default function SalesHistory() {
                   </div>
                   
                   <div className="flex items-center gap-2">
-                    {!isVoided && isOwnerOrAdmin && (
+                    {!isVoided && canVoidSale && (
                       <>
                         {voidConfirmId === sale.id ? (
                           <div className="flex items-center gap-2">

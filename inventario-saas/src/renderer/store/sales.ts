@@ -38,6 +38,7 @@ interface SalesState {
   startDate: Date | null
   endDate: Date | null
   searchQuery: string
+  selectedUserId: string | null
   
   // Actions
   fetchSales: () => Promise<void>
@@ -47,6 +48,7 @@ interface SalesState {
     startDate?: Date | null
     endDate?: Date | null
     searchQuery?: string
+    userId?: string | null
   }) => void
   clearFilters: () => void
   getSaleById: (saleId: string) => Sale | undefined
@@ -73,6 +75,7 @@ export const useSalesStore = create<SalesState>((set, get) => ({
   startDate: null,
   endDate: null,
   searchQuery: '',
+  selectedUserId: null,
 
   fetchSales: async () => {
     set({ isLoading: true, error: null })
@@ -82,9 +85,7 @@ export const useSalesStore = create<SalesState>((set, get) => ({
       if (!user) {
         throw new Error('Usuario no autenticado')
       }
-
-      const { selectedBranchId, startDate, endDate } = get()
-
+      const { selectedBranchId, startDate, endDate, selectedUserId } = get()
       let query = supabase
         .from('sales')
         .select(`
@@ -121,7 +122,6 @@ export const useSalesStore = create<SalesState>((set, get) => ({
           )
         `)
         .order('created_at', { ascending: false })
-
       if (user.role === 'manager' || user.role === 'employee') {
         query = query.eq('branch_id', user.branch_id)
       } else {
@@ -132,7 +132,6 @@ export const useSalesStore = create<SalesState>((set, get) => ({
           query = query.eq('branch_id', branchFilter)
         }
       }
-
       if (startDate) {
         query = query.gte('created_at', startDate.toISOString())
       }
@@ -141,7 +140,9 @@ export const useSalesStore = create<SalesState>((set, get) => ({
         endOfDay.setHours(23, 59, 59, 999)
         query = query.lte('created_at', endOfDay.toISOString())
       }
-
+      if (selectedUserId) {
+        query = query.eq('created_by', selectedUserId)
+      }
       const { data: salesData, error } = await query
 
       if (error) throw error
@@ -255,6 +256,7 @@ export const useSalesStore = create<SalesState>((set, get) => ({
       startDate: filters.startDate !== undefined ? filters.startDate : get().startDate,
       endDate: filters.endDate !== undefined ? filters.endDate : get().endDate,
       searchQuery: filters.searchQuery !== undefined ? filters.searchQuery : get().searchQuery,
+      selectedUserId: filters.userId !== undefined ? filters.userId : get().selectedUserId,
     })
     get().fetchSales()
   },

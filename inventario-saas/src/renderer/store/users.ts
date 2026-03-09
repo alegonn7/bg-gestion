@@ -40,8 +40,10 @@ interface UsersState {
   toggleUserStatus: (id: string) => Promise<void>
   deleteUser: (id: string) => Promise<void>
   setSearchQuery: (query: string) => void
-  getFilteredUsers: () => User[]
-}
+
+  // Devuelve los usuarios visibles según el rol
+    getFilteredUsers: () => User[];
+  }
 
 export const useUsersStore = create<UsersState>((set, get) => ({
   users: [],
@@ -49,15 +51,14 @@ export const useUsersStore = create<UsersState>((set, get) => ({
   error: null,
   searchQuery: '',
 
+  // ...existing code...
+
   fetchUsers: async () => {
-    set({ isLoading: true, error: null })
-
+    set({ isLoading: true, error: null });
     try {
-      const { user, organization } = useAuthStore.getState()
+      const { user: currentUser, organization } = useAuthStore.getState();
+      if (!currentUser || !organization) throw new Error('No user or organization');
 
-      if (!user || !organization) throw new Error('No authenticated user')
-
-      // Determinar qué usuarios puede ver según el rol
       let query = supabase
         .from('users')
         .select(`
@@ -67,37 +68,35 @@ export const useUsersStore = create<UsersState>((set, get) => ({
             name
           )
         `)
-        .eq('organization_id', organization.id)
+        .eq('organization_id', organization.id);
 
-      // Si es Manager, solo ve usuarios de su sucursal
-      if (user.role === 'manager' && user.branch_id) {
-        query = query.eq('branch_id', user.branch_id)
+      // Managers solo pueden ver empleados de su sucursal y a sí mismos
+      if (currentUser.role === 'manager') {
+        query = query.or(`id.eq.${currentUser.id},and(role.eq.employee,branch_id.eq.${currentUser.branch_id})`);
+      }
+      // Employees solo pueden verse a sí mismos
+      if (currentUser.role === 'employee') {
+        query = query.eq('id', currentUser.id);
       }
 
-      const { data, error } = await query.order('created_at', { ascending: false })
+      const { data, error } = await query;
+      if (error) throw error;
 
-      if (error) throw error
+      // Transformar datos
+      const users: User[] = (data || []).map((u: any) => ({
+        ...u,
+        branch: u.branches
+          ? {
+              id: u.branches.id,
+              name: u.branches.name,
+            }
+          : null,
+      }));
 
-      // Transformar datos para asegurar que branch sea un objeto o null
-      const transformedData = (data || []).map((user: any) => ({
-        ...user,
-        branch: user.branches ? {
-          id: user.branches.id,
-          name: user.branches.name
-        } : null
-      }))
-
-      set({ 
-        users: transformedData as User[],
-        isLoading: false 
-      })
-
+      set({ users, isLoading: false });
     } catch (error: any) {
-      console.error('Error fetching users:', error)
-      set({ 
-        error: error.message,
-        isLoading: false 
-      })
+      set({ error: error.message, isLoading: false });
+      console.error('Error fetching users:', error);
     }
   },
 
@@ -381,17 +380,28 @@ export const useUsersStore = create<UsersState>((set, get) => ({
   },
 
   getFilteredUsers: () => {
-    const { users, searchQuery } = get()
-
-    if (!searchQuery) return users
-
-    const query = searchQuery.toLowerCase()
-
-    return users.filter(user => 
+    const { user } = useAuthStore.getState();
+    const { users, searchQuery } = get();
+    if (!user) return [];
+    let filtered = users;
+    if (user.role === 'manager') {
+      // Solo puede verse a sí mismo y a los empleados de su sucursal
+      filtered = users.filter(
+        u =>
+          u.id === user.id ||
+          (u.role === 'employee' && u.branch_id === user.branch_id)
+      );
+    }
+    if (user.role === 'employee') {
+      filtered = users.filter(u => u.id === user.id);
+    }
+    if (!searchQuery) return filtered;
+    const query = searchQuery.toLowerCase();
+    return filtered.filter(user =>
       user.email?.toLowerCase().includes(query) ||
       user.full_name?.toLowerCase().includes(query) ||
       user.role?.toLowerCase().includes(query) ||
       user.branch?.name?.toLowerCase().includes(query)
-    )
+    );
   },
 }))
