@@ -16,6 +16,9 @@ declare global {
         electronVersion: string
       }>
       platform: string
+      getAppVersion?: () => Promise<string>
+      getLastShownVersion?: () => Promise<string | null>
+      setLastShownVersion?: (version: string) => Promise<{ success: boolean }>
     }
   }
 }

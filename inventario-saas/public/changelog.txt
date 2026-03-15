@@ -1,0 +1,6 @@
+Versión 1.0.0
+
+- Primera versión pública de BG Gestión
+- Gestión de productos, sucursales y usuarios
+- Sincronización con Supabase
+- Mejoras de rendimiento y corrección de errores
