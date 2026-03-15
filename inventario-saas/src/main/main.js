@@ -1,27 +1,4 @@
-// IPC para obtener la versión actual de la app
-ipcMain.handle('get-app-version', async () => {
-  return app.getVersion();
-});
-
-// IPC para guardar la última versión mostrada (changelog)
-ipcMain.handle('set-last-shown-version', async (event, version) => {
-  try {
-    db.prepare('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)').run('last_shown_version', version);
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-});
-
-// IPC para obtener la última versión mostrada
-ipcMain.handle('get-last-shown-version', async () => {
-  try {
-    const result = db.prepare('SELECT value FROM app_settings WHERE key = ?').get('last_shown_version');
-    return result ? result.value : null;
-  } catch (error) {
-    return null;
-  }
-});
+// ...existing code...
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
@@ -205,4 +182,27 @@ ipcMain.handle('get-system-info', async () => {
     version: app.getVersion(),
     electronVersion: process.versions.electron,
   };
+});
+
+// Handlers de changelog (siempre registrados)
+ipcMain.handle('get-app-version', async () => {
+  return app.getVersion();
+});
+
+ipcMain.handle('set-last-shown-version', async (event, version) => {
+  try {
+    db.prepare('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)').run('last_shown_version', version);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('get-last-shown-version', async () => {
+  try {
+    const result = db.prepare('SELECT value FROM app_settings WHERE key = ?').get('last_shown_version');
+    return result ? result.value : null;
+  } catch (error) {
+    return null;
+  }
 });
