@@ -126,6 +126,14 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "alegonn7",
+        "repo": "bg-gestion",
+        "private": false
+      }
+    ]
   }
 }

@@ -1,10 +1,13 @@
 import { useState } from 'react'
+import { useTransferAccounts } from '@/store/transfer-accounts'
+import type { TransferAccount } from '@/types/transfer-account'
 import { X, CreditCard, Banknote, DollarSign } from 'lucide-react'
 import { usePOSStore, getEffectivePrice, priceModeLabel } from '@/store/pos'
 import type { PriceMode } from '@/store/pos'
 import { useDollarStore } from '@/store/dollar'
 import { useAuthStore } from '@/store/auth'
 import jsPDF from 'jspdf'
+import React from 'react'
 
 interface CheckoutModalProps {
     isOpen: boolean
@@ -16,20 +19,37 @@ interface CheckoutModalProps {
     priceMode: PriceMode
 }
 
-type PaymentMethod = 'cash' | 'card' | 'mixed' | 'transfer'
+type PaymentMethod = 'cash' | 'debit' | 'credit' | 'mixed' | 'transfer'
 
 export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, cartSubtotal, cartDiscount, priceMode }: CheckoutModalProps) {
     const store = usePOSStore()
-    const { blueRate } = useDollarStore()
+    const { manualMode, manualBlueRate, blueRate } = useDollarStore()
     const { organization, selectedBranch } = useAuthStore()
 
     const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash')
     const [cashAmount, setCashAmount] = useState('')
     const [cardAmount, setCardAmount] = useState('')
     const [transferAmount, setTransferAmount] = useState('')
+    // Estados para crédito
+    const [creditInstallments, setCreditInstallments] = useState<number>(1)
+    const [creditSurcharge, setCreditSurcharge] = useState<number>(0)
+    // El cálculo del recargo va después de declarar total y creditSurcharge
     const [isProcessing, setIsProcessing] = useState(false)
     const [saleCompleted, setSaleCompleted] = useState(false)
     const [lastSaleData, setLastSaleData] = useState<any>(null)
+
+    // Transfer accounts
+    const { accounts, addAccount, fetchAccounts, loading: loadingAccounts } = useTransferAccounts()
+    const [selectedTransferAccount, setSelectedTransferAccount] = useState<string>('generica')
+    const [showAddAccount, setShowAddAccount] = useState(false)
+    const [newAccount, setNewAccount] = useState<Omit<TransferAccount, 'id'>>({ nombre: '', alias: '', cbu: '', generica: false })
+
+    // Cargar cuentas al abrir modal
+    React.useEffect(() => {
+        if (isOpen) {
+            fetchAccounts()
+        }
+    }, [isOpen])
 
     if (!isOpen) return null
 
@@ -39,15 +59,23 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, c
     let subtotal = cartSubtotal
     let discount = cartDiscount
     let usdInfo = null
-    if (priceMode === 'usd' && blueRate) {
+    // Usar el valor correcto del dólar
+    const effectiveBlueRate = manualMode ? manualBlueRate : blueRate
+    if (priceMode === 'usd' && effectiveBlueRate) {
         items = cartItems.map(item => ({
             ...item,
-            subtotal: Math.round(item.subtotal * blueRate * 100) / 100
+            subtotal: Math.round(item.subtotal * effectiveBlueRate * 100) / 100
         }))
-        total = Math.round(cartTotal * blueRate * 100) / 100
-        subtotal = Math.round(cartSubtotal * blueRate * 100) / 100
-        discount = Math.round(cartDiscount * blueRate * 100) / 100
-        usdInfo = { usdTotal: cartTotal, usdRate: blueRate }
+        total = Math.round(cartTotal * effectiveBlueRate * 100) / 100
+        subtotal = Math.round(cartSubtotal * effectiveBlueRate * 100) / 100
+        discount = Math.round(cartDiscount * effectiveBlueRate * 100) / 100
+        usdInfo = { usdTotal: cartTotal, usdRate: effectiveBlueRate }
+    }
+    // Aplicar recargo si es crédito
+    let creditSurchargeAmount = 0
+    if (paymentMethod === 'credit' && creditSurcharge > 0) {
+        creditSurchargeAmount = Math.round((total * creditSurcharge) / 100)
+        total += creditSurchargeAmount
     }
 
     const formatCurrency = (amount: number) => {
@@ -77,7 +105,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, c
         if (paymentMethod === 'cash') {
             const cash = parseFloat(cashAmount) || 0
             return cash >= total
-        } else if (paymentMethod === 'card') {
+        } else if (paymentMethod === 'debit' || paymentMethod === 'credit') {
             return true
         } else if (paymentMethod === 'transfer') {
             return true
@@ -217,8 +245,10 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, c
             yPos += 4
             const change = Math.max(0, lastSaleData.cashAmount - saleTotal)
             doc.text(`Vuelto: ${formatCurrency(change)}`, 5, yPos)
-        } else if (lastSaleData?.paymentMethod === 'card') {
-            doc.text('Metodo de pago: Tarjeta', 5, yPos)
+        } else if (lastSaleData?.paymentMethod === 'debit') {
+            doc.text('Metodo de pago: Débito', 5, yPos)
+        } else if (lastSaleData?.paymentMethod === 'credit') {
+            doc.text('Metodo de pago: Crédito', 5, yPos)
         } else if (lastSaleData?.paymentMethod === 'transfer') {
             doc.text('Metodo de pago: Transferencia', 5, yPos)
         } else {
@@ -257,26 +287,52 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, c
         const saleDiscount = discount
         const saleItems = [...items] // Copiar items antes de que se borren
 
+        // Calcular montos según método
+        let cash = 0, card = 0, transfer = 0
+        if (paymentMethod === 'cash') {
+            cash = parseFloat(cashAmount) || saleTotal
+        } else if (paymentMethod === 'debit' || paymentMethod === 'credit') {
+            card = saleTotal
+        } else if (paymentMethod === 'transfer') {
+            transfer = saleTotal
+        } else if (paymentMethod === 'mixed') {
+            cash = parseFloat(cashAmount) || 0
+            card = parseFloat(cardAmount) || 0
+            transfer = parseFloat(transferAmount) || 0
+        }
+
         try {
             const paymentMethodStr = paymentMethod === 'cash' ? 'Efectivo' :
-                paymentMethod === 'card' ? 'Tarjeta' :
+                paymentMethod === 'debit' ? 'Débito' :
+                paymentMethod === 'credit' ? 'Crédito' :
                 paymentMethod === 'transfer' ? 'Transferencia' : 'Mixto'
+
+            // Guardar cuenta seleccionada si es transferencia
+            let transferAccountInfo = null
+            if (paymentMethod === 'transfer' || paymentMethod === 'mixed') {
+                const acc = accounts.find(a => a.id === selectedTransferAccount)
+                transferAccountInfo = acc ? { ...acc } : null
+            }
 
             const result = await store.processSale(
                 paymentMethodStr,
-                paymentMethod !== 'card' && paymentMethod !== 'transfer' ? parseFloat(cashAmount) : 0
+                cash,
+                card,
+                transfer,
+                transferAccountInfo
             )
 
             if (result.success) {
                 const saleData = {
                     paymentMethod,
-                    cashAmount: paymentMethod !== 'card' && paymentMethod !== 'transfer' ? parseFloat(cashAmount) : 0,
-                    cardAmount: paymentMethod !== 'cash' && paymentMethod !== 'transfer' ? parseFloat(cardAmount || String(total)) : 0,
-                    transferAmount: paymentMethod === 'mixed' ? parseFloat(transferAmount) || 0 : paymentMethod === 'transfer' ? parseFloat(transferAmount) || total : 0,
+                    cashAmount: cash,
+                    cardAmount: card,
+                    transferAmount: transfer,
                     total: saleTotal,
                     subtotal: saleSubtotal,
                     discount: saleDiscount,
-                    items: saleItems
+                    items: saleItems,
+                    transferAccount: transferAccountInfo
                 }
 
                 setLastSaleData(saleData)
@@ -319,11 +375,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, c
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
                             </svg>
                         </div>
-
-                        <h3 className="text-lg font-medium text-gray-900 mb-2">
-                            ¡Venta Exitosa!
-                        </h3>
-
+                        <h3 className="text-lg font-medium text-gray-900 mb-2">¡Venta Exitosa!</h3>
                         <div className="mt-4 space-y-2 text-sm text-gray-600">
                             <p>Total: <span className="font-semibold">{formatCurrency(saleTotal)}</span></p>
                             {saleDiscount > 0 && (
@@ -333,7 +385,6 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, c
                                 <p>Vuelto: <span className="font-semibold">{formatCurrency(saleChange)}</span></p>
                             )}
                         </div>
-
                         <div className="mt-6 flex gap-3">
                             <button
                                 onClick={() => generatePDF(saleTotal, saleSubtotal, saleDiscount, saleItems)}
@@ -379,7 +430,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, c
                                 <span>Modo precio:</span>
                                 <span className="font-semibold">
                                     {priceModeLabel(priceMode)}
-                                    {priceMode === 'usd_to_ars' && blueRate && ` · Blue $${blueRate.toLocaleString('es-AR')}`}
+                                    {priceMode === 'usd_to_ars' && effectiveBlueRate && ` · Blue $${effectiveBlueRate.toLocaleString('es-AR')}`}
                                 </span>
                             </div>
                         )}
@@ -404,7 +455,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, c
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                             Método de Pago
                         </label>
-                        <div className="grid grid-cols-3 gap-2">
+                        <div className="grid grid-cols-5 gap-2">
                             <button
                                 onClick={() => setPaymentMethod('cash')}
                                 className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${paymentMethod === 'cash'
@@ -415,18 +466,26 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, c
                                 <Banknote className="h-6 w-6" />
                                 <span className="text-sm font-medium">Efectivo</span>
                             </button>
-
                             <button
-                                onClick={() => setPaymentMethod('card')}
-                                className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${paymentMethod === 'card'
+                                onClick={() => setPaymentMethod('debit')}
+                                className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${paymentMethod === 'debit'
                                     ? 'border-blue-600 bg-blue-50'
                                     : 'border-gray-200 hover:border-gray-300'
                                     }`}
                             >
                                 <CreditCard className="h-6 w-6" />
-                                <span className="text-sm font-medium">Tarjeta</span>
+                                <span className="text-sm font-medium">Débito</span>
                             </button>
-
+                            <button
+                                onClick={() => setPaymentMethod('credit')}
+                                className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${paymentMethod === 'credit'
+                                    ? 'border-blue-600 bg-blue-50'
+                                    : 'border-gray-200 hover:border-gray-300'
+                                    }`}
+                            >
+                                <CreditCard className="h-6 w-6" />
+                                <span className="text-sm font-medium">Crédito</span>
+                            </button>
                             <button
                                 onClick={() => setPaymentMethod('transfer')}
                                 className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${paymentMethod === 'transfer'
@@ -437,7 +496,6 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, c
                                 <DollarSign className="h-6 w-6" />
                                 <span className="text-sm font-medium">Transferencia</span>
                             </button>
-
                             <button
                                 onClick={() => setPaymentMethod('mixed')}
                                 className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${paymentMethod === 'mixed'
@@ -484,25 +542,119 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, c
                         </div>
                     )}
 
-                    {paymentMethod === 'card' && (
-                        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    {(paymentMethod === 'debit' || paymentMethod === 'credit') && (
+                        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-3">
                             <div className="flex items-center gap-3">
                                 <CreditCard className="h-5 w-5 text-blue-600" />
                                 <span className="text-sm text-blue-700">
                                     💳 Procesar pago con tarjeta en el terminal
                                 </span>
                             </div>
+                            {paymentMethod === 'credit' && (
+                                <div className="flex flex-col gap-3 mt-3">
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-700 mb-1">Recargo/interés (%)</label>
+                                        <input
+                                            type="number"
+                                            min={0}
+                                            step={0.1}
+                                            value={creditSurcharge}
+                                            onChange={e => setCreditSurcharge(Number(e.target.value))}
+                                            className="w-full px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            placeholder="Ej: 10"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-700 mb-1">Cuotas</label>
+                                        <input
+                                            type="number"
+                                            min={1}
+                                            step={1}
+                                            value={creditInstallments}
+                                            onChange={e => setCreditInstallments(Math.max(1, Number(e.target.value)))}
+                                            className="w-full px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            placeholder="Ej: 3"
+                                        />
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
 
                     {paymentMethod === 'transfer' && (
-                        <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                        <div className="p-4 bg-green-50 border border-green-200 rounded-lg space-y-3">
                             <div className="flex items-center gap-3">
                                 <DollarSign className="h-5 w-5 text-green-600" />
                                 <span className="text-sm text-green-700">
                                     💸 Transferencia bancaria recibida
                                 </span>
                             </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Cuenta destino</label>
+                                <select
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    value={selectedTransferAccount}
+                                    onChange={e => setSelectedTransferAccount(e.target.value)}
+                                >
+                                    {accounts.map(acc => (
+                                        <option key={acc.id} value={acc.id}>
+                                            {acc.nombre} {acc.alias ? `· ${acc.alias}` : ''} {acc.cbu ? `· ${acc.cbu}` : ''} {acc.generica ? '(Genérica)' : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                                <button
+                                    type="button"
+                                    className="mt-2 text-xs text-blue-600 underline"
+                                    onClick={() => setShowAddAccount(true)}
+                                >
+                                    + Agregar nueva cuenta
+                                </button>
+                            </div>
+                            {showAddAccount && (
+                                <div className="mt-2 p-2 border rounded bg-white shadow">
+                                    <div className="mb-1">
+                                        <input
+                                            type="text"
+                                            className="w-full px-2 py-1 border rounded mb-1"
+                                            placeholder="Nombre de la cuenta *"
+                                            value={newAccount.nombre}
+                                            onChange={e => setNewAccount({ ...newAccount, nombre: e.target.value })}
+                                        />
+                                        <input
+                                            type="text"
+                                            className="w-full px-2 py-1 border rounded mb-1"
+                                            placeholder="Alias (opcional)"
+                                            value={newAccount.alias}
+                                            onChange={e => setNewAccount({ ...newAccount, alias: e.target.value })}
+                                        />
+                                        <input
+                                            type="text"
+                                            className="w-full px-2 py-1 border rounded mb-1"
+                                            placeholder="CBU (opcional)"
+                                            value={newAccount.cbu}
+                                            onChange={e => setNewAccount({ ...newAccount, cbu: e.target.value })}
+                                        />
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button
+                                            type="button"
+                                            className="flex-1 bg-blue-600 text-white px-2 py-1 rounded"
+                                            disabled={!newAccount.nombre.trim()}
+                                            onClick={() => {
+                                                addAccount(newAccount).then(() => {
+                                                    setShowAddAccount(false)
+                                                    setNewAccount({ nombre: '', alias: '', cbu: '', generica: false })
+                                                })
+                                            }}
+                                        >Guardar</button>
+                                        <button
+                                            type="button"
+                                            className="flex-1 bg-gray-200 text-gray-700 px-2 py-1 rounded"
+                                            onClick={() => setShowAddAccount(false)}
+                                        >Cancelar</button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -546,6 +698,74 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, c
                                     placeholder="0.00"
                                     step="0.01"
                                 />
+                                <div className="mt-2">
+                                    <label className="block text-xs text-gray-600 mb-1">Cuenta destino</label>
+                                    <select
+                                        className="w-full px-2 py-1 border border-gray-300 rounded"
+                                        value={selectedTransferAccount}
+                                        onChange={e => setSelectedTransferAccount(e.target.value)}
+                                        disabled={loadingAccounts}
+                                    >
+                                        {loadingAccounts ? (
+                                            <option>Cargando cuentas...</option>
+                                        ) : accounts.map(acc => (
+                                            <option key={acc.id} value={acc.id}>
+                                                {acc.nombre} {acc.alias ? `· ${acc.alias}` : ''} {acc.cbu ? `· ${acc.cbu}` : ''} {acc.generica ? '(Genérica)' : ''}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <button
+                                        type="button"
+                                        className="mt-1 text-xs text-blue-600 underline"
+                                        onClick={() => setShowAddAccount(true)}
+                                    >
+                                        + Agregar nueva cuenta
+                                    </button>
+                                </div>
+                                {showAddAccount && (
+                                    <div className="mt-2 p-2 border rounded bg-white shadow">
+                                        <div className="mb-1">
+                                            <input
+                                                type="text"
+                                                className="w-full px-2 py-1 border rounded mb-1"
+                                                placeholder="Nombre de la cuenta *"
+                                                value={newAccount.nombre}
+                                                onChange={e => setNewAccount({ ...newAccount, nombre: e.target.value })}
+                                            />
+                                            <input
+                                                type="text"
+                                                className="w-full px-2 py-1 border rounded mb-1"
+                                                placeholder="Alias (opcional)"
+                                                value={newAccount.alias}
+                                                onChange={e => setNewAccount({ ...newAccount, alias: e.target.value })}
+                                            />
+                                            <input
+                                                type="text"
+                                                className="w-full px-2 py-1 border rounded mb-1"
+                                                placeholder="CBU (opcional)"
+                                                value={newAccount.cbu}
+                                                onChange={e => setNewAccount({ ...newAccount, cbu: e.target.value })}
+                                            />
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button
+                                                type="button"
+                                                className="flex-1 bg-blue-600 text-white px-2 py-1 rounded"
+                                                disabled={!newAccount.nombre.trim()}
+                                                onClick={() => {
+                                                    addAccount(newAccount)
+                                                    setShowAddAccount(false)
+                                                    setNewAccount({ nombre: '', alias: '', cbu: '', generica: false })
+                                                }}
+                                            >Guardar</button>
+                                            <button
+                                                type="button"
+                                                className="flex-1 bg-gray-200 text-gray-700 px-2 py-1 rounded"
+                                                onClick={() => setShowAddAccount(false)}
+                                            >Cancelar</button>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                             <div className="text-sm">
                                 Total ingresado: {formatCurrency((parseFloat(cashAmount) || 0) + (parseFloat(cardAmount) || 0) + (parseFloat(transferAmount) || 0))}

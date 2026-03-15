@@ -19,6 +19,7 @@ import {
   Legend,
   ResponsiveContainer
 } from 'recharts'
+import { useSalesStore } from '@/store/sales'
 
 type ChartType =
   | 'revenue-period'
@@ -30,8 +31,11 @@ type ChartType =
   | 'profit-margin-category'
   | 'stock-alerts'
   | 'inventory-value'
+  | 'inventory-value-category'
   | 'movements'
   | 'cash-register-summary'
+  | 'revenue-payment-method'
+  | 'sales-count-per-day'
 
 interface ChartOption {
   id: ChartType
@@ -42,6 +46,27 @@ interface ChartOption {
 }
 
 const chartOptions: ChartOption[] = [
+  {
+    id: 'sales-count-per-day',
+    label: 'Cantidad de Ventas por Día',
+    icon: TrendingUp,
+    description: 'Cantidad de ventas realizadas cada día en el período seleccionado',
+    category: 'commercial'
+  },
+    {
+      id: 'inventory-value-category',
+      label: 'Valor de Inventario por Categoría',
+      icon: Package,
+      description: 'Valor total de inventario agrupado por categoría',
+      category: 'inventory'
+    },
+  {
+    id: 'revenue-payment-method',
+    label: 'Ingresos por Método de Pago',
+    icon: DollarSign,
+    description: 'Comparativa de ingresos por tipo de pago (efectivo, débito, crédito, transferencia, mixto)',
+    category: 'commercial'
+  },
   {
     id: 'cash-register-summary',
     label: 'Arqueo de Caja por Usuario',
@@ -145,6 +170,8 @@ export default function Reports() {
     fetchSalesData
   } = useReportsStore()
 
+  const profitMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
+
   const { branches, fetchBranches } = useBranchesStore()
   const { registers: cashRegisters, isLoading: isLoadingCashRegisters, fetchRegisters } = useCashRegisterStore()
 
@@ -230,8 +257,103 @@ export default function Reports() {
 
   const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#84cc16', '#6366f1']
 
+  // --- Agrupación de ingresos por método de pago ---
+  // Importar el hook correctamente para React
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  // const { sales } = require('@/store/sales').useSalesStore()
+  // Usar el hook directamente:
+  // (Evitar doble llamada: si ya existe useSalesStore, usarlo solo una vez)
+
+  // Buscar si ya existe el hook en este archivo:
+  // import { useSalesStore } from '@/store/sales'
+  // Si no, agregarlo arriba:
+  // import { useSalesStore } from '@/store/sales'
+
+
+  // Usar el hook correctamente:
+  const { sales } = useSalesStore()
+
+  const paymentMethodLabels: Record<string, string> = {
+    'Efectivo': 'Efectivo',
+    'Débito': 'Débito',
+    'Crédito': 'Crédito',
+    'Transferencia': 'Transferencia',
+    'Mixto': 'Mixto',
+    'cash': 'Efectivo',
+    'debit': 'Débito',
+    'credit': 'Crédito',
+    'transfer': 'Transferencia',
+    'mixed': 'Mixto',
+  }
+  const paymentSummary = (sales || []).reduce((acc: Record<string, number>, sale: any) => {
+    if (sale.status !== 'completed') return acc
+    const label = paymentMethodLabels[sale.payment_method] || sale.payment_method || 'Otro'
+    acc[label] = (acc[label] || 0) + (sale.total || 0)
+    return acc
+  }, {})
+  const paymentSummaryArr = Object.entries(paymentSummary).map(([method, total]) => ({ method, total }))
   const renderChart = () => {
     switch (selectedChart) {
+      case 'sales-count-per-day': {
+        // Agrupar ventas por día y contar cantidad
+        const salesByDay: Record<string, number> = {};
+        (sales || []).forEach((sale: any) => {
+          if (sale.status !== 'completed') return;
+          const date = new Date(sale.created_at).toLocaleDateString('es-AR');
+          salesByDay[date] = (salesByDay[date] || 0) + 1;
+        });
+        // Ordenar por fecha ascendente
+        const salesCountArr = Object.entries(salesByDay)
+          .map(([date, count]) => ({ date, count }))
+          .sort((a, b) => {
+            const [d1, m1, y1] = a.date.split('/').map(Number);
+            const [d2, m2, y2] = b.date.split('/').map(Number);
+            return new Date(y1, m1 - 1, d1).getTime() - new Date(y2, m2 - 1, d2).getTime();
+          });
+        return (
+          <div className="bg-white rounded-lg p-6 shadow-sm">
+            <h3 className="text-lg font-semibold mb-4">Cantidad de Ventas por Día</h3>
+            <ResponsiveContainer width="100%" height={400}>
+              <LineChart data={salesCountArr}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" />
+                <YAxis allowDecimals={false} />
+                <Tooltip formatter={(value) => `${value} ventas`} />
+                <Legend />
+                <Line type="monotone" dataKey="count" stroke="#3b82f6" name="Cantidad de Ventas" strokeWidth={2} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        );
+      }
+      case 'inventory-value-category': {
+        // Agrupar productos por categoría y sumar el valor
+        const inventoryValueByCategory: Record<string, number> = {};
+        topProductsByValue.forEach((prod: any) => {
+          const cat = prod.category_name || 'Sin categoría';
+          inventoryValueByCategory[cat] = (inventoryValueByCategory[cat] || 0) + (prod.stock_value_sale || 0);
+        });
+        const inventoryValueArr = Object.entries(inventoryValueByCategory).map(([category, total]) => ({ category, total }));
+        const totalValue = inventoryValueArr.reduce((acc, row) => acc + row.total, 0);
+        return (
+          <div className="bg-white rounded-lg p-6 shadow-sm">
+            <h3 className="text-lg font-semibold mb-2">Valor de Inventario por Categoría</h3>
+            <div className="mb-4 text-lg font-bold text-green-700">
+              Valor total de inventario: {formatCurrency(totalValue)}
+            </div>
+            <ResponsiveContainer width="100%" height={400}>
+              <BarChart data={inventoryValueArr} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis type="number" tickFormatter={formatCurrency} />
+                <YAxis dataKey="category" type="category" width={200} />
+                <Tooltip formatter={(value) => formatCurrency(Number(value))} />
+                <Legend />
+                <Bar dataKey="total" fill="#10b981" name="Valor de Inventario" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        );
+      }
       case 'cash-register-summary': {
         const resumenPorUsuario: Record<string, {
           nombre: string
@@ -472,9 +594,14 @@ export default function Reports() {
         )
 
       case 'inventory-value':
+        // Calcular el total del valor de inventario
+        const totalInventoryValue = topProductsByValue.reduce((acc, prod) => acc + (prod.stock_value_sale || 0), 0)
         return (
           <div className="bg-white rounded-lg p-6 shadow-sm">
-            <h3 className="text-lg font-semibold mb-4">Top 10 Productos por Valor en Stock</h3>
+            <h3 className="text-lg font-semibold mb-2">Top 10 Productos por Valor en Stock</h3>
+            <div className="mb-4 text-lg font-bold text-green-700">
+              Valor total de inventario: {formatCurrency(totalInventoryValue)}
+            </div>
             <ResponsiveContainer width="100%" height={400}>
               <BarChart data={topProductsByValue} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" />
@@ -507,12 +634,51 @@ export default function Reports() {
           </div>
         )
 
+      case 'revenue-payment-method':
+        return (
+          <div className="bg-white rounded-lg p-6 shadow-sm">
+            <h3 className="text-lg font-semibold mb-4">Ingresos por Método de Pago</h3>
+            {paymentSummaryArr.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">No hay datos de ventas.</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={380}>
+                <BarChart
+                  data={paymentSummaryArr}
+                  margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                  <XAxis
+                    dataKey="method"
+                    tick={{ fontSize: 14, fontWeight: 500 }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    tickFormatter={(value) => formatCurrency(value)}
+                    tick={{ fontSize: 12 }}
+                    axisLine={false}
+                    tickLine={false}
+                    width={120}
+                  />
+                  <Tooltip
+                    formatter={(value) => [formatCurrency(Number(value)), 'Ingresos']}
+                    cursor={{ fill: 'rgba(59,130,246,0.07)' }}
+                  />
+                  <Bar dataKey="total" name="Ingresos" radius={[6, 6, 0, 0]} maxBarSize={80}>
+                    {paymentSummaryArr.map((_, idx) => (
+                      <Cell key={idx} fill={COLORS[idx % COLORS.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        )
       default:
         return null
     }
   }
 
-  const profitMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0
 
   return (
     <div className="p-6 space-y-6">

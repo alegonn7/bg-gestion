@@ -1,5 +1,8 @@
 import { create } from 'zustand'
 
+import { useAuthStore } from '@/store/auth'
+import { supabase } from '@/lib/supabase'
+
 interface DollarState {
   blueRate: number | null // Precio venta del dólar blue
   blueBuyRate: number | null // Precio compra del dólar blue
@@ -7,8 +10,17 @@ interface DollarState {
   isLoading: boolean
   error: string | null
 
+  // NUEVO: modo manual y valores manuales
+  manualMode: boolean
+  manualBlueRate: number | null
+  manualBlueBuyRate: number | null
+
+  setManualMode: (manual: boolean) => Promise<void>
+  setManualRates: (venta: number, compra: number) => Promise<void>
+
   fetchBlueRate: () => Promise<void>
   convertUsdToArs: (usd: number) => number | null
+  syncFromOrg: () => void
 }
 
 export const useDollarStore = create<DollarState>((set, get) => ({
@@ -17,6 +29,54 @@ export const useDollarStore = create<DollarState>((set, get) => ({
   lastUpdated: null,
   isLoading: false,
   error: null,
+  manualMode: false,
+  manualBlueRate: null,
+  manualBlueBuyRate: null,
+
+  // Sincroniza desde metadata de la organización
+  syncFromOrg: () => {
+    const org = useAuthStore.getState().organization;
+    const meta = org?.metadata || {};
+    set({
+      manualMode: !!meta.dollar_manual_mode,
+      manualBlueRate: meta.dollar_manual_blue_rate ?? null,
+      manualBlueBuyRate: meta.dollar_manual_blue_buy_rate ?? null,
+    });
+  },
+
+  setManualMode: async (manual: boolean) => {
+    const org = useAuthStore.getState().organization;
+    if (!org) return;
+    const meta = { ...org.metadata, dollar_manual_mode: manual };
+    // Actualizar en BD
+    await supabase
+      .from('organizations')
+      .update({ metadata: meta })
+      .eq('id', org.id);
+    // Actualizar en el store de auth
+    useAuthStore.setState((state) => ({
+      organization: state.organization ? { ...state.organization, metadata: meta } : null,
+    }));
+    set({ manualMode: manual });
+  },
+
+  setManualRates: async (venta: number, compra: number) => {
+    const org = useAuthStore.getState().organization;
+    if (!org) return;
+    const meta = {
+      ...org.metadata,
+      dollar_manual_blue_rate: venta,
+      dollar_manual_blue_buy_rate: compra,
+    };
+    await supabase
+      .from('organizations')
+      .update({ metadata: meta })
+      .eq('id', org.id);
+    useAuthStore.setState((state) => ({
+      organization: state.organization ? { ...state.organization, metadata: meta } : null,
+    }));
+    set({ manualBlueRate: venta, manualBlueBuyRate: compra });
+  },
 
   fetchBlueRate: async () => {
     // No refetchear si ya tenemos datos de hace menos de 5 minutos
@@ -73,8 +133,9 @@ export const useDollarStore = create<DollarState>((set, get) => ({
   },
 
   convertUsdToArs: (usd: number) => {
-    const { blueRate } = get()
-    if (!blueRate || !usd) return null
-    return Math.round(usd * blueRate * 100) / 100
+    const { manualMode, manualBlueRate, blueRate } = get();
+    const rate = manualMode ? manualBlueRate : blueRate;
+    if (!rate || !usd) return null;
+    return Math.round(usd * rate * 100) / 100;
   },
 }))

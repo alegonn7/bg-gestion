@@ -1,10 +1,15 @@
+
 import { useEffect, useState } from 'react'
-import { Download, Filter, Building2, DollarSign, FileText, XCircle, AlertTriangle} from 'lucide-react'
+import { Download, Filter, Building2, DollarSign, FileText, XCircle, AlertTriangle } from 'lucide-react'
 import { useSalesStore } from '@/store/sales'
+import { fetchTransferAccountById } from '@/lib/fetch-transfer-account'
 import { useBranchesStore } from '@/store/branches'
 import { useAuthStore } from '@/store/auth'
 import jsPDF from 'jspdf'
 import { useUsersStore } from '@/store/users'
+
+
+
 
 export default function SalesHistory() {
   const {
@@ -23,8 +28,12 @@ export default function SalesHistory() {
   const { users, fetchUsers } = useUsersStore()
 
   const [showFilters, setShowFilters] = useState(false)
-  const [localStartDate, setLocalStartDate] = useState('')
-  const [localEndDate, setLocalEndDate] = useState('')
+  // Por defecto: mes actual
+  const today = new Date()
+  const firstDay = new Date(today.getFullYear(), today.getMonth(), 1)
+  const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+  const [localStartDate, setLocalStartDate] = useState(firstDay.toISOString().slice(0, 10))
+  const [localEndDate, setLocalEndDate] = useState(lastDay.toISOString().slice(0, 10))
   const [localSearchQuery, setLocalSearchQuery] = useState('')
   const [voidConfirmId, setVoidConfirmId] = useState<string | null>(null)
   const [isVoiding, setIsVoiding] = useState(false)
@@ -244,24 +253,53 @@ export default function SalesHistory() {
     doc.save(`venta-${sale.id.slice(0, 8)}-${Date.now()}.pdf`)
   }
 
-  // Filtrar ventas por búsqueda
-  const filteredSales = sales.filter(sale => {
+  // Cargar nombre de cuenta de transferencia si corresponde
+  useEffect(() => {
+    (async () => {
+      for (const sale of sales) {
+        if (sale.transfer_account_id && !sale.transfer_account_name) {
+          const acc = await fetchTransferAccountById(sale.transfer_account_id)
+          if (acc && acc.nombre) {
+            sale.transfer_account_name = acc.nombre + (acc.alias ? ` (${acc.alias})` : '')
+          }
+        }
+      }
+    })()
+  }, [sales])
+
+  // Filtrar ventas por búsqueda y por mes seleccionado
+  const filteredSales = sales.filter((sale) => {
+    // Filtrar por mes (estadísticas SIEMPRE mensuales)
+    const saleDate = new Date(sale.created_at)
+    const start = new Date(localStartDate)
+    const end = new Date(localEndDate)
+    if (saleDate < start || saleDate > end) return false
     if (!searchQuery) return true
-    
     const searchLower = searchQuery.toLowerCase()
     return (
       sale.branch_name.toLowerCase().includes(searchLower) ||
-      sale.items.some(item => item.product_name.toLowerCase().includes(searchLower)) ||
+      sale.items.some((item) => item.product_name.toLowerCase().includes(searchLower)) ||
       formatCurrency(sale.total).includes(searchLower)
     )
   })
 
-  // Estadísticas (excluir anuladas)
-  const activeSales = filteredSales.filter(s => s.status !== 'voided')
+  // Paginación
+  const PAGE_SIZE = 15
+  const [currentPage, setCurrentPage] = useState(1)
+  const totalPages = Math.ceil(filteredSales.length / PAGE_SIZE)
+  const paginatedSales = filteredSales.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+
+  // Estadísticas (excluir anuladas, solo del mes)
+  const activeSales = filteredSales.filter((s) => s.status !== 'voided')
   const totalSales = activeSales.length
   const totalRevenue = activeSales.reduce((sum, sale) => sum + sale.total, 0)
   const averageSale = totalSales > 0 ? totalRevenue / totalSales : 0
-  const voidedCount = filteredSales.filter(s => s.status === 'voided').length
+  const voidedCount = filteredSales.filter((s) => s.status === 'voided').length
+
+  // Resetear página al cambiar filtros o fechas
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [localStartDate, localEndDate, searchQuery, selectedBranchId, selectedUserId])
 
   return (
     <div className="h-full flex flex-col bg-gray-50">
@@ -283,6 +321,9 @@ export default function SalesHistory() {
         </div>
 
         {/* Stats Cards */}
+        <div className="mb-2">
+          <span className="inline-block bg-blue-100 text-blue-700 text-xs font-semibold px-3 py-1 rounded">Estadísticas del mes seleccionado</span>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-blue-50 rounded-lg p-4">
             <div className="flex items-center gap-3">
@@ -404,12 +445,28 @@ export default function SalesHistory() {
 
       {/* Sales List */}
       <div className="flex-1 overflow-y-auto p-6">
+        {/* Paginación arriba */}
+        {totalPages > 1 && (
+          <div className="flex justify-end mb-4 gap-2">
+            <button
+              className="px-3 py-1 rounded bg-gray-100 text-gray-700 disabled:opacity-50"
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+            >Anterior</button>
+            <span className="px-2 py-1 text-sm text-gray-600">Página {currentPage} de {totalPages}</span>
+            <button
+              className="px-3 py-1 rounded bg-gray-100 text-gray-700 disabled:opacity-50"
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+            >Siguiente</button>
+          </div>
+        )}
         {isLoading ? (
           <div className="text-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
             <p className="mt-4 text-gray-600">Cargando ventas...</p>
           </div>
-        ) : filteredSales.length === 0 ? (
+        ) : paginatedSales.length === 0 ? (
           <div className="text-center py-12">
             <FileText className="h-16 w-16 mx-auto text-gray-400 mb-4" />
             <p className="text-gray-600">No se encontraron ventas</p>
@@ -417,120 +474,139 @@ export default function SalesHistory() {
           </div>
         ) : (
           <div className="space-y-4">
-            {filteredSales.map((sale) => {
-              const isVoided = sale.status === 'voided'
+            {paginatedSales.map((sale) => {
+              const isVoided = sale.status === 'voided';
               return (
-              <div key={sale.id} className={`bg-white rounded-lg shadow-sm border overflow-hidden ${isVoided ? 'border-red-200 opacity-70' : 'border-gray-200'}`}>
-                {/* Sale Header */}
-                <div className={`px-4 py-3 border-b flex items-center justify-between ${isVoided ? 'bg-red-50' : 'bg-gray-50'}`}>
-                  <div className="flex items-center gap-4">
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">
-                        {formatDate(sale.created_at)}
-                      </p>
-                      <p className="text-xs text-gray-500">
-                        ID: {sale.id.slice(0, 8)}
-                      </p>
+                <div key={sale.id} className={`bg-white rounded-lg shadow-sm border overflow-hidden ${isVoided ? 'border-red-200 opacity-70' : 'border-gray-200'}`}>
+                  {/* Sale Header */}
+                  <div className={`px-4 py-3 border-b flex items-center justify-between ${isVoided ? 'bg-red-50' : 'bg-gray-50'}`}>
+                    <div className="flex items-center gap-4">
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">
+                          {formatDate(sale.created_at)}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          ID: {sale.id.slice(0, 8)}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <Building2 className="h-4 w-4" />
+                        {sale.branch_name}
+                      </div>
+                      {isVoided && (
+                        <span className="px-2.5 py-1 bg-red-100 text-red-700 text-xs font-bold rounded-full flex items-center gap-1">
+                          <XCircle className="w-3 h-3" />
+                          ANULADA
+                        </span>
+                      )}
                     </div>
-                    <div className="flex items-center gap-2 text-sm text-gray-600">
-                      <Building2 className="h-4 w-4" />
-                      {sale.branch_name}
+                    <div className="flex items-center gap-2">
+                      {!isVoided && canVoidSale && (
+                        <>
+                          {voidConfirmId === sale.id ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-red-600 font-medium">¿Anular?</span>
+                              <button
+                                onClick={() => handleVoidSale(sale.id)}
+                                disabled={isVoiding}
+                                className="px-3 py-1.5 bg-red-600 text-white text-xs font-medium rounded-lg hover:bg-red-700 disabled:opacity-50"
+                              >
+                                {isVoiding ? 'Anulando...' : 'Confirmar'}
+                              </button>
+                              <button
+                                onClick={() => setVoidConfirmId(null)}
+                                className="px-3 py-1.5 bg-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-300"
+                              >
+                                Cancelar
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setVoidConfirmId(sale.id)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-600 text-sm rounded-lg hover:bg-red-100 border border-red-200"
+                            >
+                              <XCircle className="h-4 w-4" />
+                              Anular
+                            </button>
+                          )}
+                        </>
+                      )}
+                      <button
+                        onClick={() => generatePDF(sale)}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
+                      >
+                        <Download className="h-4 w-4" />
+                        Descargar
+                      </button>
                     </div>
-                    {isVoided && (
-                      <span className="px-2.5 py-1 bg-red-100 text-red-700 text-xs font-bold rounded-full flex items-center gap-1">
-                        <XCircle className="w-3 h-3" />
-                        ANULADA
-                      </span>
-                    )}
                   </div>
-                  
-                  <div className="flex items-center gap-2">
-                    {!isVoided && canVoidSale && (
-                      <>
-                        {voidConfirmId === sale.id ? (
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-red-600 font-medium">¿Anular?</span>
-                            <button
-                              onClick={() => handleVoidSale(sale.id)}
-                              disabled={isVoiding}
-                              className="px-3 py-1.5 bg-red-600 text-white text-xs font-medium rounded-lg hover:bg-red-700 disabled:opacity-50"
-                            >
-                              {isVoiding ? 'Anulando...' : 'Confirmar'}
-                            </button>
-                            <button
-                              onClick={() => setVoidConfirmId(null)}
-                              className="px-3 py-1.5 bg-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-300"
-                            >
-                              Cancelar
-                            </button>
+                  {/* Sale Items */}
+                  <div className="p-4">
+                    <div className="space-y-2 mb-4">
+                      {sale.items.map((item, index: number) => (
+                        <div key={index} className="flex items-center justify-between text-sm">
+                          <div className="flex-1">
+                            <span className={`font-medium ${isVoided ? 'line-through text-gray-400' : ''}`}>{item.product_name}</span>
+                            <span className="text-gray-500 ml-2">
+                              x{item.quantity} × {formatCurrency(item.price)}
+                            </span>
                           </div>
-                        ) : (
-                          <button
-                            onClick={() => setVoidConfirmId(sale.id)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-600 text-sm rounded-lg hover:bg-red-100 border border-red-200"
-                          >
-                            <XCircle className="h-4 w-4" />
-                            Anular
-                          </button>
-                        )}
-                      </>
-                    )}
-                    <button
-                      onClick={() => generatePDF(sale)}
-                      className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
-                    >
-                      <Download className="h-4 w-4" />
-                      Descargar
-                    </button>
-                  </div>
-                </div>
-
-                {/* Sale Items */}
-                <div className="p-4">
-                  <div className="space-y-2 mb-4">
-                    {sale.items.map((item, index) => (
-                      <div key={index} className="flex items-center justify-between text-sm">
-                        <div className="flex-1">
-                          <span className={`font-medium ${isVoided ? 'line-through text-gray-400' : ''}`}>{item.product_name}</span>
-                          <span className="text-gray-500 ml-2">
-                            x{item.quantity} × {formatCurrency(item.price)}
-                          </span>
+                          <span className={`font-medium ${isVoided ? 'line-through text-gray-400' : ''}`}>{formatCurrency(item.subtotal)}</span>
                         </div>
-                        <span className={`font-medium ${isVoided ? 'line-through text-gray-400' : ''}`}>{formatCurrency(item.subtotal)}</span>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="border-t pt-3 space-y-1">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Subtotal:</span>
-                      <span className={isVoided ? 'line-through text-gray-400' : ''}>{formatCurrency(sale.subtotal)}</span>
+                      ))}
                     </div>
-                    {sale.discount > 0 && (
-                      <div className="flex justify-between text-sm text-green-600">
-                        <span>Descuento:</span>
-                        <span>-{formatCurrency(sale.discount)}</span>
+                    <div className="border-t pt-3 space-y-1">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Subtotal:</span>
+                        <span className={isVoided ? 'line-through text-gray-400' : ''}>{formatCurrency(sale.subtotal)}</span>
                       </div>
-                    )}
-                    <div className="flex justify-between text-lg font-bold pt-1 border-t">
-                      <span>Total:</span>
-                      <span className={isVoided ? 'text-red-400 line-through' : 'text-blue-600'}>{formatCurrency(sale.total)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm text-gray-600 pt-2">
-                      <span>Método de pago:</span>
-                      <span className="font-medium">{sale.payment_method}</span>
-                    </div>
-                    {sale.created_by_name && (
-                      <div className="flex justify-between text-sm text-gray-600">
-                        <span>Atendió:</span>
-                        <span>{sale.created_by_name}</span>
+                      {sale.discount > 0 && (
+                        <div className="flex justify-between text-sm text-green-600">
+                          <span>Descuento:</span>
+                          <span>-{formatCurrency(sale.discount)}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-lg font-bold pt-1 border-t">
+                        <span>Total:</span>
+                        <span className={isVoided ? 'text-red-400 line-through' : 'text-blue-600'}>{formatCurrency(sale.total)}</span>
                       </div>
-                    )}
+                      <div className="flex justify-between text-sm text-gray-600 pt-2">
+                        <span>Método de pago:</span>
+                        <span className="font-medium">{sale.payment_method}</span>
+                      </div>
+                      {sale.payment_method.toLowerCase().includes('transfer') && sale.transfer_account_name && (
+                        <div className="flex justify-between text-sm text-blue-700">
+                          <span>Cuenta destino:</span>
+                          <span>{sale.transfer_account_name}</span>
+                        </div>
+                      )}
+                      {sale.created_by_name && (
+                        <div className="flex justify-between text-sm text-gray-600">
+                          <span>Atendió:</span>
+                          <span>{sale.created_by_name}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-              )
+              );
             })}
+          </div>
+        )}
+        {/* Paginación abajo */}
+        {totalPages > 1 && (
+          <div className="flex justify-end mt-6 gap-2">
+            <button
+              className="px-3 py-1 rounded bg-gray-100 text-gray-700 disabled:opacity-50"
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+            >Anterior</button>
+            <span className="px-2 py-1 text-sm text-gray-600">Página {currentPage} de {totalPages}</span>
+            <button
+              className="px-3 py-1 rounded bg-gray-100 text-gray-700 disabled:opacity-50"
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+            >Siguiente</button>
           </div>
         )}
       </div>

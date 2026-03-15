@@ -1,4 +1,5 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const Database = require('better-sqlite3');
 
@@ -70,15 +71,45 @@ function createWindow() {
 }
 
 // Inicializar app
+
 app.whenReady().then(() => {
   initDatabase();
   createWindow();
+
+  // Solo buscar actualizaciones en producción
+  if (process.env.NODE_ENV !== 'development') {
+    autoUpdater.checkForUpdatesAndNotify();
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     }
   });
+});
+
+// Eventos de autoUpdater
+autoUpdater.on('update-available', () => {
+  if (mainWindow) {
+    mainWindow.webContents.send('update_available');
+  }
+});
+
+autoUpdater.on('update-downloaded', () => {
+  if (mainWindow) {
+    mainWindow.webContents.send('update_downloaded');
+    // Opcional: mostrar diálogo para reiniciar
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Actualización lista',
+      message: 'Hay una nueva versión disponible. ¿Deseas reiniciar para actualizar?',
+      buttons: ['Reiniciar ahora', 'Después']
+    }).then(result => {
+      if (result.response === 0) {
+        autoUpdater.quitAndInstall();
+      }
+    });
+  }
 });
 
 app.on('window-all-closed', () => {

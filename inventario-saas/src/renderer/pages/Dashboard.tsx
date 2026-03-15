@@ -110,15 +110,25 @@ export default function Dashboard() {
         <div className={`border-b border-gray-200 ${sidebarCollapsed ? 'p-3 flex flex-col items-center' : 'p-5'}`}>
           {sidebarCollapsed ? (
             <div className="flex flex-col items-center">
-              <img src={logoImg} alt="BG Gestión" className="w-12 h-12 rounded-full object-cover" />
-              <span className="text-[9px] font-bold text-gray-400 mt-1">BG</span>
+              <img
+                src={organization?.logo_url || logoImg}
+                alt={organization?.name || 'BG Gestión'}
+                className="w-12 h-12 rounded-full object-cover bg-white border"
+                style={{ objectFit: 'cover', background: '#fff' }}
+              />
+              <span className="text-[9px] font-bold text-gray-400 mt-1">{organization?.name ? organization.name.slice(0, 2).toUpperCase() : 'BG'}</span>
             </div>
           ) : (
             <>
               <div className="flex items-center gap-3">
-                <img src={logoImg} alt="BG Gestión" className="w-14 h-14 rounded-full object-cover flex-shrink-0" />
+                <img
+                  src={organization?.logo_url || logoImg}
+                  alt={organization?.name || 'BG Gestión'}
+                  className="w-14 h-14 rounded-full object-cover flex-shrink-0 bg-white border"
+                  style={{ objectFit: 'cover', background: '#fff' }}
+                />
                 <div className="flex-1 min-w-0">
-                  <h1 className="font-bold text-gray-900 text-lg leading-tight">BG Gestión</h1>
+                  <h1 className="font-bold text-gray-900 text-lg leading-tight">{organization?.name || 'BG Gestión'}</h1>
                   <p className="text-xs text-gray-500 truncate">{organization?.name}</p>
                 </div>
               </div>
@@ -291,7 +301,9 @@ function DashboardHome() {
               <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center">
                 <TrendingUp className="w-5 h-5 text-emerald-600" />
               </div>
-              <span className="text-2xl font-bold text-emerald-700">{formatCurrency(todayStats.profit)}</span>
+              <div className="overflow-x-auto w-full flex justify-end">
+                <span className="text-2xl font-bold text-emerald-700 whitespace-nowrap">{formatCurrency(todayStats.profit)}</span>
+              </div>
             </div>
             <h3 className="text-sm font-medium text-gray-600">Ganancia Hoy</h3>
           </div>

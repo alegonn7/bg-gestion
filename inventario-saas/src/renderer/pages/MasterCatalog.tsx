@@ -23,6 +23,9 @@ export default function MasterCatalog() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [showDetailModal, setShowDetailModal] = useState(false)
   const [scanFeedback, setScanFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
+  // Paginación
+  const PAGE_SIZE = 15
+  const [currentPage, setCurrentPage] = useState(1)
 
   // Escáner físico: buscar producto por código de barras
   const handleBarcodeScan = useCallback((barcode: string) => {
@@ -62,6 +65,14 @@ export default function MasterCatalog() {
         return category?.id === selectedCategory
       }))
     : baseFilteredProducts
+
+  // Resetear página al cambiar filtros
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery, selectedCategory])
+
+  const totalPages = Math.ceil(filteredProducts.length / PAGE_SIZE)
+  const paginatedProducts = filteredProducts.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
 
   const handleRefresh = () => {
     fetchMasterProducts()
@@ -224,15 +235,37 @@ export default function MasterCatalog() {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredProducts.map((product, idx) => (
-              <ProductCard 
-                key={product.barcode || idx} 
-                product={product} 
-                onClick={() => handleProductClick(product)}
-              />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {paginatedProducts.map((product, idx) => (
+                <ProductCard 
+                  key={product.barcode || idx} 
+                  product={product} 
+                  onClick={() => handleProductClick(product)}
+                />
+              ))}
+            </div>
+            {/* Controles de paginación */}
+            {totalPages > 1 && (
+              <div className="flex justify-center items-center gap-2 mt-6">
+                <button
+                  className="px-3 py-1 rounded bg-gray-200 text-gray-700 disabled:opacity-50"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                >
+                  Anterior
+                </button>
+                <span className="mx-2 text-sm">Página {currentPage} de {totalPages}</span>
+                <button
+                  className="px-3 py-1 rounded bg-gray-200 text-gray-700 disabled:opacity-50"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                >
+                  Siguiente
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
 

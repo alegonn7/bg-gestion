@@ -16,7 +16,13 @@ interface ProductDetailModalProps {
 export default function ProductDetailModal({ product, isOpen, onClose, onEdit, onDelete, onMovement, onViewHistory, onDuplicate }: ProductDetailModalProps) {
   if (!isOpen || !product) return null
 
-  const { blueRate, convertUsdToArs, lastUpdated } = useDollarStore()
+  const { blueRate, manualMode, manualBlueRate, convertUsdToArs, lastUpdated } = useDollarStore()
+  const effectiveBlueRate = manualMode && manualBlueRate ? manualBlueRate : blueRate;
+  // Conversión usando el valor efectivo
+  const convertUsdToArsEffective = (usd: number) => {
+    if (!effectiveBlueRate || !usd) return null;
+    return Math.round(usd * effectiveBlueRate * 100) / 100;
+  };
 
   // Determinar datos según si es del maestro o propio
   const displayName = product.product?.name
@@ -197,9 +203,9 @@ export default function ProductDetailModal({ product, isOpen, onClose, onEdit, o
                   {product.price_cost_usd && product.price_cost_usd > 0 && (
                     <div>
                       <div className="text-xs text-purple-600 mb-1">Costo</div>
-                      {blueRate ? (
+                      {effectiveBlueRate ? (
                         <div className="text-xl font-bold text-purple-800">
-                          ${convertUsdToArs(product.price_cost_usd)?.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                          ${convertUsdToArsEffective(product.price_cost_usd)?.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                         </div>
                       ) : (
                         <div className="text-sm text-gray-400">Sin cotización</div>
@@ -212,9 +218,9 @@ export default function ProductDetailModal({ product, isOpen, onClose, onEdit, o
                   {product.price_sale_usd && product.price_sale_usd > 0 && (
                     <div>
                       <div className="text-xs text-purple-600 mb-1">Venta</div>
-                      {blueRate ? (
+                      {effectiveBlueRate ? (
                         <div className="text-xl font-bold text-purple-800">
-                          ${convertUsdToArs(product.price_sale_usd)?.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                          ${convertUsdToArsEffective(product.price_sale_usd)?.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                         </div>
                       ) : (
                         <div className="text-sm text-gray-400">Sin cotización</div>
@@ -225,11 +231,11 @@ export default function ProductDetailModal({ product, isOpen, onClose, onEdit, o
                     </div>
                   )}
                 </div>
-                {blueRate && (
+                {effectiveBlueRate && (
                   <div className="mt-3 pt-2 border-t border-purple-200">
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-purple-600">Cotización Blue</span>
-                      <span className="text-sm font-semibold text-purple-800">${blueRate.toLocaleString('es-AR')}</span>
+                      <span className="text-sm font-semibold text-purple-800">${effectiveBlueRate.toLocaleString('es-AR')}</span>
                     </div>
                     {lastUpdated && (
                       <p className="text-xs text-purple-600 mt-1">

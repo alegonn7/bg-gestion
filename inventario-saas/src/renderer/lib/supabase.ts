@@ -49,6 +49,7 @@ export interface Organization {
   max_users_per_branch: number
   is_active: boolean
   logo_url: string | null
+  metadata?: any // Soporta campos personalizados
 }
 
 export interface User {

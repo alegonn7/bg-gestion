@@ -33,7 +33,8 @@ interface Category {
 export default function CreateProductModal({ isOpen, onClose, initialBarcode, duplicateFrom }: CreateProductModalProps) {
   const { createProduct } = useProductsStore()
   const { organization } = useAuthStore()
-  const { blueRate, fetchBlueRate, convertUsdToArs, lastUpdated } = useDollarStore()
+  const { blueRate, manualMode, manualBlueRate, fetchBlueRate, convertUsdToArs, lastUpdated } = useDollarStore()
+  const effectiveBlueRate = manualMode ? manualBlueRate : blueRate
   const { suppliers, fetchSuppliers, isLoading: loadingSuppliers } = useSuppliersStore()
   const [selectedSupplier, setSelectedSupplier] = useState('')
   
@@ -196,12 +197,12 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
       let next = { ...prev, [name]: value }
 
       // --- AUTOFILL COSTOS ---
-      if (autofillCost && blueRate) {
+      if (autofillCost && effectiveBlueRate) {
         if (name === 'price_cost') {
           // Si se edita costo ARS, autocompletar USD
           const costArs = parseFloat(value)
           if (!isNaN(costArs) && costArs > 0) {
-            next.price_cost_usd = (costArs / blueRate).toFixed(2)
+            next.price_cost_usd = (costArs / effectiveBlueRate).toFixed(2)
           } else {
             next.price_cost_usd = ''
           }
@@ -210,7 +211,7 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
           // Si se edita costo USD, autocompletar ARS
           const costUsd = parseFloat(value)
           if (!isNaN(costUsd) && costUsd > 0) {
-            next.price_cost = Math.round(costUsd * blueRate).toString()
+            next.price_cost = Math.round(costUsd * effectiveBlueRate).toString()
           } else {
             next.price_cost = ''
           }
@@ -424,9 +425,9 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
                     placeholder="0.00" step="0.01" min="0"
                     className="w-full pl-14 pr-4 py-2 border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none bg-green-50" />
                 </div>
-                {formData.price_cost_usd && blueRate && (
+                {formData.price_cost_usd && effectiveBlueRate && (
                   <p className="text-xs text-green-700 mt-1">
-                    ≈ ${convertUsdToArs(parseFloat(formData.price_cost_usd))?.toLocaleString('es-AR', { minimumFractionDigits: 2 })} ARS
+                    ≈ ${(parseFloat(formData.price_cost_usd) * effectiveBlueRate).toLocaleString('es-AR', { minimumFractionDigits: 2 })} ARS
                   </p>
                 )}
               </div>
@@ -458,34 +459,34 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
                     placeholder="0.00" step="0.01" min="0"
                     className="w-full pl-14 pr-4 py-2 border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none bg-green-50" />
                 </div>
-                {formData.price_sale_usd && blueRate && (
+                {formData.price_sale_usd && effectiveBlueRate && (
                   <p className="text-xs text-green-700 mt-1">
-                    ≈ ${convertUsdToArs(parseFloat(formData.price_sale_usd))?.toLocaleString('es-AR', { minimumFractionDigits: 2 })} ARS
+                    ≈ ${(parseFloat(formData.price_sale_usd) * effectiveBlueRate).toLocaleString('es-AR', { minimumFractionDigits: 2 })} ARS
                   </p>
                 )}
               </div>
             </div>
             
             {/* Conversión automática detallada */}
-            {(formData.price_cost_usd || formData.price_sale_usd) && blueRate && (
+            {(formData.price_cost_usd || formData.price_sale_usd) && effectiveBlueRate && (
               <div className="mt-2 bg-blue-50 border border-blue-200 rounded-lg p-3">
                 {formData.price_sale_usd && (
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-blue-700">
-                      💵 Venta: US$ {parseFloat(formData.price_sale_usd).toFixed(2)} × ${blueRate.toLocaleString('es-AR')} (blue)
+                      💵 Venta: US$ {parseFloat(formData.price_sale_usd).toFixed(2)} × ${effectiveBlueRate.toLocaleString('es-AR')} (blue)
                     </span>
                     <span className="font-bold text-blue-900 text-lg">
-                      = ${convertUsdToArs(parseFloat(formData.price_sale_usd))?.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                      = ${(parseFloat(formData.price_sale_usd) * effectiveBlueRate).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                     </span>
                   </div>
                 )}
                 {formData.price_cost_usd && (
                   <div className="flex items-center justify-between mt-1">
                     <span className="text-sm text-blue-700">
-                      💵 Costo: US$ {parseFloat(formData.price_cost_usd).toFixed(2)} × ${blueRate.toLocaleString('es-AR')} (blue)
+                      💵 Costo: US$ {parseFloat(formData.price_cost_usd).toFixed(2)} × ${effectiveBlueRate.toLocaleString('es-AR')} (blue)
                     </span>
                     <span className="font-bold text-blue-900 text-lg">
-                      = ${convertUsdToArs(parseFloat(formData.price_cost_usd))?.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                      = ${(parseFloat(formData.price_cost_usd) * effectiveBlueRate).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
                     </span>
                   </div>
                 )}

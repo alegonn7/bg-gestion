@@ -84,6 +84,17 @@ export default function Products() {
     filteredProducts = filteredProducts.filter(p => p.product?.supplier_id === selectedSupplier)
   }
 
+  // Paginación
+  const PAGE_SIZE = 15
+  const [currentPage, setCurrentPage] = useState(1)
+  const totalPages = Math.ceil(filteredProducts.length / PAGE_SIZE)
+  const paginatedProducts = filteredProducts.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+
+  // Resetear página al cambiar filtros
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery, selectedCategory, selectedSupplier, getFilteredProducts])
+
   const lowStockCount = filteredProducts.filter(p => p.stock_quantity <= p.stock_min).length
 
   // ✅ nombre del producto viene de product.product.name
@@ -367,11 +378,43 @@ export default function Products() {
             )}
           </div>
         )}
+        {/* Controles de paginación arriba */}
+        {!isLoading && totalPages > 1 && (
+          <div className="flex justify-end mb-4 gap-2">
+            <button
+              className="px-3 py-1 rounded bg-gray-100 text-gray-700 disabled:opacity-50"
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+            >Anterior</button>
+            <span className="px-2 py-1 text-sm text-gray-600">Página {currentPage} de {totalPages}</span>
+            <button
+              className="px-3 py-1 rounded bg-gray-100 text-gray-700 disabled:opacity-50"
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+            >Siguiente</button>
+          </div>
+        )}
         {!isLoading && filteredProducts.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {filteredProducts.map(product => (
+            {paginatedProducts.map(product => (
               <ProductCard key={product.id} product={product} onClick={() => handleProductClick(product)} />
             ))}
+          </div>
+        )}
+        {/* Controles de paginación abajo */}
+        {!isLoading && totalPages > 1 && (
+          <div className="flex justify-end mt-6 gap-2">
+            <button
+              className="px-3 py-1 rounded bg-gray-100 text-gray-700 disabled:opacity-50"
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+            >Anterior</button>
+            <span className="px-2 py-1 text-sm text-gray-600">Página {currentPage} de {totalPages}</span>
+            <button
+              className="px-3 py-1 rounded bg-gray-100 text-gray-700 disabled:opacity-50"
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+            >Siguiente</button>
           </div>
         )}
       </div>

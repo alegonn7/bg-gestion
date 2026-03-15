@@ -1,3 +1,11 @@
+/* Oculta la barra de scroll horizontal en los box de montos del arqueo */
+.hide-scrollbar {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE 10+ */
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none; /* Chrome/Safari/Webkit */
+}
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

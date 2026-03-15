@@ -225,7 +225,7 @@ export default function CashRegisterPage() {
   }, [])
 
   const formatCurrency = (value: number) =>
-    new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(value)
+    new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value)
 
   const formatDate = (dateString: string) =>
     new Date(dateString).toLocaleDateString('es-AR', {
@@ -256,13 +256,22 @@ export default function CashRegisterPage() {
     else setErrorMsg(result.error || 'Error al cerrar caja')
   }
 
+
+  // Paginación para historial de arqueos
+  const PAGE_SIZE = 15;
+  const [currentPage, setCurrentPage] = useState(1);
   const filteredRegisters = registers.filter(reg => {
     let match = true
     if (selectedUserId) match = match && (reg.opened_by === selectedUserId || reg.closed_by === selectedUserId)
     if (startDate) match = match && reg.opened_at >= startDate
     if (endDate) match = match && reg.opened_at <= endDate + 'T23:59:59'
     return match
-  })
+  });
+  const totalPages = Math.ceil(filteredRegisters.length / PAGE_SIZE);
+  const paginatedRegisters = filteredRegisters.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  // Resetear página al cambiar filtros
+  useEffect(() => { setCurrentPage(1) }, [selectedUserId, startDate, endDate]);
 
   const handleExportCSV = () => {
     const data = filteredRegisters.map(reg => ({
@@ -416,8 +425,25 @@ export default function CashRegisterPage() {
             <p className="text-gray-600">No hay arqueos registrados</p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {filteredRegisters.map((reg) => {
+          <>
+            {/* Paginación arriba */}
+            {totalPages > 1 && (
+              <div className="flex justify-end mb-2 gap-2">
+                <button
+                  className="px-3 py-1 rounded bg-gray-100 text-gray-700 disabled:opacity-50"
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                >Anterior</button>
+                <span className="px-2 py-1 text-sm text-gray-600">Página {currentPage} de {totalPages}</span>
+                <button
+                  className="px-3 py-1 rounded bg-gray-100 text-gray-700 disabled:opacity-50"
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                >Siguiente</button>
+              </div>
+            )}
+            <div className="space-y-3">
+              {paginatedRegisters.map((reg) => {
               const isClosed = reg.status === 'closed'
               const hasDiff = isClosed && reg.difference !== null && reg.difference !== 0
               return (
@@ -461,8 +487,25 @@ export default function CashRegisterPage() {
                   </div>
                 </div>
               )
-            })}
-          </div>
+              })}
+            </div>
+            {/* Paginación abajo */}
+            {totalPages > 1 && (
+              <div className="flex justify-end mt-4 gap-2">
+                <button
+                  className="px-3 py-1 rounded bg-gray-100 text-gray-700 disabled:opacity-50"
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                >Anterior</button>
+                <span className="px-2 py-1 text-sm text-gray-600">Página {currentPage} de {totalPages}</span>
+                <button
+                  className="px-3 py-1 rounded bg-gray-100 text-gray-700 disabled:opacity-50"
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                >Siguiente</button>
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -539,7 +582,7 @@ export default function CashRegisterPage() {
       {/* Modal: Detalle de Arqueo */}
       {showDetailModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-lg w-full p-6">
+          <div className="bg-white rounded-lg max-w-[700px] w-full p-6" style={{ maxHeight: '95vh', overflowY: 'auto' }}>
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-xl font-bold text-gray-900">Detalle del Arqueo</h3>
               <div className="flex items-center gap-2">
@@ -574,18 +617,30 @@ export default function CashRegisterPage() {
                   <p className="text-lg font-bold text-purple-900">{formatCurrency(showDetailModal.closing_amount || 0)}</p>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                   <div className="flex items-center gap-2 text-green-600 mb-1"><Banknote className="w-4 h-4" /><span className="text-xs font-medium">Efectivo</span></div>
-                  <p className="text-lg font-bold text-green-900">{formatCurrency(showDetailModal.cash_sales_total || 0)}</p>
+                  <div style={{overflowX: 'auto'}} className="hide-scrollbar">
+                    <p className="text-lg font-bold text-green-900 whitespace-nowrap">{formatCurrency(showDetailModal.cash_sales_total || 0)}</p>
+                  </div>
                 </div>
                 <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3">
-                  <div className="flex items-center gap-2 text-indigo-600 mb-1"><CreditCard className="w-4 h-4" /><span className="text-xs font-medium">Tarjeta/Otro</span></div>
-                  <p className="text-lg font-bold text-indigo-900">{formatCurrency(showDetailModal.card_sales_total || 0)}</p>
+                  <div className="flex items-center gap-2 text-indigo-600 mb-1"><CreditCard className="w-4 h-4" /><span className="text-xs font-medium">Tarjeta</span></div>
+                  <div style={{overflowX: 'auto'}} className="hide-scrollbar">
+                    <p className="text-lg font-bold text-indigo-900 whitespace-nowrap">{formatCurrency(showDetailModal.card_sales_total || 0)}</p>
+                  </div>
+                </div>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <div className="flex items-center gap-2 text-blue-600 mb-1"><CreditCard className="w-4 h-4" /><span className="text-xs font-medium">Transferencia</span></div>
+                  <div style={{overflowX: 'auto'}} className="hide-scrollbar">
+                    <p className="text-lg font-bold text-blue-900 whitespace-nowrap">{formatCurrency(showDetailModal.transfer_sales_total || 0)}</p>
+                  </div>
                 </div>
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-                  <div className="flex items-center gap-2 text-gray-600 mb-1"><TrendingUp className="w-4 h-4" /><span className="text-xs font-medium">Operaciones</span></div>
-                  <p className="text-lg font-bold text-gray-900">{showDetailModal.sales_count || 0}</p>
+                  <div className="flex items-center gap-2 text-gray-600 mb-1"><TrendingUp className="w-4 h-4" /><span className="text-xs font-medium">Total Turno</span></div>
+                  <div style={{overflowX: 'auto'}} className="hide-scrollbar">
+                    <p className="text-lg font-bold text-gray-900 whitespace-nowrap">{formatCurrency(showDetailModal.total_sales_amount || 0)}</p>
+                  </div>
                 </div>
               </div>
               <div className={`rounded-lg p-4 border ${(showDetailModal.difference || 0) === 0 ? 'bg-green-50 border-green-200' : (showDetailModal.difference || 0) > 0 ? 'bg-blue-50 border-blue-200' : 'bg-red-50 border-red-200'}`}>
@@ -620,12 +675,14 @@ export default function CashRegisterPage() {
       {/* Modal: Movimientos del Arqueo */}
       {showMovementsModal && showDetailModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-[60]">
-          <div className="bg-white rounded-lg max-w-lg w-full p-6">
+          <div className="bg-white rounded-lg max-w-lg w-full p-6" style={{ maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold">Movimientos - {formatDate(showDetailModal.opened_at)}</h3>
               <button onClick={() => setShowMovementsModal(false)} className="text-gray-400 hover:text-gray-600"><XCircle className="w-6 h-6" /></button>
             </div>
-            <ExtraMovementsViewer cashRegisterId={showDetailModal.id} from={showDetailModal.opened_at} to={showDetailModal.closed_at || undefined} />
+            <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+              <ExtraMovementsViewer cashRegisterId={showDetailModal.id} from={showDetailModal.opened_at} to={showDetailModal.closed_at || undefined} />
+            </div>
             <div className="mt-4">
               <button onClick={() => setShowMovementsModal(false)} className="w-full px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">Cerrar</button>
             </div>

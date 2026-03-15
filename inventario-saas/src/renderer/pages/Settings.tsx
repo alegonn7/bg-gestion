@@ -6,7 +6,22 @@ import { supabase } from '@/lib/supabase'
 
 export default function SettingsPage() {
   const { user, organization } = useAuthStore()
-  const { blueRate, blueBuyRate, lastUpdated, fetchBlueRate } = useDollarStore()
+  const {
+    blueRate,
+    blueBuyRate,
+    lastUpdated,
+    fetchBlueRate,
+    manualMode,
+    manualBlueRate,
+    manualBlueBuyRate,
+    setManualMode,
+    setManualRates,
+    syncFromOrg,
+  } = useDollarStore()
+    // Sincronizar valores manuales al cargar organización
+    useEffect(() => {
+      syncFromOrg();
+    }, [organization]);
   const isOwnerOrAdmin = user?.role === 'owner' || user?.role === 'admin'
 
   // Datos editables de la empresa
@@ -303,37 +318,71 @@ export default function SettingsPage() {
           </div>
         </div>
 
+        {/* Switch modo manual/auto */}
+        <div className="flex items-center gap-4 mb-4">
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={manualMode}
+              onChange={e => setManualMode(e.target.checked)}
+              className="form-checkbox h-5 w-5 text-blue-600"
+            />
+            <span className="text-sm font-medium text-gray-700">Configurar cotización manualmente</span>
+          </label>
+        </div>
         <div className="grid grid-cols-2 gap-4 mb-4">
           <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-center">
             <div className="text-sm text-green-600 mb-1">Venta</div>
-            <div className="text-2xl font-bold text-green-800">
-              {blueRate ? `$${blueRate.toLocaleString('es-AR')}` : '—'}
-            </div>
+            {manualMode ? (
+              <input
+                type="number"
+                className="text-2xl font-bold text-green-800 bg-transparent border-b border-green-400 focus:outline-none w-full text-center"
+                value={manualBlueRate ?? ''}
+                min={0}
+                onChange={e => setManualRates(Number(e.target.value), manualBlueBuyRate ?? 0)}
+              />
+            ) : (
+              <div className="text-2xl font-bold text-green-800">
+                {blueRate ? `$${blueRate.toLocaleString('es-AR')}` : '—'}
+              </div>
+            )}
           </div>
           <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-center">
             <div className="text-sm text-blue-600 mb-1">Compra</div>
-            <div className="text-2xl font-bold text-blue-800">
-              {blueBuyRate ? `$${blueBuyRate.toLocaleString('es-AR')}` : '—'}
-            </div>
+            {manualMode ? (
+              <input
+                type="number"
+                className="text-2xl font-bold text-blue-800 bg-transparent border-b border-blue-400 focus:outline-none w-full text-center"
+                value={manualBlueBuyRate ?? ''}
+                min={0}
+                onChange={e => setManualRates(manualBlueRate ?? 0, Number(e.target.value))}
+              />
+            ) : (
+              <div className="text-2xl font-bold text-blue-800">
+                {blueBuyRate ? `$${blueBuyRate.toLocaleString('es-AR')}` : '—'}
+              </div>
+            )}
           </div>
         </div>
 
-        <div className="flex items-center justify-between">
-          <div className="text-sm text-gray-500">
-            {lastUpdated
-              ? `Última actualización: ${new Date(lastUpdated).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}`
-              : 'Sin datos aún'
-            }
+        {!manualMode && (
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-gray-500">
+              {lastUpdated
+                ? `Última actualización: ${new Date(lastUpdated).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' })}`
+                : 'Sin datos aún'
+              }
+            </div>
+            <button
+              onClick={handleRefreshRate}
+              disabled={refreshingRate}
+              className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 transition text-sm font-medium"
+            >
+              <RefreshCw className={`w-4 h-4 ${refreshingRate ? 'animate-spin' : ''}`} />
+              Actualizar
+            </button>
           </div>
-          <button
-            onClick={handleRefreshRate}
-            disabled={refreshingRate}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 transition text-sm font-medium"
-          >
-            <RefreshCw className={`w-4 h-4 ${refreshingRate ? 'animate-spin' : ''}`} />
-            Actualizar
-          </button>
-        </div>
+        )}
 
         <p className="text-xs text-gray-400 mt-3">
           Fuente: dolarapi.com (fallback: bluelytics.com.ar). Se actualiza automáticamente cada 5 minutos.

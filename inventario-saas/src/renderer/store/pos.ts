@@ -2,6 +2,12 @@ import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from './auth'
 import { useDollarStore } from './dollar'
+
+// Devuelve el blueRate efectivo según modo manual/auto
+function getEffectiveBlueRate() {
+  const { manualMode, manualBlueRate, blueRate } = useDollarStore.getState();
+  return manualMode && manualBlueRate ? manualBlueRate : blueRate;
+}
 import type { Product } from './products'
 
 export type PriceMode = 'ars' | 'usd' | 'usd_to_ars'
@@ -10,14 +16,16 @@ export type PriceMode = 'ars' | 'usd' | 'usd_to_ars'
 // 'ars' → price_sale (manual ARS)
 // 'usd' → price_sale_usd tal cual (en dólares). Fallback a price_sale.
 // 'usd_to_ars' → price_sale_usd × blueRate (conversión automática). Fallback a price_sale.
-export function getEffectivePrice(product: Product, mode: PriceMode, blueRate: number | null): number {
+export function getEffectivePrice(product: Product, mode: PriceMode, blueRate?: number | null): number {
+  // Si no se pasa blueRate, usar el efectivo
+  const rate = blueRate !== undefined ? blueRate : getEffectiveBlueRate();
   if (mode === 'usd' && product.price_sale_usd) {
     return product.price_sale_usd // devuelve USD puro
   }
-  if (mode === 'usd_to_ars' && product.price_sale_usd && blueRate) {
-    return product.price_sale_usd * blueRate
+  if (mode === 'usd_to_ars' && product.price_sale_usd && rate) {
+    return product.price_sale_usd * rate;
   }
-  return product.price_sale
+  return product.price_sale;
 }
 
 // Etiqueta legible del modo de precio
@@ -48,7 +56,7 @@ interface POSState {
   isProcessing: boolean
   error: string | null
 
-  addToCart: (product: Product, quantity?: number) => void
+  addToCart: (product: Product, quantity?: number) => boolean
   removeFromCart: (productId: string) => void
   updateQuantity: (productId: string, quantity: number) => void
   clearCart: () => void
@@ -60,7 +68,13 @@ interface POSState {
   getTotal: () => number
   getTotalItems: () => number
   
-  processSale: (paymentMethod: string, cashReceived?: number) => Promise<{ success: boolean, error?: string, saleId?: string }>
+  processSale: (
+    paymentMethod: string,
+    cashReceived?: number,
+    cardReceived?: number,
+    transferReceived?: number,
+    transferAccount?: { id: string } | null
+  ) => Promise<{ success: boolean, error?: string, saleId?: string }>
 }
 
 export const usePOSStore = create<POSState>((set, get) => ({
@@ -71,17 +85,27 @@ export const usePOSStore = create<POSState>((set, get) => ({
   isProcessing: false,
   error: null,
 
+  /**
+   * Agrega un producto al carrito solo si hay stock suficiente.
+   * Si no hay stock suficiente, retorna false. Si agrega, retorna true.
+   */
   addToCart: (product, quantity = 1) => {
     const { items, priceMode } = get()
-    const blueRate = useDollarStore.getState().blueRate
-    const unitPrice = getEffectivePrice(product, priceMode, blueRate)
+    const unitPrice = getEffectivePrice(product, priceMode)
     const existingItem = items.find(item => item.product.id === product.id)
-
+    const currentQty = existingItem ? existingItem.quantity : 0
+    const newQty = currentQty + quantity
+    if (newQty > product.stock_quantity) {
+      // No permitir agregar más de lo disponible
+      set({ error: `Stock insuficiente para "${product.product?.name || product.barcode || 'Producto'}"` })
+      return false
+    }
+    set({ error: null })
     if (existingItem) {
       set({
         items: items.map(item =>
           item.product.id === product.id
-            ? { ...item, quantity: item.quantity + quantity, subtotal: (item.quantity + quantity) * unitPrice }
+            ? { ...item, quantity: newQty, subtotal: newQty * unitPrice }
             : item
         )
       })
@@ -90,6 +114,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
         items: [...items, { product, quantity, subtotal: quantity * unitPrice }]
       })
     }
+    return true
   },
 
   removeFromCart: (productId) => {
@@ -102,11 +127,10 @@ export const usePOSStore = create<POSState>((set, get) => ({
       return
     }
     const { priceMode } = get()
-    const blueRate = useDollarStore.getState().blueRate
     set({
       items: get().items.map(item =>
         item.product.id === productId
-          ? { ...item, quantity, subtotal: quantity * getEffectivePrice(item.product, priceMode, blueRate) }
+          ? { ...item, quantity, subtotal: quantity * getEffectivePrice(item.product, priceMode) }
           : item
       )
     })
@@ -121,14 +145,13 @@ export const usePOSStore = create<POSState>((set, get) => ({
   },
 
   setPriceMode: (mode) => {
-    const blueRate = useDollarStore.getState().blueRate
     const { items } = get()
-    // Recalcular todos los subtotales con el nuevo modo
+    // Recalcular todos los subtotales con el nuevo modo y blueRate efectivo
     set({
       priceMode: mode,
       items: items.map(item => ({
         ...item,
-        subtotal: item.quantity * getEffectivePrice(item.product, mode, blueRate)
+        subtotal: item.quantity * getEffectivePrice(item.product, mode)
       }))
     })
   },
@@ -145,10 +168,9 @@ export const usePOSStore = create<POSState>((set, get) => ({
   
   getTotalItems: () => get().items.reduce((sum, item) => sum + item.quantity, 0),
 
-  processSale: async (paymentMethod, cashReceived = 0) => {
+  processSale: async (paymentMethod, cashReceived = 0, cardReceived = 0, transferReceived = 0, transferAccount?: { id: string } | null) => {
     const { items, priceMode, getTotal, getSubtotal, getDiscountAmount, clearCart } = get()
     const { user } = useAuthStore.getState()
-    const blueRate = useDollarStore.getState().blueRate
 
     if (items.length === 0) {
       return { success: false, error: 'El carrito está vacío' }
@@ -166,6 +188,20 @@ export const usePOSStore = create<POSState>((set, get) => ({
 
     try {
       // 1. Crear registro de venta principal
+      // Calcular montos según método
+      let cash_amount = 0, card_amount = 0, transfer_amount = 0
+      if (paymentMethod === 'Efectivo') {
+        cash_amount = cashReceived
+      } else if (paymentMethod === 'Tarjeta') {
+        card_amount = cardReceived || total
+      } else if (paymentMethod === 'Transferencia') {
+        transfer_amount = transferReceived || total
+      } else if (paymentMethod === 'Mixto') {
+        cash_amount = cashReceived
+        card_amount = cardReceived
+        transfer_amount = transferReceived
+      }
+
       const { data: sale, error: saleError } = await supabase
         .from('sales')
         .insert({
@@ -174,11 +210,11 @@ export const usePOSStore = create<POSState>((set, get) => ({
           subtotal: subtotal,
           discount: discountAmount,
           payment_method: paymentMethod,
-          cash_amount: paymentMethod === 'Efectivo' ? cashReceived : 
-                       paymentMethod === 'Mixto' ? cashReceived : 0,
-          card_amount: paymentMethod === 'Tarjeta' ? total : 
-                       paymentMethod === 'Mixto' ? (total - cashReceived) : 0,
-          created_by: user.id
+          cash_amount,
+          card_amount,
+          transfer_amount,
+          created_by: user.id,
+          transfer_account_id: transferAccount && transferAccount.id !== 'generica' ? transferAccount.id : null
         })
         .select()
         .single()
@@ -188,8 +224,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
       // 2. Crear items de venta y movimientos de inventario
       for (const item of items) {
         const { product, quantity } = item
-        const effectivePrice = getEffectivePrice(product, priceMode, blueRate)
-        
+        const effectivePrice = getEffectivePrice(product, priceMode)
         // Insertar item de venta con precio efectivo
         const { error: itemError } = await supabase
           .from('sale_items')
@@ -203,7 +238,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
           })
 
         if (itemError) throw itemError
-        
+
         // Obtener stock actual
         const { data: currentProduct } = await supabase
           .from('products_branch')

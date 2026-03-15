@@ -33,18 +33,25 @@ export default function POS() {
   const [searchQuery, setSearchQuery] = useState('')
   const [showCheckout, setShowCheckout] = useState(false)
   const [discountInput, setDiscountInput] = useState('')
+  const [discountTypeInput, setDiscountTypeInput] = useState(discountType)
   const barcodeRef = useRef<HTMLInputElement>(null)
   const { selectedBranch } = useAuthStore()
-  const { blueRate, fetchBlueRate } = useDollarStore()
+  const { blueRate, manualMode, manualBlueRate, fetchBlueRate } = useDollarStore()
+  const effectiveBlueRate = manualMode && manualBlueRate ? manualBlueRate : blueRate;
   const [scanFeedback, setScanFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
 
   // Escáner físico: captura cuando ningún input tiene foco
   const handleBarcodeScan = useCallback((barcode: string) => {
     const product = products.find(p => p.barcode === barcode)
     if (product) {
-      addToCart(product, 1)
-      setScanFeedback({ type: 'success', message: `✓ ${product.product?.name || barcode}` })
-      playScanSuccess()
+      const ok = addToCart(product, 1)
+      if (ok) {
+        setScanFeedback({ type: 'success', message: `✓ ${product.product?.name || barcode}` })
+        playScanSuccess()
+      } else {
+        setScanFeedback({ type: 'error', message: `Sin stock suficiente: ${product.product?.name || barcode}` })
+        playScanError()
+      }
     } else {
       setScanFeedback({ type: 'error', message: `Producto no encontrado: ${barcode}` })
       playScanError()
@@ -80,10 +87,15 @@ export default function POS() {
     const product = products.find(p => p.barcode === barcodeInput.trim())
 
     if (product) {
-      addToCart(product, 1)
+      const ok = addToCart(product, 1)
       setBarcodeInput('')
-      setScanFeedback({ type: 'success', message: `✓ ${product.product?.name || barcodeInput}` })
-      playScanSuccess()
+      if (ok) {
+        setScanFeedback({ type: 'success', message: `✓ ${product.product?.name || barcodeInput}` })
+        playScanSuccess()
+      } else {
+        setScanFeedback({ type: 'error', message: `Sin stock suficiente: ${product.product?.name || barcodeInput}` })
+        playScanError()
+      }
     } else {
       setScanFeedback({ type: 'error', message: `Producto no encontrado: ${barcodeInput}` })
       setBarcodeInput('')
@@ -93,14 +105,23 @@ export default function POS() {
 
   const handleDiscountApply = () => {
     const value = parseFloat(discountInput) || 0
-    setDiscount(value, discountType)
+    setDiscount(value, discountTypeInput)
   }
 
   // Ahora name viene de product.product.name
+  const PAGE_SIZE = 12
+  const [currentPage, setCurrentPage] = useState(1)
   const filteredProducts = products.filter(p =>
     p.product?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     p.barcode?.includes(searchQuery)
-  ).slice(0, 12)
+  )
+  const totalPages = Math.ceil(filteredProducts.length / PAGE_SIZE)
+  const paginatedProducts = filteredProducts.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+
+  // Resetear página al cambiar búsqueda
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery, products])
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('es-AR', {
@@ -118,7 +139,8 @@ export default function POS() {
   return (
     <div className="h-screen flex flex-col bg-gray-50" onClick={(e) => {
       const target = e.target as HTMLElement
-      if (target.tagName !== 'INPUT' && target.tagName !== 'BUTTON' && target.tagName !== 'TEXTAREA') {
+      // Evitar que el input de código de barras reciba foco si el click fue en un select
+      if (target.tagName !== 'INPUT' && target.tagName !== 'BUTTON' && target.tagName !== 'TEXTAREA' && target.tagName !== 'SELECT') {
         barcodeRef.current?.focus()
       }
     }}>
@@ -222,22 +244,44 @@ export default function POS() {
               </span>
             </div>
           )}
-          {priceMode === 'usd_to_ars' && blueRate && (
+          {priceMode === 'usd_to_ars' && effectiveBlueRate && (
             <div className="mb-4 px-3 py-2 bg-purple-50 border border-purple-200 rounded-lg text-sm flex items-center gap-2">
               <DollarSign className="h-4 w-4 text-purple-600" />
               <span className="text-purple-700">
-                Modo <strong>Conversión</strong> — USD × <strong>${blueRate.toLocaleString('es-AR')}</strong> (Blue) = ARS
+                Modo <strong>Conversión</strong> — USD × <strong>${effectiveBlueRate.toLocaleString('es-AR')}</strong> (Blue) = ARS
               </span>
             </div>
           )}
 
+          {/* Controles de paginación arriba */}
+          {totalPages > 1 && (
+            <div className="flex justify-end mb-4 gap-2">
+              <button
+                className="px-3 py-1 rounded bg-gray-100 text-gray-700 disabled:opacity-50"
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+              >Anterior</button>
+              <span className="px-2 py-1 text-sm text-gray-600">Página {currentPage} de {totalPages}</span>
+              <button
+                className="px-3 py-1 rounded bg-gray-100 text-gray-700 disabled:opacity-50"
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+              >Siguiente</button>
+            </div>
+          )}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-            {filteredProducts.map((product) => {
-              const effectivePrice = getEffectivePrice(product, priceMode, blueRate)
+            {paginatedProducts.map((product) => {
+              const effectivePrice = getEffectivePrice(product, priceMode, effectiveBlueRate)
               return (
                 <button
                   key={product.id}
-                  onClick={() => addToCart(product, 1)}
+                  onClick={() => {
+                    const ok = addToCart(product, 1)
+                    if (!ok) {
+                      setScanFeedback({ type: 'error', message: `Sin stock suficiente: ${product.product?.name || product.barcode}` })
+                      playScanError()
+                    }
+                  }}
                   className="bg-white p-4 rounded-xl border border-gray-200 hover:border-blue-500 hover:shadow-lg transition text-left"
                 >
                   <h3 className="font-semibold text-gray-900 line-clamp-2 mb-1 text-sm">
@@ -280,6 +324,22 @@ export default function POS() {
               )
             })}
           </div>
+          {/* Controles de paginación abajo */}
+          {totalPages > 1 && (
+            <div className="flex justify-end mt-6 gap-2">
+              <button
+                className="px-3 py-1 rounded bg-gray-100 text-gray-700 disabled:opacity-50"
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+              >Anterior</button>
+              <span className="px-2 py-1 text-sm text-gray-600">Página {currentPage} de {totalPages}</span>
+              <button
+                className="px-3 py-1 rounded bg-gray-100 text-gray-700 disabled:opacity-50"
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+              >Siguiente</button>
+            </div>
+          )}
         </div>
 
         {/* Cart Sidebar */}
@@ -311,7 +371,7 @@ export default function POS() {
               </div>
             ) : (
               items.map((item) => {
-                const unitPrice = getEffectivePrice(item.product, priceMode, blueRate)
+                const unitPrice = getEffectivePrice(item.product, priceMode, effectiveBlueRate)
                 return (
                 <div key={item.product.id} className="bg-gray-50 rounded-lg p-3">
                   <div className="flex items-start justify-between mb-2">
@@ -339,13 +399,22 @@ export default function POS() {
                       <button
                         onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
                         className="w-7 h-7 bg-white border rounded hover:bg-gray-100"
+                        disabled={item.quantity <= 1}
                       >
                         -
                       </button>
                       <span className="w-8 text-center font-medium">{item.quantity}</span>
                       <button
-                        onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
+                        onClick={() => {
+                          if (item.quantity + 1 > item.product.stock_quantity) {
+                            setScanFeedback({ type: 'error', message: `Sin stock suficiente: ${item.product.product?.name || item.product.barcode}` })
+                            playScanError()
+                          } else {
+                            updateQuantity(item.product.id, item.quantity + 1)
+                          }
+                        }}
                         className="w-7 h-7 bg-white border rounded hover:bg-gray-100"
+                        disabled={item.quantity >= item.product.stock_quantity}
                       >
                         +
                       </button>
@@ -377,8 +446,8 @@ export default function POS() {
                       className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
                     />
                     <select
-                      value={discountType}
-                      onChange={(e) => setDiscount(discount, e.target.value as any)}
+                      value={discountTypeInput}
+                      onChange={(e) => setDiscountTypeInput(e.target.value as 'amount' | 'percentage')}
                       className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
                     >
                       <option value="amount">$</option>

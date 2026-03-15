@@ -21,11 +21,13 @@ export interface Sale {
   payment_method: string
   cash_amount: number
   card_amount: number
+  transfer_account_id?: string | null
   status: 'completed' | 'voided'
   items: SaleItem[]
   created_at: string
   created_by: string
   created_by_name?: string
+  transfer_account_name?: string | null
 }
 
 interface SalesState {
@@ -97,6 +99,7 @@ export const useSalesStore = create<SalesState>((set, get) => ({
           payment_method,
           cash_amount,
           card_amount,
+          transfer_account_id,
           status,
           created_at,
           created_by,
@@ -157,6 +160,7 @@ export const useSalesStore = create<SalesState>((set, get) => ({
         payment_method: sale.payment_method,
         cash_amount: sale.cash_amount,
         card_amount: sale.card_amount,
+        transfer_account_id: sale.transfer_account_id,
         status: sale.status || 'completed',
         items: (sale.sale_items || []).map((item: any) => ({
           product_id: item.products_branch.id,
@@ -169,7 +173,8 @@ export const useSalesStore = create<SalesState>((set, get) => ({
         // ✅ Normalizamos el created_at para que siempre sea UTC
         created_at: normalizeUTCDate(sale.created_at),
         created_by: sale.created_by,
-        created_by_name: sale.users?.full_name
+        created_by_name: sale.users?.full_name,
+        transfer_account_name: null // Se puede poblar luego en la UI
       }))
 
       set({ sales, isLoading: false })

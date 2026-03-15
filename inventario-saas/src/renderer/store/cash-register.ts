@@ -19,6 +19,8 @@ export interface CashRegister {
   difference: number | null
   cash_sales_total: number | null
   card_sales_total: number | null
+  transfer_sales_total: number | null
+  total_sales_amount: number | null
   sales_count: number | null
   notes_open: string | null
   notes_close: string | null
@@ -88,6 +90,8 @@ export const useCashRegisterStore = create<CashRegisterState>((set, get) => ({
         difference: r.difference,
         cash_sales_total: r.cash_sales_total,
         card_sales_total: r.card_sales_total,
+        transfer_sales_total: r.transfer_sales_total,
+        total_sales_amount: r.total_sales_amount,
         sales_count: r.sales_count,
         notes_open: r.notes_open,
         notes_close: r.notes_close,
@@ -148,6 +152,8 @@ export const useCashRegisterStore = create<CashRegisterState>((set, get) => ({
             difference: null,
             cash_sales_total: data.cash_sales_total,
             card_sales_total: data.card_sales_total,
+            transfer_sales_total: data.transfer_sales_total,
+            total_sales_amount: data.total_sales_amount,
             sales_count: data.sales_count,
             notes_open: data.notes_open,
             notes_close: null,
@@ -218,18 +224,16 @@ export const useCashRegisterStore = create<CashRegisterState>((set, get) => ({
       // Obtener ventas realizadas durante este turno de caja
       const { data: salesData } = await supabase
         .from('sales')
-        .select('total, payment_method, status')
+        .select('total, payment_method, status, cash_amount, card_amount, transfer_amount')
         .eq('branch_id', branchId!)
         .gte('created_at', current.opened_at)
         .neq('status', 'voided')
 
       const activeSales = (salesData || []).filter(s => s.status !== 'voided')
-      const cashSales = activeSales
-        .filter(s => s.payment_method === 'Efectivo' || s.payment_method === 'efectivo')
-        .reduce((sum, s) => sum + s.total, 0)
-      const cardSales = activeSales
-        .filter(s => s.payment_method !== 'Efectivo' && s.payment_method !== 'efectivo')
-        .reduce((sum, s) => sum + s.total, 0)
+      const cashSales = activeSales.reduce((sum, s) => sum + (Number(s.cash_amount) || 0), 0)
+      const cardSales = activeSales.reduce((sum, s) => sum + (Number(s.card_amount) || 0), 0)
+      const transferSales = activeSales.reduce((sum, s) => sum + (Number(s.transfer_amount) || 0), 0)
+      const totalSalesAmount = cashSales + cardSales + transferSales
       const salesCount = activeSales.length
 
       // Obtener movimientos extraordinarios
@@ -256,6 +260,8 @@ export const useCashRegisterStore = create<CashRegisterState>((set, get) => ({
           difference: difference,
           cash_sales_total: cashSales,
           card_sales_total: cardSales,
+          transfer_sales_total: transferSales,
+          total_sales_amount: totalSalesAmount,
           sales_count: salesCount,
           notes_close: notes || null,
           status: 'closed',

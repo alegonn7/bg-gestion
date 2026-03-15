@@ -12,6 +12,8 @@ export default function SuppliersPage() {
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null as null | string)
   const [form, setForm] = useState({ name: '', email: '', phone: '', address: '', notes: '' })
+  // Barra de búsqueda
+  const [searchQuery, setSearchQuery] = useState('')
 
   useEffect(() => { fetchSuppliers(); fetchProducts(); }, [])
 
@@ -65,11 +67,22 @@ export default function SuppliersPage() {
   }
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Proveedores</h1>
-        <div className="flex gap-2">
-          <button onClick={handleExport} disabled={exporting || suppliers.length === 0} className="px-4 py-2 bg-green-600 text-white rounded-lg">Exportar CSV</button>
-          <button onClick={() => { setShowForm(true); setEditing(null); setForm({ name: '', email: '', phone: '', address: '', notes: '' }) }} className="px-4 py-2 bg-blue-600 text-white rounded-lg">Nuevo</button>
+      <div className="flex flex-col gap-4 mb-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold">Proveedores</h1>
+          <div className="flex gap-2">
+            <button onClick={handleExport} disabled={exporting || suppliers.length === 0} className="px-4 py-2 bg-green-600 text-white rounded-lg">Exportar CSV</button>
+            <button onClick={() => { setShowForm(true); setEditing(null); setForm({ name: '', email: '', phone: '', address: '', notes: '' }) }} className="px-4 py-2 bg-blue-600 text-white rounded-lg">Nuevo</button>
+          </div>
+        </div>
+        <div className="max-w-xs">
+          <input
+            type="text"
+            placeholder="Buscar proveedor por nombre..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
         </div>
       </div>
       {error && <div className="mb-4 text-red-600">{error}</div>}
@@ -89,31 +102,33 @@ export default function SuppliersPage() {
             </tr>
           </thead>
           <tbody>
-            {suppliers.map(s => {
-              const suppliedProducts = products.filter(p => p.product && p.product.supplier_id === s.id)
-              return (
-                <tr key={s.id} className="border-t">
-                  <td className="p-2">{s.name}</td>
-                  <td className="p-2">{s.email}</td>
-                  <td className="p-2">{s.phone}</td>
-                  <td className="p-2">{s.address}</td>
-                  <td className="p-2">{s.notes}</td>
-                  <td className="p-2">
-                    <button
-                      className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm"
-                      onClick={() => { setModalSupplier({ id: s.id, name: s.name }); setModalOpen(true); }}
-                      disabled={suppliedProducts.length === 0}
-                    >
-                      Ver productos ({suppliedProducts.length})
-                    </button>
-                  </td>
-                  <td className="p-2 flex gap-2">
-                    <button onClick={() => handleEdit(s)} className="px-2 py-1 bg-yellow-200 rounded">Editar</button>
-                    <button onClick={() => deleteSupplier(s.id)} className="px-2 py-1 bg-red-200 rounded">Eliminar</button>
-                  </td>
-                </tr>
-              )
-            })}
+            {suppliers
+              .filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase()))
+              .map(s => {
+                const suppliedProducts = products.filter(p => p.product && p.product.supplier_id === s.id)
+                return (
+                  <tr key={s.id} className="border-t">
+                    <td className="p-2">{s.name}</td>
+                    <td className="p-2">{s.email}</td>
+                    <td className="p-2">{s.phone}</td>
+                    <td className="p-2">{s.address}</td>
+                    <td className="p-2">{s.notes}</td>
+                    <td className="p-2">
+                      <button
+                        className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-sm"
+                        onClick={() => { setModalSupplier({ id: s.id, name: s.name }); setModalOpen(true); }}
+                        disabled={suppliedProducts.length === 0}
+                      >
+                        Ver productos ({suppliedProducts.length})
+                      </button>
+                    </td>
+                    <td className="p-2 flex gap-2">
+                      <button onClick={() => handleEdit(s)} className="px-2 py-1 bg-yellow-200 rounded">Editar</button>
+                      <button onClick={() => deleteSupplier(s.id)} className="px-2 py-1 bg-red-200 rounded">Eliminar</button>
+                    </td>
+                  </tr>
+                )
+              })}
           </tbody>
         </table>
       )}
