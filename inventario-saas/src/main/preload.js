@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('electron', {
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   getLastShownVersion: () => ipcRenderer.invoke('get-last-shown-version'),
   setLastShownVersion: (version) => ipcRenderer.invoke('set-last-shown-version', version),
+  getChangelogText: () => ipcRenderer.invoke('get-changelog-text'),
 
   // Platform
   platform: process.platform,

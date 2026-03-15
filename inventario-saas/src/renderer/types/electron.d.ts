@@ -19,6 +19,7 @@ declare global {
       getAppVersion?: () => Promise<string>
       getLastShownVersion?: () => Promise<string | null>
       setLastShownVersion?: (version: string) => Promise<{ success: boolean }>
+      getChangelogText?: () => Promise<string>
     }
   }
 }
