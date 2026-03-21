@@ -1,3 +1,5 @@
+'use strict';
+
 // ============================================================
 // REQUIRES - siempre primero, sin excepción
 // ============================================================
@@ -84,7 +86,9 @@ app.whenReady().then(() => {
   createWindow();
 
   if (process.env.NODE_ENV !== 'development') {
-    autoUpdater.checkForUpdatesAndNotify();
+    autoUpdater.checkForUpdatesAndNotify().catch(() => {
+      // No hay releases publicados todavía, ignorar error
+    });
   }
 });
 

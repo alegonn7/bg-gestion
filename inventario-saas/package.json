@@ -50,6 +50,9 @@
   "build": {
     "appId": "com.binarygoats.bg-gestion",
     "productName": "BG Gestión",
+    "extraMetadata": {
+      "main": "src/main/main.js"
+    },
     "directories": {
       "output": "release",
       "buildResources": "build"
