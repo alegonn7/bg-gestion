@@ -1,3 +1,5 @@
+
+console.log('INICIO MAIN.JS');
 'use strict';
 
 // ============================================================
@@ -16,12 +18,14 @@ let db;
 // BASE DE DATOS
 // ============================================================
 function initDatabase() {
+  console.log('Iniciando base de datos...');
   const userDataPath = app.getPath('userData');
   const dbPath = path.join(userDataPath, 'inventario.db');
 
   console.log('Database path:', dbPath);
 
   db = new Database(dbPath);
+  console.log('Base de datos creada');
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS local_products (
@@ -46,13 +50,14 @@ function initDatabase() {
     );
   `);
 
-  console.log('Local database initialized');
+  console.log('Tablas creadas. Local database initialized');
 }
 
 // ============================================================
 // VENTANA PRINCIPAL
 // ============================================================
 function createWindow() {
+  console.log('Creando ventana principal...');
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -67,13 +72,16 @@ function createWindow() {
   });
 
   if (process.env.NODE_ENV === 'development') {
+    console.log('Cargando Vite dev server');
     mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools();
   } else {
+    console.log('Cargando build de producción');
     mainWindow.loadFile(path.join(__dirname, '../../dist/index.html'));
   }
 
   mainWindow.on('closed', () => {
+    console.log('Ventana principal cerrada');
     mainWindow = null;
   });
 }
@@ -81,15 +89,21 @@ function createWindow() {
 // ============================================================
 // CICLO DE VIDA DE LA APP
 // ============================================================
+
 app.whenReady().then(() => {
+  console.log('App ready');
   initDatabase();
   createWindow();
 
-  if (process.env.NODE_ENV !== 'development') {
-    autoUpdater.checkForUpdatesAndNotify().catch(() => {
-      // No hay releases publicados todavía, ignorar error
+  // Forzar búsqueda de actualizaciones SIEMPRE y agregar logs
+  console.log('Buscando actualizaciones...');
+  autoUpdater.checkForUpdatesAndNotify()
+    .then(() => {
+      console.log('Chequeo de actualizaciones terminado');
+    })
+    .catch(err => {
+      console.error('Error al buscar actualizaciones:', err);
     });
-  }
 });
 
 app.on('activate', () => {
@@ -108,13 +122,17 @@ app.on('window-all-closed', () => {
 // ============================================================
 // AUTO UPDATER
 // ============================================================
+
 autoUpdater.on('update-available', () => {
+  console.log('Actualización disponible (update-available)');
   if (mainWindow) {
     mainWindow.webContents.send('update_available');
   }
 });
 
+
 autoUpdater.on('update-downloaded', () => {
+  console.log('Actualización descargada (update-downloaded)');
   if (mainWindow) {
     mainWindow.webContents.send('update_downloaded');
     dialog.showMessageBox(mainWindow, {
@@ -124,7 +142,10 @@ autoUpdater.on('update-downloaded', () => {
       buttons: ['Reiniciar ahora', 'Después'],
     }).then(result => {
       if (result.response === 0) {
+        console.log('Usuario eligió reiniciar para instalar actualización');
         autoUpdater.quitAndInstall();
+      } else {
+        console.log('Usuario eligió actualizar después');
       }
     });
   }
