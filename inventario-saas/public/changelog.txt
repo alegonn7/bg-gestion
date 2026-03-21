@@ -1,5 +1,5 @@
-Versión 1.0.1
+Versión 1.0.2
 
-- ¡Ahora BG Gestión se actualiza automáticamente!
-- Nuevo: ventana emergente con novedades tras cada actualización
-- Mejoras de rendimiento y corrección de errores menores
+- ¡Actualización de prueba 1.0.2!
+- Cambios visuales menores.
+- El sistema de auto-actualización está funcionando correctamente.
