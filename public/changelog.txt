@@ -1,0 +1,5 @@
+Versión 1.0.2
+
+- ¡Actualización de prueba 1.0.2!
+- Cambios visuales menores.
+- El sistema de auto-actualización está funcionando correctamente.

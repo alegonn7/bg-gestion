@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -E \"^[^/]*$\")",
+      "Bash(wc -l c:Projectstrabajobg-gestionbg-gestion/src/renderer/pages/*.tsx)",
+      "Bash(xargs wc:*)",
+      "Bash(find C:Projectstrabajobg-gestionadmin-gestion -name middleware.* -o -name .env*)",
+      "Bash(npm install:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.afip.gob.ar)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:allenhwkim.medium.com)",
+      "Bash(git pull:*)",
+      "Bash(git stash:*)",
+      "Bash(git push:*)",
+      "Bash(git rm:*)",
+      "Bash(git commit:*)",
+      "Bash(git config:*)",
+      "Bash(git checkout:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}

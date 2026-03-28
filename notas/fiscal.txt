@@ -1,0 +1,401 @@
+# BG Gestión — Integración Facturación Electrónica AFIP/ARCA
+## Documentación técnica y decisiones de arquitectura
+
+> **Fecha de análisis:** Junio 2025  
+> **Documentos analizados:** WSFEv1, WSBFEv1, WSSEG, WSMTXCA (RG 2904)  
+> **Stack del proyecto:** Supabase (PostgreSQL + Edge Functions) + SaaS multi-tenant
+
+---
+
+## 1. Contexto del sistema
+
+**BG Gestión** es un SaaS de inventario y punto de venta (POS) orientado a comercios minoristas argentinos: almacenes, kioscos, ferreterías, y similares.
+
+Requisitos de facturación electrónica:
+- Emitir Facturas A (a Responsables Inscriptos)
+- Emitir Facturas B (a Consumidores Finales / Monotributistas)
+- Emitir Remitos
+- Soporte multi-tenant: cada cliente (comercio) tiene su propio CUIT y opera de forma independiente
+
+---
+
+## 2. Análisis de Web Services AFIP disponibles
+
+Se analizaron los 4 WS de facturación electrónica de ARCA/AFIP para determinar cuál aplica:
+
+| Web Service | RG | Para qué sirve | ¿Aplica a BG Gestión? |
+|---|---|---|---|
+| **WSFEv1** | RG 2485 | Facturación electrónica estándar sin detalle de ítems | ⚠️ Descartado (ver decisión) |
+| **WSMTXCA** | RG 2904 | Facturación electrónica con detalle de productos por ítem + código de barras | ✅ **Elegido** |
+| **WSBFEv1** | RG 5427 | Bonos Fiscales para exportación y promoción industrial | ❌ No aplica |
+| **WSSEG** | RG 2668 | Seguros de Caución (compañías aseguradoras) | ❌ No aplica |
+
+### Por qué se descartó WSFEv1 en favor de WSMTXCA
+
+WSFEv1 es más simple pero no incluye detalle de ítems por línea. Solo informa totales agrupados por alícuota de IVA.
+
+WSMTXCA agrega:
+- Detalle completo por ítem: descripción, cantidad, precio unitario, IVA por línea
+- Campo `codigoMtx`: código de barras GTIN/EAN del producto (el mismo número que lee el scanner del comercio)
+- Campo `unidadesMtx`: unidades de consumo minorista por presentación
+
+**Decisión:** Como los clientes de BG Gestión escanean productos con código de barras para cobrar, ese código ya está en el sistema. WSMTXCA permite aprovecharlo directamente. Además, `codigoMtx` es **opcional** en WSMTXCA, por lo que productos sin código de barras también son compatibles.
+
+Implementar WSFEv1 primero y luego migrar a WSMTXCA implicaría reescribir la integración. Se implementa WSMTXCA directamente.
+
+---
+
+## 3. Decisiones de arquitectura multi-tenant
+
+### 3.1 Modelo de certificados: Modelo A (cliente gestiona su propio certificado)
+
+Se evaluaron dos modelos:
+
+**Modelo A — Cada cliente sube su propio certificado** ✅ Elegido  
+- El cliente tramita un certificado digital en AFIP bajo su CUIT
+- Lo sube a BG Gestión (archivo `.p12` + passphrase)
+- El sistema guarda el certificado encriptado por tenant
+- Cada request al WSAA usa el certificado del tenant correspondiente
+
+**Modelo B — BG Gestión opera como representante con certificado propio** ❌ Descartado  
+- Requiere registrarse como proveedor de software en AFIP
+- Mayor responsabilidad legal sobre facturas de terceros
+- Requiere que cada cliente delegue el servicio en el portal de AFIP de todas formas
+
+**Por qué se eligió el Modelo A:**
+- No requiere registro como proveedor de software en AFIP
+- Menor responsabilidad legal: cada cliente opera con sus propias credenciales
+- El trámite del cliente es similar en ambos modelos (en el B igual tiene que ir al portal a autorizar)
+- Más limpio para escalar: cada tenant es completamente independiente
+
+### 3.2 Qué tiene que tramitar el cliente (onboarding)
+
+El trámite se realiza en el portal de AFIP con Clave Fiscal. Dura aproximadamente 15-20 minutos la primera vez. Los certificados tienen vigencia de **2 años**.
+
+**Paso 1 — Generar certificado digital**
+- Ingresar a AFIP > Administrador de Relaciones de Clave Fiscal
+- Crear un nuevo certificado
+- Descargar el archivo `.p12` y recordar la contraseña elegida
+
+**Paso 2 — Habilitar el servicio**
+- En el mismo portal, asociar el certificado al servicio `"wsmtxca"`
+- Es una selección de lista, no requiere configuración técnica
+
+**Paso 3 — Subir a BG Gestión**
+- El cliente sube el archivo `.p12` y la contraseña desde el panel de configuración
+- BG Gestión lo guarda encriptado en la base de datos
+
+**Estrategia de onboarding sugerida:**
+- Instructivo paso a paso con capturas de pantalla
+- Acompañamiento por WhatsApp o videollamada la primera vez
+
+---
+
+## 4. Arquitectura técnica
+
+### 4.1 URLs de los servicios
+
+| Ambiente | WSAA (autenticación) | WSMTXCA (facturación) |
+|---|---|---|
+| **Homologación** (testing) | `https://wsaahomo.afip.gov.ar/ws/services/LoginCms` | `https://fwshomo.afip.gov.ar/wsmtxca/services/MTXCAService` |
+| **Producción** | `https://wsaa.afip.gov.ar/ws/services/LoginCms` | `https://serviciosjava.afip.gob.ar/wsmtxca/services/MTXCAService` |
+
+> ⚠️ WSMTXCA usa stack Java (`.gob.ar/wsmtxca`), no el `.asmx` de WSFEv1. Los requests SOAP se construyen manualmente como XML en las Edge Functions.
+
+### 4.2 Esquema de base de datos (multi-tenant)
+
+```sql
+-- Tabla principal de tenants
+tenants (
+  id              uuid PRIMARY KEY,
+  cuit            varchar(11) NOT NULL UNIQUE,
+  razon_social    text NOT NULL,
+  
+  -- Certificados AFIP (guardados encriptados, NUNCA en texto plano)
+  cert_pem_encrypted      bytea,   -- certificado público
+  key_pem_encrypted       bytea,   -- clave privada
+  cert_passphrase_hash    text,    -- passphrase encriptada
+  
+  -- Configuración fiscal
+  punto_venta_default     int,
+  condicion_iva_emisor    text,    -- 'RI', 'Monotributo', etc.
+  actividad_afip          bigint,  -- código de actividad ARCA (ej: 463300)
+  
+  -- Cache de token WSAA (para no pedir uno nuevo por cada factura)
+  wsaa_token              text,
+  wsaa_sign               text,
+  wsaa_token_vence        timestamptz,
+  
+  created_at  timestamptz DEFAULT now()
+)
+
+-- Correlatividad de comprobantes por tenant
+-- CRÍTICO: el número debe ser correlativo sin saltos
+contadores_comprobantes (
+  tenant_id       uuid REFERENCES tenants(id),
+  tipo_cbte       int,    -- 1=FactA, 6=FactB, 91=Remito
+  punto_venta     int,
+  ultimo_numero   bigint DEFAULT 0,
+  PRIMARY KEY (tenant_id, tipo_cbte, punto_venta)
+)
+
+-- Registro de comprobantes emitidos
+comprobantes (
+  id              uuid PRIMARY KEY,
+  tenant_id       uuid REFERENCES tenants(id),
+  tipo_cbte       int,
+  punto_venta     int,
+  numero          bigint,
+  fecha_emision   date,
+  cuit_receptor   varchar(11),
+  importe_total   decimal(15,2),
+  cae             varchar(14),
+  cae_vence       date,
+  resultado       char(1),    -- 'A'=Aprobado, 'O'=Observado, 'R'=Rechazado
+  raw_request     jsonb,      -- guardar para debugging
+  raw_response    jsonb,
+  created_at      timestamptz DEFAULT now()
+)
+```
+
+### 4.3 Flujo completo de emisión de una factura
+
+```
+1. Frontend solicita factura
+        ↓
+2. Edge Function verifica si el token WSAA del tenant está vigente
+   - Si vence en < 30 min → solicitar nuevo token al WSAA
+   - Si está vigente → usar el cacheado
+        ↓
+3. Consultar último comprobante autorizado en WSMTXCA
+   (consultarUltimoComprobanteAutorizado)
+   → número + 1 = número a usar
+        ↓
+4. Construir SOAP envelope de autorizarComprobante
+        ↓
+5. POST al WSMTXCA
+        ↓
+6. Parsear respuesta → extraer CAE y fecha de vencimiento
+        ↓
+7. Guardar en DB + retornar al frontend para imprimir
+```
+
+---
+
+## 5. WSAA — Autenticación
+
+El WSAA provee un Token + Sign válidos por **12 horas**. Se cachean en la DB del tenant — no se pide uno nuevo por cada factura.
+
+### TRA (Ticket de Requerimiento de Acceso)
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<loginTicketRequest version="1.0">
+  <header>
+    <uniqueId>{timestamp_unix}</uniqueId>
+    <generationTime>{ahora - 10min en ISO8601}</generationTime>
+    <expirationTime>{ahora + 10min en ISO8601}</expirationTime>
+  </header>
+  <service>wsmtxca</service>
+</loginTicketRequest>
+```
+
+El TRA se firma con la clave privada del tenant (PKCS#7 / CMS SignedData) y se envía al WSAA.
+
+---
+
+## 6. WSMTXCA — Estructura del comprobante
+
+### 6.1 Tipos de comprobante relevantes
+
+| Código | Tipo | Receptor |
+|---|---|---|
+| 1 | Factura A | Responsable Inscripto (CUIT obligatorio, condicionIVAReceptor=1) |
+| 6 | Factura B | Consumidor Final / Monotributista |
+| 11 | Factura C | Solo para emisores Monotributistas |
+| 91 | Remito | General (sin validación especial para comercio general) |
+| 2 / 3 | Nota Débito / Crédito A | — |
+| 7 / 8 | Nota Débito / Crédito B | — |
+
+### 6.2 Request de autorizarComprobante — Factura A
+
+```xml
+<ser:autorizarComprobanteRequest>
+  <authRequest>
+    <token>{token_wsaa}</token>
+    <sign>{sign_wsaa}</sign>
+    <cuitRepresentada>{cuit_tenant}</cuitRepresentada>
+  </authRequest>
+  <comprobanteCAERequest>
+
+    <!-- Identificación del comprobante -->
+    <codigoTipoComprobante>1</codigoTipoComprobante>
+    <numeroPuntoVenta>{punto_venta}</numeroPuntoVenta>
+    <numeroComprobante>{ultimo + 1}</numeroComprobante>
+    <fechaEmision>2025-06-20</fechaEmision>
+
+    <!-- Receptor -->
+    <codigoTipoDocumento>80</codigoTipoDocumento>   <!-- 80=CUIT para Fact A -->
+    <numeroDocumento>{cuit_receptor}</numeroDocumento>
+    <condicionIVAReceptor>1</condicionIVAReceptor>  <!-- 1=RI, 5=Consumidor Final -->
+
+    <!-- Importes -->
+    <importeGravado>100.00</importeGravado>
+    <importeNoGravado>0.00</importeNoGravado>
+    <importeExento>0.00</importeExento>
+    <importeSubtotal>100.00</importeSubtotal>
+    <importeOtrosTributos>0.00</importeOtrosTributos>
+    <importeTotal>121.00</importeTotal>
+
+    <!-- Moneda -->
+    <codigoMoneda>PES</codigoMoneda>
+    <cotizacionMoneda>1</cotizacionMoneda>
+
+    <!-- Concepto: 1=Productos, 2=Servicios, 3=Ambos -->
+    <codigoConcepto>1</codigoConcepto>
+
+    <!-- Ítems (uno por producto) -->
+    <arrayItems>
+      <item>
+        <codigoMtx>7790895000782</codigoMtx>  <!-- EAN del scanner. OPCIONAL -->
+        <codigo>SKU-001</codigo>               <!-- código interno del sistema -->
+        <descripcion>Yerba 500g</descripcion>
+        <cantidad>2.000000</cantidad>
+        <codigoUnidadMedida>7</codigoUnidadMedida>  <!-- 7=unidades -->
+        <precioUnitario>50.00</precioUnitario>       <!-- SIN IVA para Fact A -->
+        <importeBonificacion>0.00</importeBonificacion>
+        <codigoCondicionIVA>5</codigoCondicionIVA>  <!-- 5=21%, 4=10.5%, 3=0% -->
+        <importeIVA>20.66</importeIVA>
+        <importeItem>100.00</importeItem>  <!-- neto x cantidad -->
+      </item>
+    </arrayItems>
+
+    <!-- Subtotales de IVA agrupados por alícuota -->
+    <arraySubtotalesIVA>
+      <subtotalIVA>
+        <codigo>5</codigo>       <!-- mismo código que en item -->
+        <importe>20.66</importe> <!-- suma de IVA de todos los ítems al 21% -->
+      </subtotalIVA>
+    </arraySubtotalesIVA>
+
+    <!-- Actividad ARCA del negocio (obligatorio) -->
+    <arrayActividades>
+      <actividad><codigo>463300</codigo></actividad>
+    </arrayActividades>
+
+  </comprobanteCAERequest>
+</ser:autorizarComprobanteRequest>
+```
+
+### 6.3 Respuesta exitosa
+
+```xml
+<resultado>A</resultado>  <!-- A=Aprobado, O=Observado con CAE, R=Rechazado -->
+<comprobanteResponse>
+  <cuit>20123456789</cuit>
+  <codigoTipoComprobante>1</codigoTipoComprobante>
+  <numeroPuntoVenta>1</numeroPuntoVenta>
+  <numeroComprobante>1</numeroComprobante>
+  <fechaEmision>2025-06-20</fechaEmision>
+  <CAE>12345678901234</CAE>
+  <fechaVencimientoCAE>2025-07-05</fechaVencimientoCAE>
+</comprobanteResponse>
+```
+
+### 6.4 Códigos de alícuotas IVA
+
+| Código | Alícuota | Uso típico |
+|---|---|---|
+| 3 | 0% | Productos exentos |
+| 4 | 10.5% | Alimentos básicos, algunos servicios |
+| 5 | 21% | General |
+| 6 | 27% | Servicios públicos |
+| 2 | Exento | Sin IVA |
+
+### 6.5 Códigos de condición IVA del receptor
+
+| Código | Descripción | Clase comprobante |
+|---|---|---|
+| 1 | IVA Responsable Inscripto | A |
+| 4 | IVA Sujeto Exento | B |
+| 5 | Consumidor Final | B |
+| 6 | Responsable Monotributo | A |
+| 13 | Monotributista Social | A |
+| 16 | Monotributo Trabajador Independiente Promovido | A |
+
+### 6.6 Unidades de medida más comunes
+
+| Código | Descripción |
+|---|---|
+| 1 | Kilogramos |
+| 2 | Metros |
+| 5 | Litros |
+| 7 | Unidades |
+| 14 | Gramos |
+| 61 | Centímetros |
+
+---
+
+## 7. Correlatividad — Punto crítico
+
+AFIP rechaza comprobantes si el número no es correlativo (sin saltos). Para un SaaS multi-tenant esto es especialmente sensible.
+
+**Regla:** Antes de emitir cada factura, consultar `consultarUltimoComprobanteAutorizado` al WSMTXCA. No confiar solo en el contador local de la DB.
+
+```
+número_a_usar = consultarUltimoComprobanteAutorizado(tipo, punto_venta) + 1
+```
+
+Implementar un lock a nivel de DB (PostgreSQL advisory locks o `SELECT FOR UPDATE`) para evitar condición de carrera si dos facturas se emiten simultáneamente para el mismo tenant.
+
+---
+
+## 8. Manejo de errores y reproceso
+
+WSMTXCA tiene manejo transaccional. Si hay un error de red y no se sabe si la factura fue procesada:
+
+1. Llamar a `consultarComprobante` con el número enviado
+2. Si existe → se procesó correctamente, guardar el CAE recibido
+3. Si no existe → reenviar la solicitud
+4. Si se reenvía un comprobante ya autorizado → AFIP lo rechaza con error de correlatividad
+
+**Siempre guardar el request y response crudos en la DB** para poder debuggear y reprocesar.
+
+---
+
+## 9. Orden de implementación recomendado
+
+### Fase 1 — Infraestructura (sin código de negocio)
+- [ ] Esquema de DB con tablas de tenants, contadores y comprobantes
+- [ ] Encriptación de certificados en Supabase Vault
+- [ ] Panel de onboarding: subida de `.p12` + passphrase
+
+### Fase 2 — WSAA
+- [ ] Generación y firma del TRA (PKCS#7)
+- [ ] Request al WSAA y parseo de Token + Sign
+- [ ] Cache del token con expiración por tenant
+
+### Fase 3 — WSMTXCA en homologación
+- [ ] `dummy` → verificar conectividad
+- [ ] `consultarUltimoComprobanteAutorizado` → base de correlatividad
+- [ ] `autorizarComprobante` Factura B (más simple, no requiere CUIT receptor validado)
+- [ ] `autorizarComprobante` Factura A
+- [ ] `autorizarComprobante` Remito (tipo 91)
+- [ ] Notas de crédito/débito (si necesario)
+
+### Fase 4 — Producción
+- [ ] Cambiar URLs a producción
+- [ ] Certificados reales de los primeros clientes piloto
+- [ ] Monitoreo de errores y alertas de token próximo a vencer
+
+---
+
+## 10. Notas importantes
+
+- **Certificados:** Duran 2 años. Implementar alerta proactiva cuando faltan 30 días para el vencimiento.
+- **Token WSAA:** Dura 12 horas. Cachear y renovar automáticamente. No pedir uno nuevo por cada factura.
+- **Factura A vs B:** Para Factura A el `precioUnitario` va SIN IVA. Para Factura B va CON IVA incluido. Error muy común.
+- **`codigoMtx`:** Campo opcional. Si el producto no tiene código de barras, simplemente no se envía.
+- **`arrayActividades`:** Obligatorio en WSMTXCA. Usar el código de actividad AFIP registrado del contribuyente. Para almacenes/kioscos típico: `463300` (Venta al por menor de cigarrillos y productos de tabaco) o `471120` (Venta al por menor en supermercados). El cliente puede consultar su actividad en la constancia de AFIP.
+- **Remitos sectoriales:** Para carnes (995), tabaco (88/990), harina (993/994), AFIP valida remitos contra sus bases. Para comercio general no hay validación especial.
+- **Homologación:** Las URLs de testing usan certificados de prueba provistos por AFIP. No usar certificados reales de clientes en homologación.

@@ -1,0 +1,81 @@
+BG GESTIÓN — ESTRATEGIA DE PRECIOS
+Fecha: Marzo 2026
+====================================
+
+## DECISIÓN ESTRATÉGICA DE SEGMENTO
+
+Se decidió NO competir con el segmento kiosco/almacén chico.
+Razón: la competencia directa (SistemaStock, Líder Gestión) cobra $15.000–$25.000/mes
+con ventas ilimitadas. Competir ahí implica guerra de precios en el segmento de menor valor.
+
+Segmento objetivo: comercios de volumen medio-alto.
+- Almacenes medianos (60–100 ventas/día)
+- Minimarkets y distribuidoras
+- Tiendas con 2+ sucursales
+- Comercios que hoy usan Tango Gestión y lo odian por ser caro/complejo
+
+
+## ESTRUCTURA DE PLANES DEFINIDA
+
+Plan         | Precio      | Sucursales | Ventas/mes | Productos | Usuarios | Historial
+-------------|-------------|------------|------------|-----------|----------|----------
+Starter      | $50.000/mes | 1          | 2.000      | 800       | 5        | 6 meses
+Profesional  | $80.000/mes | 3          | 6.000      | 3.000     | 12       | 24 meses
+Premium      | $130.000/mes| 6          | 15.000     | 10.000    | 25       | Ilimitado
+Enterprise   | A consultar | Ilimitado  | Ilimitado  | Ilimitado | Ilimitado| Ilimitado
+
+Precios en pesos argentinos, sin IVA.
+Sin plan gratuito (decisión deliberada para evitar carga de soporte).
+
+
+## LÓGICA DE LÍMITES
+
+Ventas/mes: limitante principal. Escala con el éxito del comercio.
+  - Starter 2.000: cubre almacén mediano. Kiosco de alto volumen (80+/día) lo supera rápido.
+  - Profesional 6.000: cubre la mayoría de comercios con 2-3 sucursales activas.
+  - Premium 15.000: distribuidoras, franquicias, comercios de alto volumen.
+
+Productos: limitante secundario. Captura ferreterías y distribuidoras con catálogos grandes.
+
+Historial de reportes: limitante soft de alto valor percibido, bajo costo técnico.
+  Supabase guarda todo igual — es solo una restricción de visualización.
+  Muy efectivo para retención: cuando el cliente quiere ver datos de hace 1 año, ya está comprometido.
+
+Usuarios: incluido para diferenciación, no es la palanca principal para el segmento objetivo.
+
+
+## LO QUE NO SE LIMITA (IMPORTANTE)
+
+- Funcionalidades del POS (carrito, descuentos, métodos de pago)
+- Escáner móvil
+- Cotización dólar blue
+- Tickets PDF
+- Funcionalidades del día a día en general
+
+Razón: limitar la operación diaria frustra al usuario en vez de motivar el upgrade.
+El límite tiene que doler cuando el negocio crece, no cuando opera.
+
+
+## POSICIONAMIENTO VS COMPETENCIA
+
+Competidor         | Precio ref.     | Debilidad vs BG Gestión
+-------------------|-----------------|-----------------------------
+Tango Gestión      | $20.000+ s/IVA  | Caro, complejo, sin dólar blue real
+SistemaStock       | $24.000/mes     | Básico, sin multi-sucursal, sin USD
+Líder Gestión      | Licencia única  | Sin nube, sin escáner móvil
+Planillas Excel    | $0              | Sin POS, sin stock real, no escala
+
+Diferencial clave de BG Gestión:
+1. Multi-moneda con dólar blue automático (único en el mercado)
+2. Escáner móvil en tiempo real (sin hardware extra)
+3. Multi-sucursal desde el plan Starter
+4. Interfaz moderna (no parece software de los 90)
+
+
+## PRÓXIMOS PASOS PENDIENTES
+
+- [ ] Actualizar landing page con nueva estructura de planes
+- [ ] Definir mensaje de "por qué no tenemos plan gratis" si un prospecto pregunta
+- [ ] Estudiar si agregar límite de arqueos/reportes avanzados como feature Premium
+- [ ] Validar límite de 2.000 ventas/mes con primeros clientes reales
+- [ ] Definir precio Enterprise (referencia: USD 100-200/mes en el mercado)
