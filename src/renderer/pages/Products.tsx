@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
-import { Plus, Search, Package, AlertTriangle, RefreshCw, Tag, X, Download, Upload, FileText, Loader2, CheckCircle, XCircle, Percent } from 'lucide-react'
+import { Plus, Search, Package, AlertTriangle, RefreshCw, Tag, X, Download, Upload, FileText, Loader2, CheckCircle, XCircle, Percent, ChevronDown } from 'lucide-react'
 import { useProductsStore, type Product } from '@/store/products'
 import { useSuppliersStore } from '@/store/suppliers'
 import { useCategoriesStore } from '@/store/categories'
@@ -24,7 +24,8 @@ export default function Products() {
   const { suppliers, fetchSuppliers } = useSuppliersStore()
 
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([])
+  const [categorySearch, setCategorySearch] = useState('')
   const [selectedSupplier, setSelectedSupplier] = useState<string | null>(null)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
   const [isCreateOpen, setIsCreateOpen] = useState(false)
@@ -75,10 +76,14 @@ export default function Products() {
     fetchBlueRate()
   }, [fetchProducts, selectedBranch?.id])
 
+
   // ✅ Ahora category_id viene de product.product.category_id
   let filteredProducts = getFilteredProducts()
-  if (selectedCategory) {
-    filteredProducts = filteredProducts.filter(p => p.product?.category_id === selectedCategory)
+  if (selectedCategories.length > 0) {
+    filteredProducts = filteredProducts.filter(p => {
+      if (selectedCategories.includes('__sin_categoria__') && !p.product?.category_id) return true
+      return p.product?.category_id && selectedCategories.includes(p.product.category_id)
+    })
   }
   if (selectedSupplier) {
     filteredProducts = filteredProducts.filter(p => p.product?.supplier_id === selectedSupplier)
@@ -93,7 +98,7 @@ export default function Products() {
   // Resetear página al cambiar filtros
   useEffect(() => {
     setCurrentPage(1)
-  }, [searchQuery, selectedCategory, selectedSupplier, getFilteredProducts])
+  }, [searchQuery, selectedCategories, selectedSupplier, getFilteredProducts])
 
   const lowStockCount = filteredProducts.filter(p => p.stock_quantity <= p.stock_min).length
 
@@ -312,35 +317,70 @@ export default function Products() {
                 <option key={sup.id} value={sup.id}>{sup.name}</option>
               ))}
             </select>
+
           </div>
 
           {categories.length > 0 && (
-            <div className="flex items-center gap-2 overflow-x-auto pb-2">
+            <div className="flex items-center gap-2 overflow-x-auto mt-3 pb-3">
+              {categories.length > 6 && (
+                <div className="relative flex-shrink-0">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+                  <input
+                    type="text"
+                    value={categorySearch}
+                    onChange={e => setCategorySearch(e.target.value)}
+                    placeholder="Buscar..."
+                    className="pl-7 pr-3 py-1.5 w-32 text-sm border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                </div>
+              )}
               <button
-                onClick={() => setSelectedCategory(null)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition ${
-                  selectedCategory === null ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                onClick={() => setSelectedCategories([])}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition flex-shrink-0 ${
+                  selectedCategories.length === 0 ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
                 Todas
               </button>
-              {categories.map(category => (
-                <button
-                  key={category.id}
-                  onClick={() => setSelectedCategory(category.id)}
-                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition ${
-                    selectedCategory === category.id ? 'text-white' : 'hover:opacity-80'
-                  }`}
-                  style={{
-                    backgroundColor: selectedCategory === category.id ? category.color : category.color + '20',
-                    color: selectedCategory === category.id ? 'white' : category.color
-                  }}
-                >
-                  <Tag className="w-4 h-4" />
-                  {category.name}
-                  {selectedCategory === category.id && <X className="w-3 h-3" />}
-                </button>
-              ))}
+              {categories.filter(c => c.name.toLowerCase().includes(categorySearch.toLowerCase())).map(category => {
+                const active = selectedCategories.includes(category.id)
+                return (
+                  <button
+                    key={category.id}
+                    onClick={() => setSelectedCategories(prev =>
+                      active ? prev.filter(id => id !== category.id) : [...prev, category.id]
+                    )}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition flex-shrink-0 ${
+                      active ? 'text-white' : 'hover:opacity-80'
+                    }`}
+                    style={{
+                      backgroundColor: active ? category.color : category.color + '20',
+                      color: active ? 'white' : category.color
+                    }}
+                  >
+                    <Tag className="w-4 h-4" />
+                    {category.name}
+                    {active && <X className="w-3 h-3" />}
+                  </button>
+                )
+              })}
+              {(() => {
+                const active = selectedCategories.includes('__sin_categoria__')
+                return (
+                  <button
+                    onClick={() => setSelectedCategories(prev =>
+                      active ? prev.filter(id => id !== '__sin_categoria__') : [...prev, '__sin_categoria__']
+                    )}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition flex-shrink-0 ${
+                      active ? 'bg-gray-500 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                    }`}
+                  >
+                    <Tag className="w-4 h-4" />
+                    Sin categoría
+                    {active && <X className="w-3 h-3" />}
+                  </button>
+                )
+              })()}
             </div>
           )}
         </div>
@@ -363,12 +403,12 @@ export default function Products() {
               <Package className="w-8 h-8 text-gray-400" />
             </div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              {searchQuery || selectedCategory ? 'Sin resultados' : 'No hay productos aún'}
+              {searchQuery || selectedCategories.length > 0 ? 'Sin resultados' : 'No hay productos aún'}
             </h3>
             <p className="text-gray-500 mb-6 max-w-sm">
-              {searchQuery || selectedCategory ? 'Intenta con otro filtro o búsqueda' : 'Creá tu primer producto'}
+              {searchQuery || selectedCategories.length > 0 ? 'Intenta con otro filtro o búsqueda' : 'Creá tu primer producto'}
             </p>
-            {!searchQuery && !selectedCategory && (
+            {!searchQuery && !selectedCategories.length > 0 && (
               <button
                 onClick={() => setIsCreateOpen(true)}
                 className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium"

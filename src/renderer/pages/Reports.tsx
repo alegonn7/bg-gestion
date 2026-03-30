@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { RefreshCw, Calendar, Filter, TrendingUp, DollarSign, Package, AlertTriangle, ShoppingCart, Truck, BarChart2 } from 'lucide-react'
+import { RefreshCw, Calendar, Filter, TrendingUp, DollarSign, Package, AlertTriangle, ShoppingCart, Truck, BarChart2, FileText } from 'lucide-react'
 import { useReportsStore } from '@/store/reports'
 import { useCashRegisterStore } from '@/store/cash-register'
 import { useBranchesStore } from '@/store/branches'
@@ -34,13 +34,15 @@ type ChartType =
   | 'purchases-by-supplier'
   | 'dead-stock'
   | 'cash-expenses'
+  | 'fiscal-period'
+  | 'fiscal-by-type'
 
 interface ChartOption {
   id: ChartType
   label: string
   icon: typeof TrendingUp
   description: string
-  category: 'commercial' | 'inventory'
+  category: 'commercial' | 'inventory' | 'fiscal'
 }
 
 const chartOptions: ChartOption[] = [
@@ -134,6 +136,20 @@ const chartOptions: ChartOption[] = [
     icon: ShoppingCart,
     description: 'Gastos registrados en cajas durante el período',
     category: 'inventory'
+  },
+  {
+    id: 'fiscal-period',
+    label: 'Facturación por Período',
+    icon: FileText,
+    description: 'Facturas, NC y ND emitidas en el tiempo',
+    category: 'fiscal'
+  },
+  {
+    id: 'fiscal-by-type',
+    label: 'Comprobantes por Tipo',
+    icon: FileText,
+    description: 'Distribución y totales por tipo de comprobante',
+    category: 'fiscal'
   }
 ]
 
@@ -162,11 +178,18 @@ export default function Reports() {
     purchasesBySupplier,
     deadStock,
     cashExpenses,
+    fiscalByPeriod,
+    fiscalByType,
+    totalFacturado,
+    totalNC,
+    totalND,
+    comprobanteCount,
     fetchReports,
     fetchSalesData,
     fetchPurchasesBySupplier,
     fetchDeadStock,
-    fetchCashExpenses
+    fetchCashExpenses,
+    fetchFiscalData,
   } = useReportsStore()
 
   const profitMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0
@@ -212,6 +235,7 @@ export default function Reports() {
     fetchPurchasesBySupplier(start, end, branchId)
     fetchDeadStock(start, end, branchId)
     fetchCashExpenses(start, end, branchId)
+    fetchFiscalData(start, end)
   }
 
   const handleBranchChange = (branchId: string) => {
@@ -223,6 +247,7 @@ export default function Reports() {
     fetchPurchasesBySupplier(start, end, bid)
     fetchDeadStock(start, end, bid)
     fetchCashExpenses(start, end, bid)
+    fetchFiscalData(start, end)
   }
 
   const handleCustomDateApply = () => {
@@ -234,6 +259,7 @@ export default function Reports() {
       fetchPurchasesBySupplier(start, end, branchId)
       fetchDeadStock(start, end, branchId)
       fetchCashExpenses(start, end, branchId)
+      fetchFiscalData(start, end)
     }
   }
 
@@ -750,7 +776,6 @@ export default function Reports() {
                     <thead>
                       <tr className="border-b text-gray-600">
                         <th className="text-left py-2 px-3">Descripción</th>
-                        <th className="text-left py-2 px-3">Método</th>
                         <th className="text-left py-2 px-3">Fecha</th>
                         <th className="text-right py-2 px-3">Monto</th>
                       </tr>
@@ -759,7 +784,6 @@ export default function Reports() {
                       {cashExpenses.slice(0, 50).map((e, i) => (
                         <tr key={i} className="border-b last:border-0 hover:bg-gray-50">
                           <td className="py-2 px-3">{e.description || '—'}</td>
-                          <td className="py-2 px-3 text-gray-600">{e.payment_method || '—'}</td>
                           <td className="py-2 px-3 text-gray-600">{new Date(e.created_at).toLocaleDateString('es-AR')}</td>
                           <td className="text-right py-2 px-3 font-medium text-red-600">{formatCurrency(e.amount || 0)}</td>
                         </tr>
@@ -767,6 +791,117 @@ export default function Reports() {
                     </tbody>
                   </table>
                 </div>
+              </>
+            )}
+          </div>
+        )
+      }
+
+      case 'fiscal-period':
+        return (
+          <div className="bg-white rounded-lg p-6 shadow-sm space-y-6">
+            <div>
+              <h3 className="text-lg font-semibold mb-1">Facturación por Período</h3>
+              <p className="text-sm text-gray-500">Comprobantes aprobados en el período (solo ARCA)</p>
+            </div>
+
+            {/* KPIs fiscales */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-indigo-50 rounded-lg p-4">
+                <p className="text-xs text-indigo-600 font-medium mb-1">Comprobantes</p>
+                <p className="text-2xl font-bold text-indigo-700">{comprobanteCount}</p>
+              </div>
+              <div className="bg-green-50 rounded-lg p-4">
+                <p className="text-xs text-green-600 font-medium mb-1">Total Facturado</p>
+                <p className="text-xl font-bold text-green-700">{formatCurrency(totalFacturado)}</p>
+              </div>
+              <div className="bg-orange-50 rounded-lg p-4">
+                <p className="text-xs text-orange-600 font-medium mb-1">Total NC</p>
+                <p className="text-xl font-bold text-orange-700">-{formatCurrency(totalNC)}</p>
+              </div>
+              <div className="bg-blue-50 rounded-lg p-4">
+                <p className="text-xs text-blue-600 font-medium mb-1">Neto Facturado</p>
+                <p className="text-xl font-bold text-blue-700">{formatCurrency(totalFacturado + totalND - totalNC)}</p>
+              </div>
+            </div>
+
+            {fiscalByPeriod.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">No hay comprobantes emitidos en el período.</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={380}>
+                <BarChart data={fiscalByPeriod}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="period" />
+                  <YAxis tickFormatter={(v) => formatCurrency(v)} width={120} />
+                  <Tooltip formatter={(value) => formatCurrency(Number(value))} />
+                  <Legend />
+                  <Bar dataKey="total_facturas" name="Facturas" fill="#6366f1" stackId="a" />
+                  <Bar dataKey="total_nd" name="Notas de Débito" fill="#0ea5e9" stackId="a" />
+                  <Bar dataKey="total_nc" name="Notas de Crédito" fill="#f97316" stackId="b" />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        )
+
+      case 'fiscal-by-type': {
+        const FACTURA_TIPOS = new Set([1, 6, 11])
+        const NC_TIPOS = new Set([3, 8, 13])
+        const ND_TIPOS = new Set([2, 7, 12])
+        return (
+          <div className="bg-white rounded-lg p-6 shadow-sm space-y-5">
+            <div>
+              <h3 className="text-lg font-semibold mb-1">Comprobantes por Tipo</h3>
+              <p className="text-sm text-gray-500">Distribución de comprobantes aprobados por tipo ARCA</p>
+            </div>
+
+            {fiscalByType.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">No hay comprobantes emitidos en el período.</div>
+            ) : (
+              <>
+                <ResponsiveContainer width="100%" height={320}>
+                  <BarChart data={fiscalByType} layout="vertical">
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis type="number" tickFormatter={(v) => formatCurrency(v)} />
+                    <YAxis dataKey="label" type="category" width={160} />
+                    <Tooltip formatter={(value, name) => name === 'total' ? formatCurrency(Number(value)) : value} />
+                    <Legend />
+                    <Bar dataKey="total" name="Total ($)" radius={[0, 4, 4, 0]}>
+                      {fiscalByType.map((entry) => (
+                        <Cell
+                          key={entry.tipo}
+                          fill={
+                            FACTURA_TIPOS.has(entry.tipo) ? '#6366f1'
+                            : NC_TIPOS.has(entry.tipo) ? '#f97316'
+                            : ND_TIPOS.has(entry.tipo) ? '#0ea5e9'
+                            : '#9ca3af'
+                          }
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-gray-500 text-xs uppercase">
+                      <th className="text-left py-2 px-3">Tipo</th>
+                      <th className="text-right py-2 px-3">Cantidad</th>
+                      <th className="text-right py-2 px-3">Total</th>
+                      <th className="text-right py-2 px-3">Promedio</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {fiscalByType.map(t => (
+                      <tr key={t.tipo} className="border-b last:border-0 hover:bg-gray-50">
+                        <td className="py-2 px-3 font-medium">{t.label}</td>
+                        <td className="text-right py-2 px-3 text-gray-600">{t.count}</td>
+                        <td className="text-right py-2 px-3 font-medium">{formatCurrency(t.total)}</td>
+                        <td className="text-right py-2 px-3 text-gray-600">{t.count > 0 ? formatCurrency(t.total / t.count) : '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </>
             )}
           </div>
@@ -946,7 +1081,7 @@ export default function Reports() {
                 </div>
               </div>
 
-              <div>
+              <div className="mb-4">
                 <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Análisis de Inventario</p>
                 <div className="space-y-1">
                   {chartOptions.filter((opt) => opt.category === 'inventory').map((option) => (
@@ -956,6 +1091,31 @@ export default function Reports() {
                       className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
                         selectedChart === option.id
                           ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                          : 'hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <option.icon className="h-4 w-4 flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium">{option.label}</p>
+                          <p className="text-xs text-gray-500 truncate">{option.description}</p>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Facturación ARCA</p>
+                <div className="space-y-1">
+                  {chartOptions.filter((opt) => opt.category === 'fiscal').map((option) => (
+                    <button
+                      key={option.id}
+                      onClick={() => setSelectedChart(option.id)}
+                      className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                        selectedChart === option.id
+                          ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
                           : 'hover:bg-gray-50'
                       }`}
                     >

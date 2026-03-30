@@ -1,0 +1,146 @@
+================================================================================
+  BG GESTIÓN — GUÍA DE FACTURACIÓN ELECTRÓNICA ARCA
+================================================================================
+
+REQUISITOS
+----------
+Para usar la facturación electrónica necesitás:
+
+  • Estar inscripto en ARCA como Monotributista o Responsable Inscripto
+  • Tener Clave Fiscal nivel 3 o superior
+  • Tener internet al momento de emitir facturas
+
+
+================================================================================
+CONFIGURACIÓN INICIAL (se hace una sola vez)
+================================================================================
+
+PASO 1 — Autorizar BG Gestión en ARCA
+---------------------------------------
+Este paso le dice a ARCA que la app BG Gestión puede emitir facturas en tu nombre.
+
+1. Entrá al portal de ARCA: https://auth.afip.gob.ar
+   (con tu CUIT y Clave Fiscal)
+
+2. En el menú de servicios buscá y abrí:
+   "Administrador de Relaciones de Clave Fiscal"
+
+3. Hacé clic en ARCA → WebServices
+
+4. Seleccioná "Factura Electrónica con Detalle - MTXCA"
+
+5. En "Representado": poné tu propio CUIT
+
+6. En "Representante": ingresá el CUIT de BG Gestión que aparece en la app
+   (lo vas a ver en la sección "Facturación Electrónica ARCA" al expandirla)
+
+7. Hacé clic en "Buscar" para localizar el representante y confirmá la relación
+
+
+PASO 2 — Configurar en BG Gestión
+-----------------------------------
+1. Abrí BG Gestión e ingresá a "Facturación ARCA" en el menú lateral
+2. Expandí la sección haciendo clic en "Facturación Electrónica ARCA"
+3. Completá los datos:
+
+   • CUIT: tu CUIT sin guiones (11 dígitos, ej: 20123456789)
+   • Razón Social: el nombre de tu negocio tal como figura en ARCA
+   • Condición IVA: Monotributista / Responsable Inscripto
+   • Punto de Venta: el número de punto de venta habilitado en ARCA
+     (si nunca lo configuraste, probablemente sea 1)
+   • Actividad ARCA: elegí la que más se acerque a tu rubro,
+     o ingresá el código que figura en tu constancia de inscripción
+
+4. Hacé clic en "Activar facturación"
+5. ¡Listo! La facturación queda activa
+
+
+================================================================================
+USO DIARIO
+================================================================================
+
+EMITIR UNA FACTURA
+------------------
+1. Realizá la venta normalmente desde el Punto de Venta
+2. Abrí el "Historial de Ventas"
+3. En la venta que querés facturar, hacé clic en el ícono de factura
+4. Elegí el tipo:
+   • Factura B → para consumidores finales (la más común)
+   • Factura A → para empresas/comercios con CUIT (te pide el CUIT del cliente)
+   • Factura C → solo si sos Monotributista
+5. Hacé clic en "Emitir factura"
+6. En segundos ARCA responde con el CAE (código de autorización)
+7. La factura queda registrada con número, CAE y fecha de vencimiento del CAE
+
+
+EMITIR UNA NOTA DE CRÉDITO (para anular una factura)
+-----------------------------------------------------
+1. En el Historial de Ventas, encontrá la venta con factura emitida
+   (aparece el número de factura al lado)
+2. Hacé clic en el botón "NC" (naranja)
+3. Confirmá — ARCA registra la anulación automáticamente
+
+
+VER HISTORIAL DE COMPROBANTES
+------------------------------
+En "Facturación ARCA" del menú lateral podés ver:
+  • Todos los comprobantes emitidos (facturas y notas de crédito)
+  • Estado: Aprobado / Observado / Rechazado
+  • CAE y fecha de vencimiento
+  • Total facturado del mes
+  • Total por comprobantes aprobados
+
+
+================================================================================
+ALÍCUOTAS DE IVA POR PRODUCTO
+================================================================================
+
+Al crear o editar un producto podés configurar su alícuota de IVA.
+Esto es importante para Facturas A (el IVA se discrimina ítem por ítem).
+
+  Exento (0%)   → algunos alimentos básicos, medicamentos esenciales
+  10.5%         → carnes, frutas, verduras, pan, libros, medicamentos
+  21%           → alícuota general (la mayoría de productos)
+  27%           → telecomunicaciones, gas, electricidad (no común en comercios)
+
+Si no configurás la alícuota, el sistema usa 21% por defecto.
+Para Facturas B y C el IVA va incluido en el precio, sin discriminar.
+
+
+================================================================================
+PUNTO DE VENTA — ¿DÓNDE LO VEO EN ARCA?
+================================================================================
+
+En el portal de ARCA, buscá el servicio "ABM Puntos de Venta" o
+"Administración de Puntos de Venta". Ahí ves los puntos habilitados para tu CUIT.
+
+Si nunca lo diste de alta, el punto de venta 1 es el predeterminado.
+Consultá a tu contador si no estás seguro.
+
+
+================================================================================
+PREGUNTAS FRECUENTES
+================================================================================
+
+¿Qué pasa si ARCA rechaza la factura?
+  Aparece el mensaje de error de ARCA en pantalla. Los motivos más comunes son:
+  • Punto de venta no habilitado para ese tipo de comprobante
+  • CUIT del receptor inválido (Factura A)
+  • No realizaste el Paso 1 (autorizar BG Gestión en ARCA)
+  Corregí el problema y volvé a intentar.
+
+¿Puedo facturar ventas del día anterior?
+  No. Las facturas deben emitirse el mismo día de la venta.
+
+¿La app guarda copias de las facturas?
+  Sí. Todas quedan guardadas en BG Gestión. También podés consultarlas
+  en el portal web de ARCA.
+
+¿Funciona sin internet?
+  No. Al emitir una factura la app se conecta a ARCA en tiempo real para
+  obtener el CAE. Sin conexión no se puede facturar.
+
+¿Puedo usar más de un punto de venta?
+  Sí, configurá el punto de venta correspondiente en cada sucursal.
+
+================================================================================

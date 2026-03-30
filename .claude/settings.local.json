@@ -18,7 +18,20 @@
       "Bash(git commit:*)",
       "Bash(git config:*)",
       "Bash(git checkout:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git reset:*)",
+      "Bash(git branch:*)",
+      "Bash(supabase --version)",
+      "Bash(scoop --version)",
+      "Bash(curl -L https://github.com/supabase/cli/releases/latest/download/supabase_windows_amd64.tar.gz -o /tmp/supabase.tar.gz)",
+      "Bash(cd /tmp)",
+      "Bash(tar -xzf supabase.tar.gz)",
+      "Bash(ls supabase*)",
+      "Bash(cp /tmp/supabase.exe ~/bin/supabase)",
+      "Bash(mkdir -p ~/bin)",
+      "Bash(export PATH=\"$HOME/bin:$PATH\")",
+      "Bash(supabase login:*)",
+      "Bash(~/bin/supabase --version)"
     ]
   }
 }

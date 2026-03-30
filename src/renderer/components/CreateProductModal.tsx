@@ -59,6 +59,7 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
   const [markupArs, setMarkupArs] = useState('')
   const [markupUsd, setMarkupUsd] = useState('')
   const [autofillCost, setAutofillCost] = useState(true)
+  const [alicuotaIva, setAlicuotaIva] = useState(5)  // 5=21% por defecto
 
   useEffect(() => {
     if (isOpen && organization) {
@@ -120,6 +121,7 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
       })
       setMarkupArs('')
       setMarkupUsd('')
+      setAlicuotaIva(5)
       setError('')
     }
   }, [isOpen])
@@ -168,6 +170,7 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
         price_sale_usd: parseFloat(formData.price_sale_usd) || null,
         stock_quantity: parseInt(formData.stock_quantity) || 0,
         stock_min: parseInt(formData.stock_min) || 0,
+        alicuota_iva: alicuotaIva,
       })
 
       setFormData({ 
@@ -518,6 +521,23 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
               </div>
             </div>
           )}
+
+          {/* IVA para facturación ARCA */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Alícuota IVA <span className="text-xs text-gray-400 font-normal ml-1">(para facturación ARCA)</span>
+            </label>
+            <select
+              value={alicuotaIva}
+              onChange={e => setAlicuotaIva(Number(e.target.value))}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            >
+              <option value={3}>Exento / 0%</option>
+              <option value={4}>10.5%</option>
+              <option value={5}>21% (por defecto)</option>
+              <option value={6}>27%</option>
+            </select>
+          </div>
 
           {/* Stock */}
           <div className="grid grid-cols-2 gap-4">

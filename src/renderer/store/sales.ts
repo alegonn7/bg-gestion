@@ -9,6 +9,8 @@ export interface SaleItem {
   price: number
   cost: number
   subtotal: number
+  barcode?: string | null
+  alicuota_iva: number  // 3=0%, 4=10.5%, 5=21%, 6=27%
 }
 
 export interface Sale {
@@ -120,6 +122,7 @@ export const useSalesStore = create<SalesState>((set, get) => ({
             products_branch!inner(
               id,
               barcode,
+              alicuota_iva,
               product:products(name)
             )
           )
@@ -168,7 +171,9 @@ export const useSalesStore = create<SalesState>((set, get) => ({
           quantity: item.quantity,
           price: item.price,
           cost: item.cost,
-          subtotal: item.subtotal
+          subtotal: item.subtotal,
+          barcode: item.products_branch.barcode || null,
+          alicuota_iva: item.products_branch.alicuota_iva ?? 5,
         })),
         // ✅ Normalizamos el created_at para que siempre sea UTC
         created_at: normalizeUTCDate(sale.created_at),

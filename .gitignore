@@ -33,4 +33,7 @@ dist-electron
 # Build artifacts
 build
 out
-release
+
+# Electron release output (binaries, installers, unpacked builds)
+release/
+!release/latest.yml

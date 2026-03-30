@@ -47,6 +47,7 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
   const [markupUsd, setMarkupUsd] = useState('')
   // Autofill toggle para sincronizar costos
   const [autofillCost, setAutofillCost] = useState(true)
+  const [alicuotaIva, setAlicuotaIva] = useState(5)
 
   // Cargar datos del producto cuando se abre el modal
   useEffect(() => {
@@ -63,6 +64,7 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
         stock_min: product.stock_min.toString(),
       })
       setSelectedSupplier(product.product?.supplier_id || '')
+      setAlicuotaIva(product.alicuota_iva ?? 5)
       // Calcular margen ARS inicial
       if (product.price_cost > 0 && product.price_sale > 0) {
         setMarkupArs(((product.price_sale - product.price_cost) / product.price_cost * 100).toFixed(1))
@@ -127,6 +129,7 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
         price_cost_usd: parseFloat(formData.price_cost_usd) || null,
         price_sale_usd: parseFloat(formData.price_sale_usd) || null,
         stock_min: parseInt(formData.stock_min) || 0,
+        alicuota_iva: alicuotaIva,
         // Datos del producto maestro (nombre, descripción, categoría, proveedor)
         product: {
           name: formData.name,
@@ -529,6 +532,23 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
               </div>
             </div>
           )}
+
+          {/* IVA para facturación ARCA */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Alícuota IVA <span className="text-xs text-gray-400 font-normal ml-1">(para facturación ARCA)</span>
+            </label>
+            <select
+              value={alicuotaIva}
+              onChange={e => setAlicuotaIva(Number(e.target.value))}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            >
+              <option value={3}>Exento / 0%</option>
+              <option value={4}>10.5%</option>
+              <option value={5}>21% (por defecto)</option>
+              <option value={6}>27%</option>
+            </select>
+          </div>
 
           {/* Stock */}
           <div className="grid grid-cols-2 gap-4">

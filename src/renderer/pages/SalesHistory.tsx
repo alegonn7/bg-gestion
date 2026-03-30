@@ -7,6 +7,10 @@ import { useBranchesStore } from '@/store/branches'
 import { useAuthStore } from '@/store/auth'
 import jsPDF from 'jspdf'
 import { useUsersStore } from '@/store/users'
+import { useFiscalStore } from '@/store/fiscal'
+import FiscalInvoiceModal from '@/components/FiscalInvoiceModal'
+import FiscalCreditNoteModal from '@/components/FiscalCreditNoteModal'
+import FiscalDebitNoteModal from '@/components/FiscalDebitNoteModal'
 
 
 
@@ -38,6 +42,11 @@ export default function SalesHistory() {
   const [voidConfirmId, setVoidConfirmId] = useState<string | null>(null)
   const [isVoiding, setIsVoiding] = useState(false)
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
+  const [invoicingSale, setInvoicingSale] = useState<any | null>(null)
+  const [creditNoteSale, setCreditNoteSale] = useState<any | null>(null)
+  const [debitNoteSale, setDebitNoteSale] = useState<any | null>(null)
+
+  const { config: fiscalConfig, comprobantes, fetchComprobantes, getComprobanteBySaleId } = useFiscalStore()
 
   const isOwnerOrAdmin = user?.role === 'owner' || user?.role === 'admin'
   const canVoidSale = user?.role === 'owner' || user?.role === 'manager'
@@ -48,7 +57,10 @@ export default function SalesHistory() {
       fetchBranches()
       fetchUsers()
     }
-  }, [selectedBranch?.id])
+    if (fiscalConfig?.fiscal_enabled) {
+      fetchComprobantes(200)
+    }
+  }, [selectedBranch?.id, fiscalConfig?.fiscal_enabled])
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('es-AR', {
@@ -531,6 +543,39 @@ export default function SalesHistory() {
                           )}
                         </>
                       )}
+                      {fiscalConfig?.fiscal_enabled && !isVoided && (
+                        <button
+                          onClick={() => setInvoicingSale(sale)}
+                          className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700"
+                        >
+                          <FileText className="h-4 w-4" />
+                          Factura
+                        </button>
+                      )}
+                      {fiscalConfig?.fiscal_enabled && (() => {
+                        const cbte = getComprobanteBySaleId(sale.id)
+                        if (!cbte) return null
+                        return (<>
+                          {isVoided && (
+                            <button
+                              onClick={() => setCreditNoteSale({ sale, comprobante: cbte })}
+                              className="flex items-center gap-2 px-3 py-1.5 bg-orange-600 text-white text-sm rounded-lg hover:bg-orange-700"
+                            >
+                              <FileText className="h-4 w-4" />
+                              NC
+                            </button>
+                          )}
+                          {!isVoided && (
+                            <button
+                              onClick={() => setDebitNoteSale({ sale, comprobante: cbte })}
+                              className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
+                            >
+                              <FileText className="h-4 w-4" />
+                              ND
+                            </button>
+                          )}
+                        </>)
+                      })()}
                       <button
                         onClick={() => generatePDF(sale)}
                         className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
@@ -610,6 +655,27 @@ export default function SalesHistory() {
           </div>
         )}
       </div>
+
+      {invoicingSale && (
+        <FiscalInvoiceModal
+          sale={invoicingSale}
+          onClose={() => setInvoicingSale(null)}
+        />
+      )}
+      {creditNoteSale && (
+        <FiscalCreditNoteModal
+          comprobante={creditNoteSale.comprobante}
+          saleItems={creditNoteSale.sale.items}
+          onClose={() => setCreditNoteSale(null)}
+        />
+      )}
+      {debitNoteSale && (
+        <FiscalDebitNoteModal
+          comprobante={debitNoteSale.comprobante}
+          saleId={debitNoteSale.sale.id}
+          onClose={() => setDebitNoteSale(null)}
+        />
+      )}
     </div>
   )
 }

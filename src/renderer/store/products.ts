@@ -31,6 +31,7 @@ export interface Product {
   price_sale_usd: number | null // Precio de venta en dólares (manual)
   stock_quantity: number
   stock_min: number
+  alicuota_iva: number // 3=0%, 4=10.5%, 5=21% (default), 6=27%
   is_active: boolean
   created_at: string
   updated_at: string
@@ -71,6 +72,7 @@ interface ProductsState {
     price_sale_usd?: number | null
     stock_quantity: number
     stock_min: number
+    alicuota_iva?: number
   }) => Promise<void>
   updateProduct: (id: string, updates: Partial<Product>) => Promise<void>
   deleteProduct: (id: string) => Promise<void>
@@ -221,6 +223,7 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
           price_sale_usd: productData.price_sale_usd || null,
           stock_quantity: productData.stock_quantity || 0,
           stock_min: productData.stock_min || 0,
+          alicuota_iva: productData.alicuota_iva ?? 5,
           created_by: user.id,
           updated_by: user.id,
         })
@@ -276,6 +279,7 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
           stock_quantity: updates.stock_quantity,
           stock_min: updates.stock_min,
           is_active: updates.is_active,
+          ...(updates.alicuota_iva !== undefined ? { alicuota_iva: updates.alicuota_iva } : {}),
           updated_by: user.id,
           version: (current?.version || 1) + 1,
         })

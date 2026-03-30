@@ -2,7 +2,7 @@ import SuppliersPage from './Suppliers'
 import { useAuthStore } from '@/store/auth'
 import { useReportsStore } from '@/store/reports'
 import { useSalesStore } from '@/store/sales'
-import { Package, LayoutDashboard, Building2, Users, Settings, LogOut, BarChart3, BookOpen, CreditCard, Receipt, ChevronLeft, ChevronRight, AlertTriangle, TrendingUp, DollarSign, ShoppingCart, ArrowUp, ArrowDown, Wallet, ScanLine } from 'lucide-react'
+import { Package, LayoutDashboard, Building2, Users, Settings, LogOut, BarChart3, BookOpen, CreditCard, Receipt, ChevronLeft, ChevronRight, AlertTriangle, TrendingUp, DollarSign, ShoppingCart, ArrowUp, ArrowDown, Wallet, ScanLine, FileText } from 'lucide-react'
 import { useState, useEffect, useMemo } from 'react'
 import Products from './Products'
 import MasterCatalog from './MasterCatalog'
@@ -14,9 +14,10 @@ import SalesHistory from './SalesHistory'
 import SettingsPage from './Settings'
 import CashRegisterPage from './CashRegister'
 import ScannerPage from './ScannerPage'
+import FiscalPage from './FiscalPage'
 import logoImg from '@/assets/logo.png'
 
-type Page = 'dashboard' | 'products' | 'master-catalog' | 'branches' | 'users' | 'reports' | 'pos' | 'sales-history' | 'settings' | 'cash-register' | 'scanner' | 'suppliers'
+type Page = 'dashboard' | 'products' | 'master-catalog' | 'branches' | 'users' | 'reports' | 'pos' | 'sales-history' | 'settings' | 'cash-register' | 'scanner' | 'suppliers' | 'fiscal'
 
 export default function Dashboard() {
   const { user, organization, logout, branches, selectedBranch, selectBranch } = useAuthStore()
@@ -42,6 +43,7 @@ export default function Dashboard() {
     { id: 'users' as Page, label: 'Usuarios', icon: Users, roles: ['owner', 'admin', 'manager'] },
     { id: 'suppliers' as Page, label: 'Proveedores', icon: Building2, roles: ['owner', 'admin', 'manager'] },
     { id: 'reports' as Page, label: 'Reportes', icon: BarChart3, roles: ['owner', 'admin', 'manager'] },
+    { id: 'fiscal' as Page, label: 'Facturación ARCA', icon: FileText, roles: ['owner', 'admin'] },
     { id: 'settings' as Page, label: 'Configuración', icon: Settings },
   ]
 
@@ -72,6 +74,8 @@ export default function Dashboard() {
         return <CashRegisterPage />
       case 'scanner':
         return <ScannerPage />
+      case 'fiscal':
+        return <FiscalPage />
       case 'settings':
         return <SettingsPage />
       case 'dashboard':

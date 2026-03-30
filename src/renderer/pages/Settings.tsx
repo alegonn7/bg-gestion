@@ -3,6 +3,7 @@ import { Building2, Save, RefreshCw, DollarSign, Info, Upload, Trash2, Loader2 }
 import { useAuthStore } from '@/store/auth'
 import { useDollarStore } from '@/store/dollar'
 import { supabase } from '@/lib/supabase'
+import FiscalSetupSection from '@/components/FiscalSetupSection'
 
 export default function SettingsPage() {
   const { user, organization } = useAuthStore()
@@ -388,6 +389,9 @@ export default function SettingsPage() {
           Fuente: dolarapi.com (fallback: bluelytics.com.ar). Se actualiza automáticamente cada 5 minutos.
         </p>
       </section>
+
+      {/* Facturación Electrónica: solo owner/admin */}
+      {isOwnerOrAdmin && <FiscalSetupSection />}
 
       {/* Cuenta del usuario */}
       <section className="bg-white rounded-xl border border-gray-200 p-6">

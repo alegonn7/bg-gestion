@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from './auth'
+import { TIPO_COMPROBANTE_LABELS } from './fiscal'
 
 export interface ProductStats {
   product_id: string
@@ -114,10 +115,27 @@ export interface DeadStockProduct {
   branch_name: string
 }
 
+export interface FiscalPeriodStat {
+  period: string
+  facturas: number
+  notas_credito: number
+  notas_debito: number
+  total_facturas: number
+  total_nc: number
+  total_nd: number
+  neto: number
+}
+
+export interface FiscalByType {
+  tipo: number
+  label: string
+  count: number
+  total: number
+}
+
 export interface CashExpense {
   description: string
   amount: number
-  payment_method: string
   created_at: string
 }
 
@@ -163,12 +181,20 @@ interface ReportsState {
   deadStock: DeadStockProduct[]
   cashExpenses: CashExpense[]
 
+  fiscalByPeriod: FiscalPeriodStat[]
+  fiscalByType: FiscalByType[]
+  totalFacturado: number
+  totalNC: number
+  totalND: number
+  comprobanteCount: number
+
   fetchReports: () => Promise<void>
   fetchMovementsSummary: (days: number) => Promise<void>
   fetchSalesData: (startDate?: Date, endDate?: Date, branchId?: string) => Promise<void>
   fetchPurchasesBySupplier: (startDate?: Date, endDate?: Date, branchId?: string) => Promise<void>
   fetchDeadStock: (startDate?: Date, endDate?: Date, branchId?: string) => Promise<void>
   fetchCashExpenses: (startDate?: Date, endDate?: Date, branchId?: string) => Promise<void>
+  fetchFiscalData: (startDate?: Date, endDate?: Date) => Promise<void>
 }
 
 export const useReportsStore = create<ReportsState>((set) => ({
@@ -207,6 +233,13 @@ export const useReportsStore = create<ReportsState>((set) => ({
   purchasesBySupplier: [],
   deadStock: [],
   cashExpenses: [],
+
+  fiscalByPeriod: [],
+  fiscalByType: [],
+  totalFacturado: 0,
+  totalNC: 0,
+  totalND: 0,
+  comprobanteCount: 0,
 
   fetchReports: async () => {
     set({ isLoading: true, error: null })
@@ -943,7 +976,7 @@ export const useReportsStore = create<ReportsState>((set) => ({
 
       const { data: expenses, error } = await supabase
         .from('extra_movements')
-        .select('description, amount, payment_method, created_at')
+        .select('description, amount, created_at')
         .eq('type', 'gasto')
         .in('cash_register_id', registerIds)
         .gte('created_at', start.toISOString())
@@ -955,6 +988,65 @@ export const useReportsStore = create<ReportsState>((set) => ({
       set({ cashExpenses: expenses || [] })
     } catch (error: any) {
       console.error('Error fetching cash expenses:', error)
+    }
+  },
+
+  fetchFiscalData: async (startDate?: Date, endDate?: Date) => {
+    try {
+      const end = endDate || new Date()
+      const start = startDate || new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000)
+
+      const { data, error } = await supabase
+        .from('fiscal_comprobantes')
+        .select('tipo_cbte, fecha_emision, importe_total, resultado')
+        .eq('resultado', 'A')
+        .gte('fecha_emision', start.toISOString().split('T')[0])
+        .lte('fecha_emision', end.toISOString().split('T')[0])
+        .order('fecha_emision', { ascending: true })
+
+      if (error) throw error
+
+      const FACTURA_TIPOS = new Set([1, 6, 11])
+      const NC_TIPOS = new Set([3, 8, 13])
+      const ND_TIPOS = new Set([2, 7, 12])
+
+      const daysDiff = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
+      const groupByMonth = daysDiff > 90
+
+      const periodMap = new Map<string, FiscalPeriodStat>()
+      data?.forEach(c => {
+        const period = groupByMonth ? c.fecha_emision.slice(0, 7) : c.fecha_emision
+        if (!periodMap.has(period)) {
+          periodMap.set(period, { period, facturas: 0, notas_credito: 0, notas_debito: 0, total_facturas: 0, total_nc: 0, total_nd: 0, neto: 0 })
+        }
+        const p = periodMap.get(period)!
+        const importe = c.importe_total || 0
+        if (FACTURA_TIPOS.has(c.tipo_cbte)) { p.facturas++; p.total_facturas += importe }
+        else if (NC_TIPOS.has(c.tipo_cbte)) { p.notas_credito++; p.total_nc += importe }
+        else if (ND_TIPOS.has(c.tipo_cbte)) { p.notas_debito++; p.total_nd += importe }
+      })
+      periodMap.forEach(p => { p.neto = p.total_facturas + p.total_nd - p.total_nc })
+      const fiscalByPeriod = Array.from(periodMap.values()).sort((a, b) => a.period.localeCompare(b.period))
+
+      const typeMap = new Map<number, FiscalByType>()
+      data?.forEach(c => {
+        if (!typeMap.has(c.tipo_cbte)) {
+          typeMap.set(c.tipo_cbte, { tipo: c.tipo_cbte, label: TIPO_COMPROBANTE_LABELS[c.tipo_cbte] || `Tipo ${c.tipo_cbte}`, count: 0, total: 0 })
+        }
+        const t = typeMap.get(c.tipo_cbte)!
+        t.count++
+        t.total += c.importe_total || 0
+      })
+      const fiscalByType = Array.from(typeMap.values()).sort((a, b) => b.total - a.total)
+
+      const totalFacturado = (data || []).filter(c => FACTURA_TIPOS.has(c.tipo_cbte)).reduce((s, c) => s + (c.importe_total || 0), 0)
+      const totalNC = (data || []).filter(c => NC_TIPOS.has(c.tipo_cbte)).reduce((s, c) => s + (c.importe_total || 0), 0)
+      const totalND = (data || []).filter(c => ND_TIPOS.has(c.tipo_cbte)).reduce((s, c) => s + (c.importe_total || 0), 0)
+      const comprobanteCount = data?.length || 0
+
+      set({ fiscalByPeriod, fiscalByType, totalFacturado, totalNC, totalND, comprobanteCount })
+    } catch (error: any) {
+      console.error('Error fetching fiscal data:', error)
     }
   }
 }))
