@@ -408,7 +408,7 @@ export default function Products() {
             <p className="text-gray-500 mb-6 max-w-sm">
               {searchQuery || selectedCategories.length > 0 ? 'Intenta con otro filtro o búsqueda' : 'Creá tu primer producto'}
             </p>
-            {!searchQuery && !selectedCategories.length > 0 && (
+            {!searchQuery && selectedCategories.length === 0 && (
               <button
                 onClick={() => setIsCreateOpen(true)}
                 className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium"
