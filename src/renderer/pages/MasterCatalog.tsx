@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Search, Package, Store, RefreshCw, BarChart, Tag, X } from 'lucide-react'
+import { Search, Package, Store, RefreshCw, BarChart, Tag, X, Calendar } from 'lucide-react'
 import { useMasterCatalogStore } from '@/store/master-catalog'
 import { useCategoriesStore } from '@/store/categories'
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner'
@@ -30,7 +30,8 @@ export default function MasterCatalog() {
   // Escáner físico: buscar producto por código de barras
   const handleBarcodeScan = useCallback((barcode: string) => {
     const allProducts = getFilteredProducts()
-    const product = allProducts.find(p => p.barcode === barcode)
+    const normalizedBarcode = barcode.trim()
+    const product = allProducts.find(p => p.barcode?.trim() === normalizedBarcode)
     if (product) {
       setSelectedProduct(product)
       setShowDetailModal(true)
@@ -287,6 +288,11 @@ interface ProductCardProps {
 
 function ProductCard({ product, onClick }: ProductCardProps) {
   const hasLowStock = product.total_stock < 10
+  const expirationDates = product.branches
+    .map(b => b.expiration_date)
+    .filter((d): d is string => !!d)
+    .sort()
+  const earliestExpiration = expirationDates[0] || null
 
   return (
     <div
@@ -343,6 +349,13 @@ function ProductCard({ product, onClick }: ProductCardProps) {
           </p>
         </div>
       </div>
+
+      {earliestExpiration && (
+        <div className="flex items-center gap-1 text-xs text-gray-500 mb-3">
+          <Calendar className="w-3 h-3" />
+          <span>Vence: {new Date(earliestExpiration + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
+        </div>
+      )}
 
       {/* Prices */}
       <div className="pt-3 border-t border-gray-200">

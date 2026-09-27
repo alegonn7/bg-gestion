@@ -54,6 +54,7 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
     price_sale_usd: '',
     stock_quantity: '',
     stock_min: '1',
+    expiration_date: '',
   })
 
   const [markupArs, setMarkupArs] = useState('')
@@ -90,6 +91,7 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
         price_sale_usd: duplicateFrom.price_sale_usd ? duplicateFrom.price_sale_usd.toString() : '',
         stock_quantity: '0',
         stock_min: duplicateFrom.stock_min.toString(),
+        expiration_date: '',
       })
       // Calcular markup ARS
       if (duplicateFrom.price_cost > 0 && duplicateFrom.price_sale > 0) {
@@ -118,6 +120,7 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
         price_sale_usd: '',
         stock_quantity: '',
         stock_min: '1',
+        expiration_date: '',
       })
       setMarkupArs('')
       setMarkupUsd('')
@@ -148,7 +151,17 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
 
     try {
       if (!formData.name.trim()) throw new Error('El nombre es obligatorio')
-      if (formData.barcode && formData.barcode.length < 8) throw new Error('El código de barras debe tener al menos 8 dígitos')
+      if (!formData.barcode.trim()) throw new Error('El código de barras es obligatorio')
+      if (formData.barcode.trim().length > 13) throw new Error('El código de barras no puede tener más de 13 dígitos')
+
+      // Verificar barcode duplicado en la organización
+      const { data: existing } = await supabase
+        .from('products')
+        .select('id, name')
+        .eq('organization_id', organization!.id)
+        .eq('barcode', formData.barcode.trim())
+        .maybeSingle()
+      if (existing) throw new Error(`El código ${formData.barcode.trim()} ya está asignado a "${existing.name}"`)
 
       const priceCost = parseFloat(formData.price_cost) || 0
       const priceSale = parseFloat(formData.price_sale) || 0
@@ -170,21 +183,23 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
         price_sale_usd: parseFloat(formData.price_sale_usd) || null,
         stock_quantity: parseInt(formData.stock_quantity) || 0,
         stock_min: parseInt(formData.stock_min) || 0,
+        expiration_date: formData.expiration_date || null,
         alicuota_iva: alicuotaIva,
       })
 
-      setFormData({ 
-        barcode: '', 
+      setFormData({
+        barcode: '',
         sku: '',
-        name: '', 
-        description: '', 
-        category_id: '', 
-        price_cost: '', 
-        price_sale: '', 
+        name: '',
+        description: '',
+        category_id: '',
+        price_cost: '',
+        price_sale: '',
         price_cost_usd: '',
         price_sale_usd: '',
-        stock_quantity: '', 
-        stock_min: '1' 
+        stock_quantity: '',
+        stock_min: '1',
+        expiration_date: '',
       })
       onClose()
     } catch (err: any) {
@@ -312,7 +327,7 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
           {/* Código de Barras */}
           <div>
             <label htmlFor="barcode" className="block text-sm font-medium text-gray-700 mb-2">
-              Código de Barras (opcional)
+              Código de Barras
             </label>
             <input
               type="text" id="barcode" name="barcode"
@@ -325,7 +340,7 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
               pattern="[0-9]*" maxLength={13}
             />
             <p className="mt-1 text-xs text-gray-500">
-              {initialBarcode ? 'Código prellenado desde el scanner' : '8 a 13 dígitos. Déjalo vacío si el producto no tiene código.'}
+              {initialBarcode ? 'Código prellenado desde el scanner' : 'Mínimo 1 dígito, máximo 13.'}
             </p>
           </div>
 
@@ -372,8 +387,8 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
                 <label htmlFor="price_cost" className="block text-sm font-medium text-gray-700 mb-2">Costo (ARS)</label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
-                  <input type="number" id="price_cost" name="price_cost" value={formData.price_cost} onChange={handleChange}
-                    placeholder="0.00" step="0.01" min="0"
+                  <input type="text" inputMode="decimal" id="price_cost" name="price_cost" value={formData.price_cost} onChange={handleChange}
+                    placeholder="0"
                     className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
                 </div>
               </div>
@@ -381,12 +396,11 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
                 <label className="block text-sm font-medium text-gray-700 mb-2">Margen %</label>
                 <div className="relative">
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="decimal"
                     value={markupArs}
                     onChange={(e) => handleMarkupArsChange(e.target.value)}
                     placeholder="Ej: 30"
-                    step="0.1"
-                    min="0"
                     className="w-full pl-4 pr-8 py-2 border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none bg-amber-50"
                   />
                   <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-amber-600 font-medium">%</span>
@@ -401,8 +415,8 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
                 <label htmlFor="price_sale" className="block text-sm font-medium text-gray-700 mb-2">Venta (ARS)</label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
-                  <input type="number" id="price_sale" name="price_sale" value={formData.price_sale} onChange={handleChange}
-                    placeholder="0.00" step="0.01" min="0"
+                  <input type="text" inputMode="decimal" id="price_sale" name="price_sale" value={formData.price_sale} onChange={handleChange}
+                    placeholder="0"
                     className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
                 </div>
               </div>
@@ -424,8 +438,8 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
                 <label htmlFor="price_cost_usd" className="block text-sm font-medium text-gray-700 mb-2">Costo (USD)</label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-green-600 font-medium">US$</span>
-                  <input type="number" id="price_cost_usd" name="price_cost_usd" value={formData.price_cost_usd} onChange={handleChange}
-                    placeholder="0.00" step="0.01" min="0"
+                  <input type="text" inputMode="decimal" id="price_cost_usd" name="price_cost_usd" value={formData.price_cost_usd} onChange={handleChange}
+                    placeholder="0.00"
                     className="w-full pl-14 pr-4 py-2 border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none bg-green-50" />
                 </div>
                 {formData.price_cost_usd && effectiveBlueRate && (
@@ -438,12 +452,11 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
                 <label className="block text-sm font-medium text-gray-700 mb-2">Margen %</label>
                 <div className="relative">
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="decimal"
                     value={markupUsd}
                     onChange={(e) => handleMarkupUsdChange(e.target.value)}
                     placeholder="Ej: 30"
-                    step="0.1"
-                    min="0"
                     className="w-full pl-4 pr-8 py-2 border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none bg-amber-50"
                   />
                   <span className="absolute right-3 top-1/2 transform -translate-y-1/2 text-amber-600 font-medium">%</span>
@@ -458,8 +471,8 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
                 <label htmlFor="price_sale_usd" className="block text-sm font-medium text-gray-700 mb-2">Venta (USD)</label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-green-600 font-medium">US$</span>
-                  <input type="number" id="price_sale_usd" name="price_sale_usd" value={formData.price_sale_usd} onChange={handleChange}
-                    placeholder="0.00" step="0.01" min="0"
+                  <input type="text" inputMode="decimal" id="price_sale_usd" name="price_sale_usd" value={formData.price_sale_usd} onChange={handleChange}
+                    placeholder="0.00"
                     className="w-full pl-14 pr-4 py-2 border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none bg-green-50" />
                 </div>
                 {formData.price_sale_usd && effectiveBlueRate && (
@@ -553,6 +566,19 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
                 placeholder="10" min="0" step="1"
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none" />
             </div>
+          </div>
+
+          {/* Vencimiento */}
+          <div>
+            <label htmlFor="expiration_date" className="block text-sm font-medium text-gray-700 mb-2">
+              Fecha de Vencimiento <span className="text-xs text-gray-400 font-normal ml-1">(opcional)</span>
+            </label>
+            <input
+              type="date" id="expiration_date" name="expiration_date"
+              value={formData.expiration_date} onChange={handleChange}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            />
+            <p className="mt-1 text-xs text-gray-500">Dejalo vacío si el producto no vence.</p>
           </div>
 
           {/* Buttons */}

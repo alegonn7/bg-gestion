@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BG Gestión — Guía de Usuario</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; font-size: 11pt; line-height: 1.65; color: #1a1a2e; background: #fff; }
+
+    /* Cover */
+    .cover { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; text-align: center; background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%); color: white; padding: 60px 48px; page-break-after: always; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .cover .logo-box { width: 90px; height: 90px; background: rgba(255,255,255,0.15); border-radius: 22px; display: flex; align-items: center; justify-content: center; margin-bottom: 28px; font-size: 40px; }
+    .cover h1 { font-size: 40pt; font-weight: 800; letter-spacing: -1px; margin-bottom: 8px; }
+    .cover .subtitle { font-size: 14pt; opacity: 0.8; margin-bottom: 40px; }
+    .cover .badge { background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3); border-radius: 100px; padding: 6px 22px; font-size: 10pt; margin-bottom: 60px; }
+    .cover .cover-footer { font-size: 9pt; opacity: 0.5; margin-top: auto; }
+
+    /* TOC */
+    .toc-page { padding: 56px 52px; page-break-after: always; }
+    .toc-title { font-size: 22pt; font-weight: 800; color: #1e3a5f; margin-bottom: 28px; padding-bottom: 12px; border-bottom: 3px solid #2563eb; }
+    .toc-item { display: flex; align-items: baseline; gap: 8px; padding: 5px 0; border-bottom: 1px dashed #e5e7eb; color: #374151; text-decoration: none; }
+    .toc-item:hover { color: #2563eb; }
+    .toc-num { font-size: 9pt; font-weight: 700; color: #2563eb; background: #eff6ff; border-radius: 4px; padding: 1px 7px; white-space: nowrap; flex-shrink: 0; }
+    .toc-label { flex: 1; font-weight: 500; font-size: 10.5pt; }
+    .toc-dots { flex: 1; border-bottom: 1px dotted #d1d5db; margin: 0 6px 4px; }
+
+    /* Chapter */
+    .chapter { padding: 52px 52px 36px; page-break-before: always; }
+    .chapter-header { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 28px; padding-bottom: 18px; border-bottom: 2px solid #e5e7eb; }
+    .ch-icon { width: 50px; height: 50px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 24px; flex-shrink: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .ch-blue   { background: #dbeafe; }
+    .ch-green  { background: #dcfce7; }
+    .ch-orange { background: #ffedd5; }
+    .ch-purple { background: #ede9fe; }
+    .ch-red    { background: #fee2e2; }
+    .ch-teal   { background: #ccfbf1; }
+    .ch-gray   { background: #f3f4f6; }
+    .ch-yellow { background: #fef9c3; }
+    .ch-pink   { background: #fce7f3; }
+    .ch-indigo { background: #e0e7ff; }
+    .ch-title-group { flex: 1; }
+    .ch-num { font-size: 9pt; font-weight: 700; color: #2563eb; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 3px; }
+    .ch-title { font-size: 19pt; font-weight: 800; color: #111827; line-height: 1.2; }
+    .ch-desc { font-size: 10pt; color: #6b7280; margin-top: 4px; }
+
+    h2 { font-size: 12.5pt; font-weight: 700; color: #111827; margin: 26px 0 9px; }
+    h3 { font-size: 11pt; font-weight: 600; color: #374151; margin: 18px 0 6px; }
+    p { margin-bottom: 10px; color: #374151; }
+    ul, ol { padding-left: 20px; margin-bottom: 12px; color: #374151; }
+    li { margin-bottom: 5px; }
+    strong { color: #111827; }
+
+    /* Info boxes */
+    .tip, .note, .warn { display: flex; gap: 12px; border-radius: 10px; padding: 11px 15px; margin: 14px 0; font-size: 10pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .tip  { background: #eff6ff; border-left: 4px solid #2563eb; }
+    .note { background: #f0fdf4; border-left: 4px solid #16a34a; }
+    .warn { background: #fef3c7; border-left: 4px solid #d97706; }
+    .box-icon { font-size: 15px; flex-shrink: 0; margin-top: 2px; }
+
+    /* Steps */
+    .steps { margin: 12px 0; }
+    .step { display: flex; gap: 14px; margin-bottom: 13px; align-items: flex-start; }
+    .step-num { width: 26px; height: 26px; background: #2563eb; color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10pt; font-weight: 700; flex-shrink: 0; margin-top: 1px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .step-body { flex: 1; }
+    .step-body strong { display: block; margin-bottom: 2px; }
+
+    /* Grid */
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; margin: 14px 0; }
+    .card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 13px 15px; }
+    .card .c-icon { font-size: 18px; margin-bottom: 5px; }
+    .card .c-title { font-weight: 700; font-size: 10.5pt; color: #111827; margin-bottom: 3px; }
+    .card .c-desc { font-size: 9.5pt; color: #6b7280; line-height: 1.5; }
+
+    /* Table */
+    table { width: 100%; border-collapse: collapse; margin: 13px 0; font-size: 10pt; }
+    th { background: #1e3a5f; color: white; text-align: left; padding: 7px 11px; font-weight: 600; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    td { padding: 7px 11px; border-bottom: 1px solid #f3f4f6; color: #374151; }
+    tr:nth-child(even) td { background: #f9fafb; }
+    td.ctr, th.ctr { text-align: center; }
+
+    kbd { background: #f3f4f6; border: 1px solid #d1d5db; border-bottom: 2px solid #9ca3af; border-radius: 4px; padding: 2px 7px; font-size: 9pt; font-family: monospace; color: #374151; }
+
+    hr.div { border: none; border-top: 1px solid #e5e7eb; margin: 22px 0; }
+
+    .no-break { page-break-inside: avoid; }
+    .small { font-size: 9pt; color: #6b7280; }
+
+    @media print {
+      a { color: inherit; text-decoration: none; }
+    }
+    @page { size: A4; margin: 18mm 16mm; }
+    @page :first { margin: 0; }
+  </style>
+</head>
+<body>
+
+<!-- PORTADA -->
+<div class="cover">
+  <div class="logo-box">🏪</div>
+  <h1>BG Gestión</h1>
+  <div class="subtitle">Guía de uso para el operador</div>
+  <div class="badge">Sistema de gestión comercial · 2026</div>
+  <div class="cover-footer">Documento para uso interno del cliente.<br>Prohibida su reproducción sin autorización.</div>
+</div>
+
+<!-- ÍNDICE -->
+<div class="toc-page">
+  <div class="toc-title">Contenido</div>
+  <a class="toc-item" href="#cap1"><span class="toc-num">01</span><span class="toc-label">Primeros pasos</span><span class="toc-dots"></span></a>
+  <a class="toc-item" href="#cap2"><span class="toc-num">02</span><span class="toc-label">Productos y Catálogo</span><span class="toc-dots"></span></a>
+  <a class="toc-item" href="#cap3"><span class="toc-num">03</span><span class="toc-label">Punto de Venta</span><span class="toc-dots"></span></a>
+  <a class="toc-item" href="#cap4"><span class="toc-num">04</span><span class="toc-label">Historial de Ventas</span><span class="toc-dots"></span></a>
+  <a class="toc-item" href="#cap5"><span class="toc-num">05</span><span class="toc-label">Escáner de productos</span><span class="toc-dots"></span></a>
+  <a class="toc-item" href="#cap6"><span class="toc-num">06</span><span class="toc-label">Arqueo de Caja</span><span class="toc-dots"></span></a>
+  <a class="toc-item" href="#cap7"><span class="toc-num">07</span><span class="toc-label">Proveedores</span><span class="toc-dots"></span></a>
+  <a class="toc-item" href="#cap8"><span class="toc-num">08</span><span class="toc-label">Catálogo Maestro</span><span class="toc-dots"></span></a>
+  <a class="toc-item" href="#cap9"><span class="toc-num">09</span><span class="toc-label">Reportes</span><span class="toc-dots"></span></a>
+  <a class="toc-item" href="#cap10"><span class="toc-num">10</span><span class="toc-label">Contabilidad</span><span class="toc-dots"></span></a>
+  <a class="toc-item" href="#cap11"><span class="toc-num">11</span><span class="toc-label">Extras — Etiquetas de código de barras</span><span class="toc-dots"></span></a>
+  <a class="toc-item" href="#cap12"><span class="toc-num">12</span><span class="toc-label">Usuarios y Permisos</span><span class="toc-dots"></span></a>
+  <a class="toc-item" href="#cap13"><span class="toc-num">13</span><span class="toc-label">Sucursales</span><span class="toc-dots"></span></a>
+  <a class="toc-item" href="#cap14"><span class="toc-num">14</span><span class="toc-label">Configuración</span><span class="toc-dots"></span></a>
+  <a class="toc-item" href="#cap15"><span class="toc-num">15</span><span class="toc-label">Sobre la aplicación y Preguntas Frecuentes</span><span class="toc-dots"></span></a>
+  <br>
+  <div class="tip no-break">
+    <span class="box-icon">💡</span>
+    <div><strong>¿Cómo leer esta guía?</strong><br>Podés ir directo al capítulo que necesitás. Si es tu primer día, empezá por los capítulos 1, 2 y 3. El resto consultalo cuando lo necesites. Los recuadros amarillos (⚠️) marcan acciones que no se pueden deshacer — prestales atención especial.</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ CAP 1 — PRIMEROS PASOS ═══════════════════════════ -->
+<div class="chapter" id="cap1">
+  <div class="chapter-header">
+    <div class="ch-icon ch-blue">🚀</div>
+    <div class="ch-title-group">
+      <div class="ch-num">Capítulo 01</div>
+      <div class="ch-title">Primeros pasos</div>
+      <div class="ch-desc">Ingreso al sistema, menú principal y roles de usuario</div>
+    </div>
+  </div>
+
+  <h2>¿Qué es BG Gestión?</h2>
+  <p>BG Gestión es un sistema de gestión comercial para negocios argentinos. Desde un solo lugar manejás tu catálogo, realizás ventas, controlás el stock, gestionás la caja y analizás los resultados financieros de tu negocio. Toda la información se guarda en la nube: podés entrar desde cualquier computadora que tenga la aplicación instalada, con tu usuario y contraseña.</p>
+
+  <h2>Cómo ingresar</h2>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-body"><strong>Abrí la aplicación</strong>Doble clic en el ícono de BG Gestión en el escritorio.</div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-body"><strong>Ingresá tu correo y contraseña</strong>No hay registro propio: un administrador de tu organización crea tu usuario y te entrega el correo y la contraseña con los que vas a ingresar.</div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-body"><strong>Listo</strong>La sesión queda guardada en esa computadora — no hace falta volver a loguearse cada vez que abrís la app, salvo que cierres sesión manualmente.</div></div>
+  </div>
+
+  <div class="warn no-break">
+    <span class="box-icon">⚠️</span>
+    <div><strong>Todavía no existe "olvidé mi contraseña".</strong> Si no podés ingresar, contactá a tu administrador o al soporte técnico de BG Gestión — no hay un mecanismo automático de recuperación por correo en esta versión.</div>
+  </div>
+
+  <h2>El menú principal</h2>
+  <p>El menú lateral izquierdo es el centro de navegación. Cada sección abre contenido diferente en el área central. Qué opciones ves depende de tu rol de usuario (ver más abajo) — el menú se ajusta solo, no vas a ver botones que no podés usar.</p>
+
+  <div class="grid2">
+    <div class="card"><div class="c-icon">🛒</div><div class="c-title">Punto de Venta</div><div class="c-desc">Registrar ventas a clientes.</div></div>
+    <div class="card"><div class="c-icon">🧾</div><div class="c-title">Historial de Ventas</div><div class="c-desc">Ver, filtrar y anular ventas realizadas.</div></div>
+    <div class="card"><div class="c-icon">🔍</div><div class="c-title">Escáner</div><div class="c-desc">Consultar productos por código de barras.</div></div>
+    <div class="card"><div class="c-icon">📦</div><div class="c-title">Productos</div><div class="c-desc">Catálogo de tu sucursal con stock y precios.</div></div>
+    <div class="card"><div class="c-icon">📚</div><div class="c-title">Catálogo Maestro</div><div class="c-desc">Vista consolidada de todas las sucursales.</div></div>
+    <div class="card"><div class="c-icon">💰</div><div class="c-title">Arqueo de Caja</div><div class="c-desc">Apertura, cierre y movimientos de efectivo.</div></div>
+    <div class="card"><div class="c-icon">🚚</div><div class="c-title">Proveedores</div><div class="c-desc">Contactos y productos asociados.</div></div>
+    <div class="card"><div class="c-icon">📈</div><div class="c-title">Reportes</div><div class="c-desc">Gráficos y análisis de ventas, stock y rentabilidad.</div></div>
+    <div class="card"><div class="c-icon">📊</div><div class="c-title">Contabilidad</div><div class="c-desc">Resultado financiero y libro de gastos.</div></div>
+    <div class="card"><div class="c-icon">✨</div><div class="c-title">Extras</div><div class="c-desc">Generador de etiquetas con código de barras.</div></div>
+    <div class="card"><div class="c-icon">👥</div><div class="c-title">Usuarios</div><div class="c-desc">Alta de usuarios y gestión de permisos.</div></div>
+    <div class="card"><div class="c-icon">🏢</div><div class="c-title">Sucursales</div><div class="c-desc">Gestión de los locales del negocio.</div></div>
+    <div class="card"><div class="c-icon">⚙️</div><div class="c-title">Configuración</div><div class="c-desc">Datos del negocio, logo y tipo de cambio.</div></div>
+  </div>
+
+  <p class="small">El botón de flecha junto al logo (arriba del menú) colapsa o expande la barra lateral para ganar espacio de pantalla.</p>
+
+  <h2>Selector de sucursal</h2>
+  <p>Si tu negocio tiene más de una sucursal, arriba del menú lateral (debajo del logo) aparece un selector con el nombre de cada local. Solo lo ven los roles <strong>Dueño</strong> y <strong>Administrador</strong>, y únicamente cuando hay 2 o más sucursales activas. Cambiarlo no requiere volver a iniciar sesión: todas las pantallas (Productos, Ventas, Caja, Contabilidad, Reportes) se actualizan solas para mostrar la sucursal elegida. Los roles Manager y Empleado no ven este selector — su sucursal queda fija, la que les asignó el administrador.</p>
+
+  <h2>Roles de usuario: quién puede ver cada pantalla</h2>
+  <p>El sistema tiene 4 roles: <strong>Dueño</strong>, <strong>Administrador</strong>, <strong>Manager</strong> y <strong>Empleado</strong>. Cada uno ve un menú distinto según lo que puede hacer:</p>
+
+  <table class="no-break">
+    <tr><th>Pantalla</th><th class="ctr">Dueño</th><th class="ctr">Admin.</th><th class="ctr">Manager</th><th class="ctr">Empleado</th></tr>
+    <tr><td>Dashboard</td><td class="ctr">✓</td><td class="ctr">✓</td><td class="ctr">✓</td><td class="ctr">✓</td></tr>
+    <tr><td>Punto de Venta</td><td class="ctr">✓</td><td class="ctr">✓</td><td class="ctr">✓</td><td class="ctr">✓</td></tr>
+    <tr><td>Historial de Ventas</td><td class="ctr">✓</td><td class="ctr">✓</td><td class="ctr">✓</td><td class="ctr">✓</td></tr>
+    <tr><td>Escáner</td><td class="ctr">✓</td><td class="ctr">✓</td><td class="ctr">✓</td><td class="ctr">✓</td></tr>
+    <tr><td>Productos</td><td class="ctr">✓</td><td class="ctr">✓</td><td class="ctr">✓</td><td class="ctr">✓</td></tr>
+    <tr><td>Catálogo Maestro</td><td class="ctr">✓</td><td class="ctr">✓</td><td class="ctr">✓</td><td class="ctr">✓</td></tr>
+    <tr><td>Configuración</td><td class="ctr">✓</td><td class="ctr">✓</td><td class="ctr">✓</td><td class="ctr">✓</td></tr>
+    <tr><td>Arqueo de Caja</td><td class="ctr">✓</td><td class="ctr">✓</td><td class="ctr">✓</td><td class="ctr">—</td></tr>
+    <tr><td>Proveedores</td><td class="ctr">✓</td><td class="ctr">✓</td><td class="ctr">✓</td><td class="ctr">—</td></tr>
+    <tr><td>Reportes</td><td class="ctr">✓</td><td class="ctr">✓</td><td class="ctr">✓</td><td class="ctr">—</td></tr>
+    <tr><td>Usuarios</td><td class="ctr">✓</td><td class="ctr">✓</td><td class="ctr">✓</td><td class="ctr">—</td></tr>
+    <tr><td>Extras</td><td class="ctr">✓</td><td class="ctr">✓</td><td class="ctr">✓</td><td class="ctr">—</td></tr>
+    <tr><td>Contabilidad</td><td class="ctr">✓</td><td class="ctr">✓</td><td class="ctr">—</td><td class="ctr">—</td></tr>
+    <tr><td>Sucursales</td><td class="ctr">✓</td><td class="ctr">✓</td><td class="ctr">—</td><td class="ctr">—</td></tr>
+  </table>
+  <p class="small">El capítulo 12 (Usuarios y Permisos) detalla además qué puede hacer cada rol <em>dentro</em> de cada pantalla (por ejemplo, quién puede anular una venta o eliminar un usuario).</p>
+
+  <div class="note no-break">
+    <span class="box-icon">✅</span>
+    <div><strong>No hace falta "abrir caja" para vender.</strong> A diferencia de lo que uno podría esperar, el Punto de Venta funciona en cualquier momento. El Arqueo de Caja (capítulo 6) es una herramienta de control de efectivo, no un requisito para poder cobrar.</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ CAP 2 — PRODUCTOS Y CATÁLOGO ═══════════════════════════ -->
+<div class="chapter" id="cap2">
+  <div class="chapter-header">
+    <div class="ch-icon ch-green">📦</div>
+    <div class="ch-title-group">
+      <div class="ch-num">Capítulo 02</div>
+      <div class="ch-title">Productos y Catálogo</div>
+      <div class="ch-desc">Cargar, editar, organizar y mover tu mercadería</div>
+    </div>
+  </div>
+
+  <h2>¿Qué es esta pantalla?</h2>
+  <p>"Productos" es el catálogo de tu sucursal: acá cargás qué vendés, a qué precio (costo y venta, en pesos y opcionalmente en dólares), cuánto stock tenés de cada artículo, en qué categoría entra y de qué proveedor lo comprás. También es el punto de partida para registrar movimientos de mercadería (compras, mermas, ajustes), actualizar precios en masa, organizar categorías, importar tu catálogo desde un CSV y exportarlo a Excel, con una hoja por categoría.</p>
+
+  <div class="tip no-break">
+    <span class="box-icon">💡</span>
+    <div>Cada producto tiene datos <strong>compartidos</strong> (nombre, código de barras, categoría — iguales en toda la empresa) y datos <strong>propios de tu sucursal</strong> (precio y stock). Por eso, si tenés más de un local, el mismo código de barras puede tener stock y precio distintos en cada uno.</div>
+  </div>
+
+  <h2>Buscar y filtrar</h2>
+  <p>Barra de búsqueda <strong>"Buscar por nombre, código de barras..."</strong> (filtra en vivo), selector de <strong>proveedor</strong> (uno a la vez) y chips de <strong>categoría</strong> (podés tildar varias a la vez, incluida la opción "Sin categoría"). Los tres filtros se combinan entre sí. La lista se pagina de a 15 productos.</p>
+
+  <h2>Crear un producto nuevo</h2>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-body"><strong>Productos → "Nuevo Producto"</strong>También se abre solo si escaneás un código de barras que no existe todavía: el sistema te avisa y te lleva directo acá con el código ya cargado.</div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-body"><strong>Cargá Código de Barras y Nombre</strong>Ambos son obligatorios en la práctica. El código no puede tener más de 13 dígitos y debe ser único en toda tu organización (no se puede repetir ni entre sucursales).</div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-body"><strong>Completá Descripción y Categoría (opcional)</strong></div></div>
+    <div class="step"><div class="step-num">4</div><div class="step-body"><strong>Cargá los precios</strong>Costo y Venta en pesos, y si el producto es importado o cotiza en dólares, también Costo y Venta en USD.</div></div>
+    <div class="step"><div class="step-num">5</div><div class="step-body"><strong>Elegí la Alícuota de IVA</strong>Viene en 21% por defecto (se usa para una futura facturación electrónica).</div></div>
+    <div class="step"><div class="step-num">6</div><div class="step-body"><strong>Cargá Stock Inicial y Stock Mínimo</strong>El mínimo viene en 1 y es lo que dispara la alerta de "stock bajo" en Dashboard y Reportes.</div></div>
+    <div class="step"><div class="step-num">7</div><div class="step-body"><strong>"Crear Producto"</strong>Queda disponible de inmediato en el Punto de Venta. El proveedor se asigna después, editando el producto.</div></div>
+  </div>
+
+  <h2>Campos del formulario</h2>
+  <table>
+    <tr><th>Campo</th><th>Descripción</th><th>¿Obligatorio?</th></tr>
+    <tr><td><strong>Código de Barras</strong></td><td>Máximo 13 dígitos. Único en toda la organización. <strong>Una vez creado no se puede modificar</strong> (en "Editar Producto" se ve el campo pero el cambio no se guarda)</td><td>Sí, en la práctica</td></tr>
+    <tr><td><strong>Nombre del Producto</strong></td><td>Aparece en el carrito, tickets y reportes</td><td>Sí</td></tr>
+    <tr><td><strong>Descripción</strong></td><td>Texto libre</td><td>No</td></tr>
+    <tr><td><strong>Categoría</strong></td><td>Para organizar y filtrar</td><td>No</td></tr>
+    <tr><td><strong>Costo / Venta (ARS)</strong></td><td>Precios en pesos</td><td>Venta sí, Costo no</td></tr>
+    <tr><td><strong>Costo / Venta (USD)</strong></td><td>Precios manuales en dólares (no se actualizan solos)</td><td>No</td></tr>
+    <tr><td><strong>Alícuota IVA</strong></td><td>Exento/0%, 10.5%, 21% (por defecto) o 27%</td><td>No, ya viene en 21%</td></tr>
+    <tr><td><strong>Stock Inicial / Mínimo</strong></td><td>Unidades actuales y umbral de alerta</td><td>No, mínimo ya viene en 1</td></tr>
+    <tr><td><strong>Proveedor</strong></td><td>Solo disponible al <em>editar</em>, no al crear</td><td>No</td></tr>
+  </table>
+
+  <div class="warn no-break">
+    <span class="box-icon">⚠️</span>
+    <div><strong>Dos formas de calcular el margen — no te confundas.</strong> Al cargar precios, el campo de ayuda "Margen %" calcula la Venta a partir del Costo (margen sobre el costo). Pero después, en la ficha del producto, el "Margen" que ves se calcula al revés, sobre la Venta. Por eso un margen cargado como "50%" puede figurar después como "33%" en la ficha — no es un error, son dos cuentas distintas para el mismo nombre de campo.</div>
+  </div>
+
+  <div class="tip no-break">
+    <span class="box-icon">💡</span>
+    <div><strong>Autofill en dólares:</strong> con la cotización blue disponible, si escribís el Costo en pesos se autocompleta el Costo en dólares (y viceversa). Solo afecta a los campos de Costo, no a los de Venta.</div>
+  </div>
+
+  <h2>Editar un producto</h2>
+  <p>Abrí la ficha del producto (clic en la tarjeta) → <strong>"Editar"</strong>. Podés modificar nombre, descripción, categoría, proveedor, precios, IVA y stock mínimo.</p>
+  <div class="warn no-break">
+    <span class="box-icon">⚠️</span>
+    <div>El <strong>Stock Actual no se edita desde acá</strong> — el formulario lo muestra solo como referencia. Para cambiarlo siempre tenés que usar "Registrar Movimiento", así queda un historial de por qué cambió.</div>
+  </div>
+
+  <h2>Duplicar un producto</h2>
+  <p>Desde la ficha del producto → <strong>"Duplicar"</strong>: abre "Nuevo Producto" con el mismo nombre (+ " (copia)"), descripción, categoría, precios y stock mínimo, pero con el código de barras vacío y el stock en 0 — tenés que cargar un código nuevo y el stock real.</p>
+
+  <h2>Eliminar un producto</h2>
+  <p>Ficha del producto → <strong>"Eliminar"</strong> → el sistema te pide escribir el nombre exacto del producto para confirmar. Es un borrado definitivo de esa sucursal.</p>
+
+  <h2>Gestionar categorías</h2>
+  <p>Botón <strong>"Categorías"</strong>: crear, editar (nombre + color) o eliminar. No se puede eliminar una categoría que todavía tiene productos asignados — primero hay que reasignarlos.</p>
+
+  <h2>Actualización masiva de precios</h2>
+  <p>Botón <strong>"Precios"</strong> desde la lista de productos:</p>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-body"><strong>Seleccioná productos</strong>Con el buscador, el filtro de categoría, o "Seleccionar todos".</div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-body"><strong>Configurá el ajuste</strong>Aumentar o Reducir, el porcentaje, el redondeo (entero o con centavos) y qué precios tocar (Venta/Costo, en pesos y/o dólares).</div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-body"><strong>Revisá la vista previa</strong>Muestra el precio actual y el nuevo antes de aplicar.</div></div>
+    <div class="step"><div class="step-num">4</div><div class="step-body"><strong>Confirmá</strong>Solo actualiza, por producto, los precios tildados que ese producto realmente tenga cargados.</div></div>
+  </div>
+
+  <h2>Movimientos de inventario</h2>
+  <p>Desde la ficha de un producto → <strong>"Movimiento"</strong>: registra cualquier entrada o salida de mercadería y actualiza el stock automáticamente.</p>
+  <table>
+    <tr><th>Tipo</th><th>Motivos disponibles</th></tr>
+    <tr><td><strong>Entrada</strong></td><td>Compra · Devolución de cliente · Transferencia (entrada) · Ajuste positivo</td></tr>
+    <tr><td><strong>Salida</strong></td><td>Venta · Pérdida/Merma · Producto dañado · Robo · Devolución a proveedor · Transferencia (salida) · Muestra gratis · Uso interno · Ajuste negativo</td></tr>
+  </table>
+  <p class="small">Solo los movimientos marcados como "Venta" impactan en los reportes comerciales de ingresos; el resto afecta el stock pero no las ventas.</p>
+
+  <p>Si el motivo es <strong>"Compra"</strong>, se despliega un bloque para registrar el gasto: el costo total se autocalcula (cantidad × costo actual) y elegís de dónde sale la plata — <strong>Caja actual</strong> (afecta el arqueo del turno), <strong>Efectivo fuera de caja</strong> (no afecta el arqueo) o <strong>Transferencia</strong> (elegís la cuenta). El gasto queda registrado en Contabilidad automáticamente.</p>
+
+  <div class="note no-break">
+    <span class="box-icon">✅</span>
+    <div>Si una salida deja el stock en negativo, el sistema te avisa pero <strong>te deja continuar si confirmás</strong> — no bloquea la operación. Todos los movimientos quedan en el historial del producto con fecha, usuario y detalle; no se pueden borrar.</div>
+  </div>
+
+  <h2>Importar CSV y exportar a Excel</h2>
+  <p><strong>Exportar</strong>: genera un Excel (.xlsx) con los productos que tenés filtrados en pantalla en ese momento, separados en una hoja por categoría (más una hoja "Resumen" con los totales de cada una), con colores, encabezados y el stock bajo resaltado — listo para abrir y leer sin retocar nada. <strong>Importar</strong>: subís un CSV y el sistema valida fila por fila, crea categorías nuevas si hace falta, y omite los productos que ya existan en tu sucursal — al terminar te muestra un resumen con importados, omitidos y errores.</p>
+
+  <h2>Escaneo de código de barras en esta pantalla</h2>
+  <p>Con un lector físico USB, parado sobre la grilla (sin ningún campo de texto enfocado): si el código coincide con un producto, se abre su ficha automáticamente con un sonido de éxito; si no existe, se abre "Nuevo Producto" con el código ya cargado y un sonido de aviso.</p>
+</div>
+
+<!-- ═══════════════════════════ CAP 3 — PUNTO DE VENTA ═══════════════════════════ -->
+<div class="chapter" id="cap3">
+  <div class="chapter-header">
+    <div class="ch-icon ch-orange">🛒</div>
+    <div class="ch-title-group">
+      <div class="ch-num">Capítulo 03</div>
+      <div class="ch-title">Punto de Venta</div>
+      <div class="ch-desc">Armar el carrito, cobrar y entregar el comprobante</div>
+    </div>
+  </div>
+
+  <h2>Agregar productos al carrito</h2>
+  <p>Hay 4 formas de sumar un producto:</p>
+  <ul>
+    <li><strong>Escáner físico:</strong> apuntá y disparás — se agrega solo, sin tocar nada más.</li>
+    <li><strong>Campo "Código de barras..."</strong> arriba a la derecha: tipeá y presioná "Buscar" (o Enter).</li>
+    <li><strong>Buscador "Buscar productos..."</strong>: filtra por nombre o código de barras.</li>
+    <li><strong>Clic directo</strong> en la tarjeta del producto en la grilla.</li>
+  </ul>
+  <p>Si un producto no tiene stock suficiente, el sistema avisa con un mensaje y no lo agrega (o no te deja sumar más unidades de las disponibles).</p>
+
+  <h2>El carrito</h2>
+  <p>Ajustá cantidades con <strong>"−"</strong> / <strong>"+"</strong>, sacá un ítem con el ícono de tacho, o vaciá todo con <strong>"Limpiar"</strong>. El carrito se vacía solo al cambiar de sucursal.</p>
+
+  <h2>Modo de precio</h2>
+  <p>Tres botones arriba de la grilla: <strong>"$ Pesos"</strong>, <strong>"US$ Dólar"</strong> y <strong>"USD→ARS"</strong> (convierte el precio en dólares a pesos usando la cotización blue). Cambia cómo se cotiza todo el carrito, incluso lo ya cargado.</p>
+
+  <h2>Aplicar un descuento</h2>
+  <p>Un único campo de descuento a nivel de <strong>todo el carrito</strong> (no existe descuento por producto individual). Elegís <strong>$</strong> (monto fijo) o <strong>%</strong>, escribís el valor y tocás <strong>"Aplicar"</strong> — no se aplica solo mientras tipeás.</p>
+  <div class="warn no-break">
+    <span class="box-icon">⚠️</span>
+    <div>El sistema no pone límite al descuento: si cargás un valor mayor al total, el total simplemente cae a $0 sin ningún aviso. Prestá atención antes de aplicar.</div>
+  </div>
+
+  <h2>Cobrar: medios de pago</h2>
+  <p>Botón <strong>"COBRAR"</strong> → se abre "Procesar Pago" con 5 opciones:</p>
+  <table>
+    <tr><th>Medio</th><th>Qué pide</th></tr>
+    <tr><td><strong>Efectivo</strong></td><td>Monto recibido (botón "Monto Justo" autocompleta el total exacto). Calcula el vuelto solo.</td></tr>
+    <tr><td><strong>Débito</strong></td><td>Nada — se asume que se cobra el total completo por posnet.</td></tr>
+    <tr><td><strong>Crédito</strong></td><td>Igual que Débito, más dos campos opcionales: Recargo/interés (%) — se suma al total a cobrar — y Cuotas, como referencia.</td></tr>
+    <tr><td><strong>Transferencia</strong></td><td>Cuenta destino (podés agregar una cuenta nueva al vuelo con "+ Agregar nueva cuenta": nombre, alias y CBU).</td></tr>
+    <tr><td><strong>Mixto</strong></td><td>Repartís el total entre Efectivo, Tarjeta y Transferencia. La suma tiene que cubrir el total para poder confirmar.</td></tr>
+  </table>
+
+  <h2>Confirmar la venta y el comprobante</h2>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-body"><strong>"Confirmar Venta"</strong>El stock de cada producto se descuenta automáticamente en ese instante.</div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-body"><strong>Pantalla "¡Venta Exitosa!"</strong>Muestra total, descuento aplicado y vuelto si corresponde.</div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-body"><strong>"📄 Descargar Comprobante"</strong>Genera un PDF tipo ticket (formato angosto, 80mm) con el detalle de la venta. Podés volver a descargarlo después desde el Historial de Ventas.</div></div>
+  </div>
+
+  <div class="note no-break">
+    <span class="box-icon">✅</span>
+    <div>El comprobante es un <strong>ticket simple, no una factura fiscal</strong>: lo dice explícitamente el propio PDF ("Documento no válido como factura"). Es un archivo PDF que se descarga — si querés entregarlo en papel, hay que abrirlo e imprimirlo desde tu lector de PDF habitual.</div>
+  </div>
+
+  <div class="tip no-break">
+    <span class="box-icon">💡</span>
+    <div>El Punto de Venta funciona en cualquier momento, sin necesidad de tener el Arqueo de Caja abierto. Cualquier usuario con sesión iniciada puede vender, sin restricción de rol.</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ CAP 4 — HISTORIAL DE VENTAS ═══════════════════════════ -->
+<div class="chapter" id="cap4">
+  <div class="chapter-header">
+    <div class="ch-icon ch-purple">🧾</div>
+    <div class="ch-title-group">
+      <div class="ch-num">Capítulo 04</div>
+      <div class="ch-title">Historial de Ventas</div>
+      <div class="ch-desc">Consultar, filtrar, redescargar y anular ventas</div>
+    </div>
+  </div>
+
+  <h2>Filtros</h2>
+  <p>Panel <strong>"Filtros"</strong>: Fecha Desde/Hasta (por defecto, el mes actual) para todos los roles; <strong>Sucursal</strong> y <strong>Vendedor</strong> solo visibles para Dueño y Administrador. Botones "Aplicar Filtros" / "Limpiar".</p>
+
+  <h2>Estadísticas del período</h2>
+  <p>Arriba de la lista: Total de Ventas, Ingresos Totales y Venta Promedio, calculados sobre el rango de fechas visible (sin contar ventas anuladas).</p>
+
+  <h2>Ver el detalle de una venta</h2>
+  <p>Cada venta se muestra expandida directamente en la lista: fecha y hora, sucursal, productos con cantidad y subtotal, descuento, total, medio de pago y quién la atendió. Botón <strong>"Descargar"</strong> para volver a bajar el comprobante en PDF.</p>
+
+  <h2>Anular una venta</h2>
+  <p>Botón <strong>"Anular"</strong> (solo visible para <strong>Dueño</strong> y <strong>Manager</strong> — el rol Administrador no tiene este botón). Se confirma en la misma tarjeta con "Confirmar" / "Cancelar".</p>
+
+  <div class="warn no-break">
+    <span class="box-icon">⚠️</span>
+    <div><strong>Anular es definitivo.</strong> La venta se elimina del sistema por completo (no queda "tachada" ni archivada): el stock de los productos vuelve automáticamente, pero la venta desaparece del Historial y de todos los reportes, sin dejar rastro. No hay forma de deshacer una anulación — revisá bien antes de confirmar.</div>
+  </div>
+
+  <p class="small">Si tu organización tiene habilitada la facturación electrónica ARCA/AFIP (función en desarrollo, ver capítulo 15), acá aparecerían además botones para emitir Factura, Nota de Crédito o Nota de Débito sobre cada venta.</p>
+</div>
+
+<!-- ═══════════════════════════ CAP 5 — ESCÁNER ═══════════════════════════ -->
+<div class="chapter" id="cap5">
+  <div class="chapter-header">
+    <div class="ch-icon ch-teal">🔍</div>
+    <div class="ch-title-group">
+      <div class="ch-num">Capítulo 05</div>
+      <div class="ch-title">Escáner de productos</div>
+      <div class="ch-desc">Consultar precios y datos de cualquier artículo al instante</div>
+    </div>
+  </div>
+
+  <h2>¿Para qué sirve?</h2>
+  <p>Es una pantalla dedicada <strong>exclusivamente a consultar</strong> productos con el lector de código de barras físico, sin usar cámara. Sirve para responder "¿cuánto sale esto?" sin abrir el Punto de Venta ni interrumpir una venta en curso.</p>
+
+  <h2>Cómo usarlo</h2>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-body"><strong>Ir a Escáner en el menú lateral</strong></div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-body"><strong>Escanear el código de barras</strong>No hace falta hacer clic en nada primero. El sistema reproduce un beep agudo si lo encuentra, o un doble tono grave si no.</div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-body"><strong>Ver la ficha</strong>Nombre, descripción, categoría, SKU, precio de costo/venta en pesos y dólares, stock (con el mínimo), margen de ganancia con color según qué tan bueno es, y el precio equivalente en dólares al blue si hay cotización cargada.</div></div>
+  </div>
+
+  <p>Si el código no se encuentra, muestra un aviso con el texto <strong>"Producto no encontrado"</strong> y la sugerencia de darlo de alta desde Productos.</p>
+
+  <h2>Historial de escaneos</h2>
+  <p>Panel lateral con los últimos <strong>20</strong> productos escaneados en la sesión (código, nombre y hora). Se pierde al cerrar o recargar la pantalla — no queda guardado en ningún lado.</p>
+
+  <div class="note no-break">
+    <span class="box-icon">✅</span>
+    <div>El Escáner <strong>no registra ventas ni modifica el stock</strong>. Es solo de consulta.</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ CAP 6 — ARQUEO DE CAJA ═══════════════════════════ -->
+<div class="chapter" id="cap6">
+  <div class="chapter-header">
+    <div class="ch-icon ch-purple">💰</div>
+    <div class="ch-title-group">
+      <div class="ch-num">Capítulo 06</div>
+      <div class="ch-title">Arqueo de Caja</div>
+      <div class="ch-desc">Control del efectivo: apertura, cierre y movimientos</div>
+    </div>
+  </div>
+
+  <h2>¿Por qué es importante?</h2>
+  <p>El arqueo permite saber cuánto efectivo <strong>debería</strong> haber en caja en cada momento, compararlo con lo que realmente hay al contar, y detectar cualquier diferencia. Queda un historial por turno para auditoría. Disponible para Dueño, Administrador y Manager (el rol Empleado no tiene acceso a esta pantalla).</p>
+
+  <h2>Abrir caja</h2>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-body"><strong>"Abrir Caja" → Monto de Apertura</strong>Contá el efectivo que ponés y escribí el total.</div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-body"><strong>"El dinero viene de la caja fuerte" (opcional)</strong>Si lo tildás, queda registrado como salida de la caja fuerte en Contabilidad.</div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-body"><strong>Confirmar</strong>Si el monto no coincide con lo que debería haber quedado del cierre anterior, el sistema te avisa el sobrante o faltante antes de confirmar.</div></div>
+  </div>
+
+  <h2>Cerrar caja</h2>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-body"><strong>Contar el efectivo físico</strong></div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-body"><strong>"Cerrar Caja" → Monto Contado</strong>El sistema calcula el <strong>monto esperado</strong> y muestra la diferencia.</div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-body"><strong>Retiro a caja fuerte (opcional)</strong>Si guardás parte del efectivo, indicá cuánto — el sistema muestra en vivo "Queda para mañana: $X" y lo registra en Contabilidad.</div></div>
+    <div class="step"><div class="step-num">4</div><div class="step-body"><strong>Confirmar el cierre</strong>Queda registrado con sobrante, faltante o "cuadra perfecto".</div></div>
+  </div>
+
+  <div class="tip no-break">
+    <span class="box-icon">💡</span>
+    <div><strong>Cómo se calcula el "monto esperado":</strong> Apertura + ventas cobradas <strong>en efectivo</strong> + ingresos extra en efectivo − gastos extra en efectivo. Las ventas con tarjeta o transferencia <strong>no</strong> forman parte de este cálculo (no son plata física en el cajón), aunque sí se muestran informativamente.</div>
+  </div>
+
+  <h2>Movimientos extraordinarios</h2>
+  <p>Botón <strong>"Movimientos Extraordinarios"</strong> (con la caja abierta): entradas o salidas de dinero que no son ventas.</p>
+  <table>
+    <tr><th>Origen</th><th>¿Afecta el arqueo?</th></tr>
+    <tr><td>💵 Caja actual</td><td>Sí</td></tr>
+    <tr><td>💵 Efectivo (fuera de caja)</td><td>No</td></tr>
+    <tr><td>🏦 Transferencia (elegís la cuenta)</td><td>No</td></tr>
+    <tr><td>📌 Otro</td><td>No</td></tr>
+  </table>
+  <p>Campos: Tipo (Gasto/Ingreso), Monto, Descripción (obligatoria) y Categoría opcional (Alquiler, Servicios, Personal, Compra de mercadería, Impuestos, Mantenimiento, Marketing, Transporte, Gastos bancarios, Caja fuerte, Ajuste de saldo, Otro — o su equivalente para ingresos).</p>
+
+  <h2>Frecuentes (plantillas)</h2>
+  <p>Si repetís seguido un mismo gasto (alquiler, fondo de caja, etc.), guardalo como "Frecuente" con el ícono ⭐: aparece como una píldora arriba del formulario y, con un clic, completa todos los campos por vos.</p>
+  <div class="tip no-break">
+    <span class="box-icon">💡</span>
+    <div>Los Frecuentes se guardan en esa computadora puntual, no se comparten entre equipos ni usuarios.</div>
+  </div>
+
+  <h2>Historial de arqueos</h2>
+  <p>Lista de turnos con su estado (abierto / cerrado sin diferencia / cerrado con diferencia). Al hacer clic en un turno cerrado, se ve el detalle completo: apertura, cierre, ventas desglosadas por medio de pago, esperado, contado, diferencia y notas. Botón <strong>"Movimientos"</strong> para ver todo lo ocurrido en ese turno en orden cronológico. Filtros por usuario y por fecha.</p>
+
+  <h2>Exportar</h2>
+  <p>Botón <strong>"Exportar CSV"</strong>: descarga los arqueos filtrados con fechas, montos, diferencias, ventas y notas — listo para Excel.</p>
+</div>
+
+<!-- ═══════════════════════════ CAP 7 — PROVEEDORES ═══════════════════════════ -->
+<div class="chapter" id="cap7">
+  <div class="chapter-header">
+    <div class="ch-icon ch-yellow">🚚</div>
+    <div class="ch-title-group">
+      <div class="ch-num">Capítulo 07</div>
+      <div class="ch-title">Proveedores</div>
+      <div class="ch-desc">Directorio de contactos y sus productos asociados</div>
+    </div>
+  </div>
+
+  <h2>¿Para qué sirve?</h2>
+  <p>Tener el directorio de tus proveedores y ver qué productos le comprás a cada uno, para facilitar el seguimiento de compras. Disponible para Dueño, Administrador y Manager.</p>
+
+  <h2>Crear un proveedor</h2>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-body"><strong>"Nuevo Proveedor"</strong></div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-body"><strong>Completar datos</strong>Nombre (obligatorio), Email, Teléfono, Dirección y Notas — todo lo demás es opcional.</div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-body"><strong>Guardar</strong>Ya queda disponible para asignarlo a productos (desde Productos → Editar producto).</div></div>
+  </div>
+
+  <h2>Ver los productos de un proveedor</h2>
+  <p>Botón <strong>"Ver N productos"</strong> en la tarjeta del proveedor: lista cada producto con su stock y precio de venta.</p>
+
+  <h2>Editar y eliminar</h2>
+  <div class="warn no-break">
+    <span class="box-icon">⚠️</span>
+    <div><strong>Eliminar un proveedor no pide confirmación</strong> — se borra apenas hacés clic en el ícono de tacho. Tampoco avisa si el proveedor todavía tiene productos asociados. Prestá atención antes de tocarlo.</div>
+  </div>
+
+  <h2>Exportar</h2>
+  <p>Botón <strong>"Exportar CSV"</strong> en el listado general: descarga todos tus proveedores con sus datos de contacto y los nombres de productos asociados. Dentro de la ficha de productos de un proveedor puntual hay otro botón <strong>"Exportar Excel"</strong> con el detalle de esos artículos, también separado por categoría.</p>
+</div>
+
+<!-- ═══════════════════════════ CAP 8 — CATÁLOGO MAESTRO ═══════════════════════════ -->
+<div class="chapter" id="cap8">
+  <div class="chapter-header">
+    <div class="ch-icon ch-indigo">📚</div>
+    <div class="ch-title-group">
+      <div class="ch-num">Capítulo 08</div>
+      <div class="ch-title">Catálogo Maestro</div>
+      <div class="ch-desc">Vista consolidada de todas las sucursales, de solo consulta</div>
+    </div>
+  </div>
+
+  <h2>¿Qué es y en qué se diferencia de "Productos"?</h2>
+  <table class="no-break">
+    <tr><th>Productos</th><th>Catálogo Maestro</th></tr>
+    <tr><td>Lo que tenés y vendés en <strong>tu</strong> sucursal</td><td>Foto consolidada de <strong>todas</strong> las sucursales juntas</td></tr>
+    <tr><td>Se puede crear, editar, eliminar</td><td><strong>Solo lectura</strong> — no se puede editar ni crear nada desde acá</td></tr>
+  </table>
+
+  <h2>Qué muestra la ficha de un producto</h2>
+  <p>Al hacer clic en un producto: Stock Total (suma de todas las sucursales), cantidad de Sucursales donde está cargado, Precio Promedio, Ganancia Potencial total, y un desglose <strong>por sucursal</strong> con stock, margen, costo, venta, valor de stock y ganancia potencial de cada local.</p>
+
+  <div class="warn no-break">
+    <span class="box-icon">⚠️</span>
+    <div><strong>Cualquier usuario ve todas las sucursales acá</strong>, incluido un Empleado que en la pantalla "Productos" solo puede ver la suya. Tené esto en cuenta si no querés que todo el equipo vea costos y stock de otros locales.</div>
+  </div>
+
+  <h2>Búsqueda, filtros y escaneo</h2>
+  <p>Buscador por nombre, código de barras, descripción o categoría, más chips de categoría (para sacar el filtro, tocá "Todas"). El escáner físico funciona directo en esta pantalla: al escanear, abre la ficha automáticamente.</p>
+
+  <div class="tip no-break">
+    <span class="box-icon">💡</span>
+    <div>La insignia de "Bajo Stock" acá usa una regla propia (menos de 10 unidades sumando todas las sucursales) distinta del "stock mínimo" configurable que usan Productos, Dashboard y Reportes.</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ CAP 9 — REPORTES ═══════════════════════════ -->
+<div class="chapter" id="cap9">
+  <div class="chapter-header">
+    <div class="ch-icon ch-pink">📈</div>
+    <div class="ch-title-group">
+      <div class="ch-num">Capítulo 09</div>
+      <div class="ch-title">Reportes</div>
+      <div class="ch-desc">15 análisis gráficos para tomar mejores decisiones</div>
+    </div>
+  </div>
+
+  <h2>¿Para qué sirven?</h2>
+  <p>Gráficos interactivos para analizar el negocio en profundidad. Es el complemento operativo de Contabilidad: Reportes muestra el <em>detalle comercial</em> (qué se vende, a quién, cuándo), Contabilidad muestra el <em>resultado financiero</em>. Disponible para Dueño, Administrador y Manager.</p>
+
+  <h2>Cómo usarlos</h2>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-body"><strong>Elegí el reporte</strong>En el menú lateral, agrupados en 3 categorías.</div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-body"><strong>Elegí el período</strong>7 días, 30 días, 90 días o un rango Personalizado.</div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-body"><strong>(Opcional) Filtrá por sucursal</strong>Solo visible para Dueño y Administrador.</div></div>
+  </div>
+
+  <h3>Análisis Comercial</h3>
+  <table>
+    <tr><th>Reporte</th><th>Qué muestra</th></tr>
+    <tr><td><strong>Ingresos por Período</strong></td><td>Evolución de ingresos, costos y ganancia en el tiempo</td></tr>
+    <tr><td><strong>Cantidad de Ventas por Día</strong></td><td>Unidades y transacciones vendidas cada día</td></tr>
+    <tr><td><strong>Ingresos por Método de Pago</strong></td><td>Cuánto entró por efectivo, débito, crédito, transferencia y mixto</td></tr>
+    <tr><td><strong>Ingresos por Sucursal</strong></td><td>Comparativa de ingresos y ganancia entre locales</td></tr>
+    <tr><td><strong>Ingresos por Categoría</strong></td><td>Distribución de ventas por tipo de producto</td></tr>
+    <tr><td><strong>Top Productos</strong></td><td>Los 10 más vendidos, ordenables por ingresos, unidades o ganancia</td></tr>
+    <tr><td><strong>Margen por Categoría</strong></td><td>Rentabilidad promedio de cada categoría</td></tr>
+    <tr><td><strong>Arqueo de Caja por Usuario</strong></td><td>Sobrantes/faltantes y ranking de ventas por empleado</td></tr>
+    <tr><td><strong>Compras por Proveedor</strong></td><td>A qué proveedores comprás más y cuánto</td></tr>
+  </table>
+
+  <h3>Análisis de Inventario</h3>
+  <table>
+    <tr><th>Reporte</th><th>Qué muestra</th></tr>
+    <tr><td><strong>Alertas de Stock</strong></td><td>Productos agotados o por debajo del mínimo, con el faltante exacto</td></tr>
+    <tr><td><strong>Valor del Inventario</strong></td><td>Valor del stock a precio de costo, por producto o por categoría</td></tr>
+    <tr><td><strong>Productos Sin Movimiento</strong></td><td>Productos con stock que no se vendieron en el período ("stock muerto")</td></tr>
+    <tr><td><strong>Gastos de Caja</strong></td><td>Evolución de los gastos cargados como movimientos extraordinarios</td></tr>
+  </table>
+
+  <h3>Facturación ARCA</h3>
+  <p><strong>Facturación por Período</strong> y <strong>Comprobantes por Tipo</strong>. Estos dos reportes dependen del módulo de facturación electrónica, que está en desarrollo y todavía no disponible (ver capítulo 15) — hoy se van a ver vacíos.</p>
+</div>
+
+<!-- ═══════════════════════════ CAP 10 — CONTABILIDAD ═══════════════════════════ -->
+<div class="chapter" id="cap10">
+  <div class="chapter-header">
+    <div class="ch-icon ch-blue">📊</div>
+    <div class="ch-title-group">
+      <div class="ch-num">Capítulo 10</div>
+      <div class="ch-title">Contabilidad</div>
+      <div class="ch-desc">Resultado financiero del negocio y libro de gastos</div>
+    </div>
+  </div>
+
+  <p>Disponible únicamente para <strong>Dueño</strong> y <strong>Administrador</strong>. Muestra siempre <strong>una sucursal a la vez</strong> (la elegida en el selector del menú lateral).</p>
+
+  <h2>Las pestañas</h2>
+  <div class="grid2">
+    <div class="card"><div class="c-icon">📈</div><div class="c-title">Resumen</div><div class="c-desc">KPIs del período: ventas, ganancia bruta, gastos y resultado neto, con gráfico de evolución diaria.</div></div>
+    <div class="card"><div class="c-icon">📄</div><div class="c-title">Estado de Resultados</div><div class="c-desc">Formato contable formal (Ingresos → Costo → Ganancia → Gastos → Resultado neto). Para compartir con tu contador.</div></div>
+    <div class="card"><div class="c-icon">💸</div><div class="c-title">Flujo de Caja</div><div class="c-desc">Día a día, desglosado por efectivo, tarjeta y transferencia.</div></div>
+    <div class="card"><div class="c-icon">📒</div><div class="c-title">Gastos y Pagos</div><div class="c-desc">Libro diario: todas las ventas y movimientos manuales en orden cronológico, filtrable y paginado.</div></div>
+    <div class="card"><div class="c-icon">🏦</div><div class="c-title">Cuentas</div><div class="c-desc">Saldo y movimientos de efectivo, tarjeta y cada cuenta bancaria/transferencia.</div></div>
+    <div class="card"><div class="c-icon">🛍️</div><div class="c-title">Compras</div><div class="c-desc">Historial de compras a proveedores, exportable a CSV.</div></div>
+  </div>
+  <p class="small">Si tu organización tiene la facturación electrónica activa (todavía en desarrollo), se agrega una séptima pestaña "Libro IVA" con el detalle de comprobantes emitidos.</p>
+
+  <h2>Registrar un gasto o ingreso manual</h2>
+  <p>En <strong>Gastos y Pagos → "+ Nueva entrada"</strong>: cualquier movimiento que no sea una venta (sueldos, alquiler, servicios, etc.).</p>
+  <table>
+    <tr><th>Campo</th><th>Descripción</th></tr>
+    <tr><td>Tipo</td><td>Gasto o Ingreso</td></tr>
+    <tr><td>Fecha</td><td>Por defecto hoy, editable</td></tr>
+    <tr><td>Monto</td><td>Obligatorio, mayor a 0</td></tr>
+    <tr><td>Categoría</td><td>Opcional: Alquiler, Servicios, Personal, Compra de mercadería, Impuestos, Mantenimiento, Marketing, Transporte, Gastos bancarios, Caja fuerte, Ajuste de saldo, Otro (o su equivalente de ingreso)</td></tr>
+    <tr><td>Descripción</td><td>Obligatoria</td></tr>
+    <tr><td>Cuenta / Medio de pago</td><td>Efectivo (caja), Efectivo (fuera), Transferencia (con selector de cuenta) u Otro</td></tr>
+  </table>
+
+  <h2>Ajustar el saldo de una cuenta</h2>
+  <p>Si empezaste a usar el sistema con el negocio ya en marcha, tus cuentas no arrancan en cero. En <strong>Cuentas</strong>, debajo de cada cuenta ajustable, tocá <strong>"Ajustar saldo real →"</strong>: el sistema muestra el saldo que tiene registrado, vos ingresás el real, y se crea automáticamente un movimiento de ajuste por la diferencia.</p>
+
+  <h2>Período y exportación</h2>
+  <p>Selector de fechas arriba: Este mes, Mes anterior, Últimos 30 días, Últimos 90 días, Este año o Personalizado. Exportación a CSV disponible en las pestañas <strong>Compras</strong> y <strong>Libro IVA</strong> (esta última solo si la facturación electrónica está activa).</p>
+</div>
+
+<!-- ═══════════════════════════ CAP 11 — EXTRAS ═══════════════════════════ -->
+<div class="chapter" id="cap11">
+  <div class="chapter-header">
+    <div class="ch-icon ch-pink">✨</div>
+    <div class="ch-title-group">
+      <div class="ch-num">Capítulo 11</div>
+      <div class="ch-title">Extras — Etiquetas de código de barras</div>
+      <div class="ch-desc">Generar e imprimir hojas de etiquetas propias</div>
+    </div>
+  </div>
+
+  <h2>¿Para qué sirve?</h2>
+  <p>Generador de hojas A4 con códigos de barras propios, para mercadería que no trae código de fábrica. Disponible para Dueño, Administrador y Manager.</p>
+
+  <h2>Crear una hoja de etiquetas</h2>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-body"><strong>"+ Nueva hoja" → Nombrala</strong>Por ejemplo "Almacén mayo 2026".</div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-body"><strong>Elegí el Formato</strong>"Estándar" (solo código de barras) o "Joyería" (con solapas para doblar y colgar).</div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-body"><strong>Si es Estándar, elegí el Tamaño</strong>Mini (~150/hoja), Muy chico (~100), Chico (~65), Mediano (~40, por defecto) o Grande (~24). El formato Joyería trae siempre ~40 por hoja, sin elegir tamaño.</div></div>
+    <div class="step"><div class="step-num">4</div><div class="step-body"><strong>"Generar e imprimir"</strong>El sistema arma los códigos automáticamente, siguiendo la numeración desde la última hoja creada, para que nunca se repitan.</div></div>
+  </div>
+
+  <div class="tip no-break">
+    <span class="box-icon">💡</span>
+    <div>La cantidad de etiquetas la define el tamaño elegido — no hay un campo para escribir "cuántas" a mano.</div>
+  </div>
+
+  <p>Al confirmar, se abre automáticamente el diálogo de impresión de Windows. También podés elegir <strong>"PDF"</strong> para guardar el archivo en tu computadora en vez de imprimir directo.</p>
+
+  <h2>Historial de hojas</h2>
+  <p>Cada hoja generada queda guardada con nombre, fecha, tamaño y el rango de códigos que contiene. Botones <strong>"Imprimir"</strong> y <strong>"PDF"</strong> para volver a usarla cuando quieras.</p>
+
+  <div class="warn no-break">
+    <span class="box-icon">⚠️</span>
+    <div>El ícono de tacho de basura <strong>elimina la hoja al instante, sin pedir confirmación</strong>.</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ CAP 12 — USUARIOS Y PERMISOS ═══════════════════════════ -->
+<div class="chapter" id="cap12">
+  <div class="chapter-header">
+    <div class="ch-icon ch-green">👥</div>
+    <div class="ch-title-group">
+      <div class="ch-num">Capítulo 12</div>
+      <div class="ch-title">Usuarios y Permisos</div>
+      <div class="ch-desc">Gestionar el acceso de cada persona del equipo</div>
+    </div>
+  </div>
+
+  <h2>Los 4 roles</h2>
+  <table>
+    <tr><th>Rol</th><th>Qué puede hacer</th></tr>
+    <tr><td><strong>Dueño</strong></td><td>Acceso completo a toda la organización, todas las sucursales y todos los usuarios. Es el único que puede eliminar usuarios definitivamente.</td></tr>
+    <tr><td><strong>Administrador</strong></td><td>Gestión de sucursales, usuarios y productos. Ve y edita todo salvo eliminar usuarios o tocar la cuenta del Dueño.</td></tr>
+    <tr><td><strong>Manager</strong></td><td>Gestión acotada a su propia sucursal: solo ve y administra a los Empleados asignados a ese local.</td></tr>
+    <tr><td><strong>Empleado</strong></td><td>Operaciones básicas del día a día (vender, consultar, escanear) en su sucursal asignada.</td></tr>
+  </table>
+
+  <h2>Invitar un usuario nuevo</h2>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-body"><strong>Usuarios → "Invitar Usuario"</strong></div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-body"><strong>Completá Email, Contraseña, Nombre completo y Rol</strong>Un Dueño puede crear Administradores, Managers o Empleados; un Administrador solo Managers o Empleados; un Manager solo Empleados de su propia sucursal.</div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-body"><strong>Asigná una sucursal</strong>Obligatorio si el rol es Manager o Empleado.</div></div>
+    <div class="step"><div class="step-num">4</div><div class="step-body"><strong>Crear</strong></div></div>
+  </div>
+
+  <div class="warn no-break">
+    <span class="box-icon">⚠️</span>
+    <div><strong>No se envía ningún correo de invitación.</strong> Vos mismo elegís la contraseña de la persona al crear su usuario, y sos responsable de comunicársela de forma segura. La persona puede cambiarla después de su primer inicio de sesión... aunque, por ahora, no hay ninguna pantalla dentro de la aplicación para cambiar contraseñas (ni propia ni de otro usuario) — si hace falta cambiar una, contactá a soporte técnico.</div>
+  </div>
+
+  <h2>Editar un usuario</h2>
+  <p>Podés cambiar Nombre, Rol y Sucursal. El <strong>Email no se puede modificar</strong>. Nadie puede editarse a sí mismo desde esta pantalla, ni siquiera el Dueño.</p>
+
+  <h2>Eliminar y desactivar</h2>
+  <p><strong>Eliminar</strong> (borrado definitivo): solo el <strong>Dueño</strong> lo puede hacer, con confirmación en dos pasos, y nadie puede eliminarse a sí mismo. <strong>Desactivar/Activar</strong>: inmediato, sin confirmación — le quita (o devuelve) el acceso a esa persona sin borrar su historial.</p>
+
+  <h2>Ficha de un usuario</h2>
+  <p>Solo lectura: rol con su descripción, estado (activo/inactivo), sucursal asignada, fecha de creación y última actualización.</p>
+</div>
+
+<!-- ═══════════════════════════ CAP 13 — SUCURSALES ═══════════════════════════ -->
+<div class="chapter" id="cap13">
+  <div class="chapter-header">
+    <div class="ch-icon ch-orange">🏢</div>
+    <div class="ch-title-group">
+      <div class="ch-num">Capítulo 13</div>
+      <div class="ch-title">Sucursales</div>
+      <div class="ch-desc">Gestión de los locales del negocio</div>
+    </div>
+  </div>
+
+  <p>Disponible únicamente para <strong>Dueño</strong> y <strong>Administrador</strong>.</p>
+
+  <h2>Crear una sucursal</h2>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-body"><strong>"Nueva Sucursal"</strong></div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-body"><strong>Nombre (obligatorio), Dirección, Teléfono y Email</strong></div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-body"><strong>Crear</strong>Queda activa de inmediato.</div></div>
+  </div>
+
+  <div class="tip no-break">
+    <span class="box-icon">💡</span>
+    <div>Cada plan tiene un límite de sucursales. Si lo alcanzás, el sistema te avisa y no te deja crear una nueva hasta actualizar el plan.</div>
+  </div>
+
+  <h2>Ficha de detalle</h2>
+  <p>Cantidad de productos, stock total y empleados asignados, más los datos de contacto y fechas.</p>
+
+  <h2>Editar, desactivar y eliminar</h2>
+  <p><strong>Editar</strong>: mismos campos que la creación. <strong>Desactivar</strong>: si la sucursal tiene productos cargados, el sistema pide confirmación explícita porque esos productos quedarán inaccesibles.</p>
+
+  <div class="warn no-break">
+    <span class="box-icon">⚠️</span>
+    <div><strong>Eliminar una sucursal es una acción muy destructiva.</strong> Borra todos los productos, ventas, movimientos de inventario y arqueos de esa sucursal, y desvincula a los usuarios que tenía asignados. Pide confirmación en dos pasos — usalo solo si estás completamente seguro.</div>
+  </div>
+
+  <h2>Cambiar la sucursal activa</h2>
+  <p>El selector arriba del menú lateral (ver capítulo 1) te permite a vos, como Dueño o Administrador, cambiar entre sucursales sin cerrar sesión, siempre que haya 2 o más creadas.</p>
+</div>
+
+<!-- ═══════════════════════════ CAP 14 — CONFIGURACIÓN ═══════════════════════════ -->
+<div class="chapter" id="cap14">
+  <div class="chapter-header">
+    <div class="ch-icon ch-purple">⚙️</div>
+    <div class="ch-title-group">
+      <div class="ch-num">Capítulo 14</div>
+      <div class="ch-title">Configuración</div>
+      <div class="ch-desc">Datos del negocio, logo, tipo de cambio y tu cuenta</div>
+    </div>
+  </div>
+
+  <p>Esta pantalla no tiene pestañas: son 3 secciones una debajo de la otra.</p>
+
+  <h2>Empresa <span class="small">(solo Dueño y Administrador)</span></h2>
+  <p>Nombre comercial del negocio (aparece en tickets y reportes), logo, y datos de solo lectura del plan contratado (estado, límite de sucursales, productos y usuarios).</p>
+
+  <h3>Logo</h3>
+  <p>Formatos aceptados: PNG, JPG o WEBP, máximo 2 MB. Se usa en el menú lateral y en el encabezado de los comprobantes de venta en PDF.</p>
+  <div class="warn no-break">
+    <span class="box-icon">⚠️</span>
+    <div>"Eliminar logo" borra la imagen al instante, sin pedir confirmación.</div>
+  </div>
+
+  <h2>Cotización Dólar Blue <span class="small">(todos los roles)</span></h2>
+  <table class="no-break">
+    <tr><th>Modo</th><th>Descripción</th></tr>
+    <tr><td><strong>Automático</strong></td><td>Se trae de una fuente pública y se actualiza sola cada 5 minutos como máximo. Botón ↻ para refrescar a mano.</td></tr>
+    <tr><td><strong>Manual</strong></td><td>Vos cargás el valor de compra y venta. Se guarda solo, sin botón "Guardar" — cada cambio se aplica al instante.</td></tr>
+  </table>
+  <div class="tip no-break">
+    <span class="box-icon">💡</span>
+    <div>La cotización (automática o manual) es <strong>compartida por toda la organización</strong>, no por dispositivo, y se usa para convertir precios en dólares en Productos y en el Punto de Venta.</div>
+  </div>
+
+  <h2>Mi Cuenta <span class="small">(todos los roles)</span></h2>
+  <p>Muestra, de solo lectura, tu nombre, email, rol y estado. No hay opción de cambiar tu contraseña desde acá (ver capítulo 12).</p>
+
+  <div class="note no-break">
+    <span class="box-icon">✅</span>
+    <div>Las cuentas bancarias/de transferencia <strong>no se cargan en Configuración</strong>: se agregan al vuelo desde el Punto de Venta, cuando elegís "Transferencia" como medio de pago y tocás "+ Agregar nueva cuenta".</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ CAP 15 — SOBRE LA APP Y FAQ ═══════════════════════════ -->
+<div class="chapter" id="cap15">
+  <div class="chapter-header">
+    <div class="ch-icon ch-red">❓</div>
+    <div class="ch-title-group">
+      <div class="ch-num">Capítulo 15</div>
+      <div class="ch-title">Sobre la aplicación y Preguntas Frecuentes</div>
+      <div class="ch-desc">Actualizaciones, impresión y soluciones a los inconvenientes más comunes</div>
+    </div>
+  </div>
+
+  <h2>Actualizaciones automáticas</h2>
+  <p>Cada vez que abrís BG Gestión, el sistema revisa solo si hay una versión nueva y, si la hay, la descarga en segundo plano sin interrumpirte. Cuando termina de descargar, aparece un aviso: <strong>"¿Deseás reiniciar para actualizar?"</strong> con las opciones <strong>"Reiniciar ahora"</strong> o <strong>"Después"</strong>. No hay que instalar nada manualmente.</p>
+
+  <h2>Novedades de la versión</h2>
+  <p>Después de actualizar, al volver a abrir la app aparece una sola vez una ventana con las novedades de esa versión.</p>
+
+  <h2>Impresión</h2>
+  <p>Las hojas de etiquetas (capítulo 11) se pueden mandar directo al diálogo de impresión de Windows o exportar como PDF. Los comprobantes de venta, en cambio, siempre se generan como archivo PDF para descargar — no se envían directo a una impresora, hay que abrirlos e imprimirlos manualmente si los necesitás en papel.</p>
+
+  <hr class="div">
+
+  <h2>Preguntas frecuentes</h2>
+
+  <h3>No encuentro dónde recuperar mi contraseña</h3>
+  <p>Todavía no existe esa función en la aplicación. Contactá a tu administrador o al soporte técnico de BG Gestión.</p>
+
+  <h3>Anulé una venta por error y no la encuentro más</h3>
+  <p>Es el comportamiento esperado: anular borra la venta definitivamente y devuelve el stock, sin dejar registro. No hay forma de deshacerlo — si fue un error, hay que cargar la venta de nuevo.</p>
+
+  <h3>El stock no coincide con lo que tengo físicamente</h3>
+  <p>Usá un <strong>Ajuste positivo o negativo</strong> desde Productos → ficha del producto → Movimiento, para corregirlo sin alterar el resto del historial.</p>
+
+  <h3>El arqueo de caja muestra diferencia pero debería cuadrar</h3>
+  <p>Revisá si hubo movimientos extraordinarios cargados con un origen distinto a "Caja actual" (esos no deberían estar ahí si en verdad salieron/entraron del cajón), o un retiro a caja fuerte del turno anterior que no se comunicó bien.</p>
+
+  <h3>El escáner no reconoce el código de barras de un producto</h3>
+  <p>Verificá que el código cargado en la ficha del producto (Productos → Editar) coincida exactamente con el que imprime el lector.</p>
+
+  <h3>¿Cómo exporto datos a Excel?</h3>
+  <p>Productos —y el detalle de productos de cada proveedor— exportan directo a Excel (.xlsx), con una hoja por categoría. El listado general de Proveedores, el Arqueo de Caja y Contabilidad (pestañas Compras y Libro IVA) todavía exportan en CSV, que también se abre con Excel. El Historial de Ventas y los Reportes, por ahora, no tienen exportación — solo se puede descargar el comprobante PDF de cada venta individual.</p>
+
+  <h3>¿Los datos se guardan en la nube?</h3>
+  <p>Sí. Toda la información se sincroniza automáticamente. Podés acceder desde cualquier computadora con la aplicación instalada y tus credenciales.</p>
+
+  <h3>¿Puedo facturar electrónicamente (ARCA/AFIP)?</h3>
+  <p>Todavía no. El módulo de facturación electrónica está en desarrollo y por el momento no está disponible en esta versión — los comprobantes que emite el sistema hoy (capítulo 3) son tickets simples, sin validez fiscal.</p>
+
+  <h3>Quiero ajustar el saldo de una cuenta porque empecé a usar el sistema tarde</h3>
+  <p>Contabilidad → Cuentas → <strong>"Ajustar saldo real →"</strong> debajo de la cuenta correspondiente.</p>
+
+  <h3>Necesito cambiar mi contraseña</h3>
+  <p>Por el momento no es posible desde la aplicación (ni de forma propia ni por un administrador). Contactá a soporte técnico de BG Gestión.</p>
+
+  <br><br>
+  <div class="note no-break">
+    <span class="box-icon">📞</span>
+    <div><strong>¿Necesitás ayuda adicional?</strong><br>Si encontrás un problema que no está en esta guía, contactá a tu administrador o al soporte técnico de BG Gestión.</div>
+  </div>
+
+  <br><br>
+  <p style="text-align:center; color:#9ca3af; font-size:9pt;">BG Gestión · Guía de usuario · 2026<br>Documento para uso interno del cliente.</p>
+</div>
+
+</body>
+</html>

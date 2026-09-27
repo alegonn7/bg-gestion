@@ -9,6 +9,23 @@ contextBridge.exposeInMainWorld('electron', {
     get: (sql, params) => ipcRenderer.invoke('db:get', sql, params),
   },
 
+  // Caché offline (productos + metadatos)
+  cache: {
+    saveProducts: (branchIds, products) => ipcRenderer.invoke('cache:save-products', { branchIds, products }),
+    getProducts: (branchIds) => ipcRenderer.invoke('cache:get-products', { branchIds }),
+    setMeta: (key, value) => ipcRenderer.invoke('cache:set-meta', { key, value }),
+    getMeta: (key) => ipcRenderer.invoke('cache:get-meta', { key }),
+  },
+
+  // Login offline
+  offlineAuth: {
+    save: (email, password, payload) => ipcRenderer.invoke('offline-auth:save', { email, password, payload }),
+    touch: (email, payload) => ipcRenderer.invoke('offline-auth:touch', { email, payload }),
+    verify: (email, password) => ipcRenderer.invoke('offline-auth:verify', { email, password }),
+    getSnapshot: (email) => ipcRenderer.invoke('offline-auth:get-snapshot', { email }),
+    status: () => ipcRenderer.invoke('offline-auth:status'),
+  },
+
   // System info
   getDeviceId: () => ipcRenderer.invoke('get-device-id'),
   getSystemInfo: () => ipcRenderer.invoke('get-system-info'),
@@ -27,4 +44,7 @@ contextBridge.exposeInMainWorld('electron', {
     createUser: (email, password) => ipcRenderer.invoke('admin:create-user', { email, password }),
     deleteUser: (authId) => ipcRenderer.invoke('admin:delete-user', { authId }),
   },
+
+  // PDF export
+  exportPdf: (html, filename) => ipcRenderer.invoke('export-pdf', { html, filename }),
 });

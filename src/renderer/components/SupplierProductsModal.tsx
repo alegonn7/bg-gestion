@@ -1,5 +1,6 @@
-import { X, Download } from 'lucide-react'
-import { exportProductsToCSV } from '@/lib/exportProducts'
+import { useState } from 'react'
+import { X, Download, Loader2 } from 'lucide-react'
+import { exportProductsToExcel } from '@/lib/excelExport'
 import type { Product } from '@/store/products'
 
 interface SupplierProductsModalProps {
@@ -10,10 +11,21 @@ interface SupplierProductsModalProps {
 }
 
 export default function SupplierProductsModal({ isOpen, onClose, supplierName, products }: SupplierProductsModalProps) {
+  const [isExporting, setIsExporting] = useState(false)
+
   if (!isOpen) return null
 
-  const handleExport = () => {
-    exportProductsToCSV(products, `productos_${supplierName}.csv`)
+  const handleExport = async () => {
+    if (isExporting) return
+    setIsExporting(true)
+    try {
+      await exportProductsToExcel(products, {
+        contextLabel: `Proveedor: ${supplierName}`,
+        fileBaseName: `productos_${supplierName}`,
+      })
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   return (
@@ -24,11 +36,12 @@ export default function SupplierProductsModal({ isOpen, onClose, supplierName, p
           <div className="flex gap-2">
             <button
               onClick={handleExport}
-              disabled={products.length === 0}
-              className="flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 rounded text-sm"
-              title="Exportar productos a CSV"
+              disabled={products.length === 0 || isExporting}
+              className="flex items-center gap-1 px-3 py-1 bg-green-100 text-green-700 disabled:opacity-50 disabled:cursor-not-allowed rounded text-sm"
+              title="Exportar productos a Excel, con una hoja por categoría"
             >
-              <Download className="w-4 h-4" /> Exportar CSV
+              {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              {isExporting ? 'Exportando...' : 'Exportar Excel'}
             </button>
             <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition">
               <X className="w-6 h-6" />

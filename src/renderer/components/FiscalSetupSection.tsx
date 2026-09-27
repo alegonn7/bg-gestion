@@ -171,7 +171,7 @@ export default function FiscalSetupSection() {
           {(!isActive || editing) && (
             <div className="space-y-4">
 
-              {/* Instrucción: autorizar CUIT del desarrollador */}
+              {/* Instrucción paso 1: autorizar CUIT del desarrollador */}
               <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-3">
                 <p className="text-sm font-semibold text-blue-800">Paso 1 — Autorizar BG Gestión en ARCA (una sola vez)</p>
                 <ol className="text-sm text-blue-700 list-decimal ml-4 space-y-1.5">
@@ -201,10 +201,35 @@ export default function FiscalSetupSection() {
                   </li>
                   <li>Seleccioná el computador fiscal <strong>"bgGestion2025"</strong> que aparece y hacé clic en <strong>"Confirmar"</strong></li>
                 </ol>
-                <p className="text-xs text-blue-600 bg-blue-100 rounded px-3 py-2">
-                  Una vez hecho esto, completá tus datos abajo y hacé clic en "Activar facturación".
+              </div>
+
+              {/* Instrucción paso 2: registrar punto de venta como WebService */}
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg space-y-3">
+                <p className="text-sm font-semibold text-amber-800">Paso 2 — Registrar tu Punto de Venta en ARCA (una sola vez)</p>
+                <p className="text-sm text-amber-700">
+                  ARCA necesita saber que tu punto de venta va a emitir facturas por WebService (no por el portal web). Este paso es obligatorio y solo se hace una vez.
+                </p>
+                <ol className="text-sm text-amber-700 list-decimal ml-4 space-y-1.5">
+                  <li>Seguí en <strong>arca.gob.ar</strong> con tu Clave Fiscal</li>
+                  <li>Buscá el servicio <strong>"Administración de Puntos de Venta y Domicilios"</strong></li>
+                  <li>Hacé clic en <strong>"A/B/M de Puntos de Venta"</strong></li>
+                  <li>Hacé clic en <strong>"Agregar"</strong> para crear un nuevo punto de venta</li>
+                  <li>
+                    En <strong>"Número"</strong> ingresá el número de punto de venta que vas a usar en BG Gestión{' '}
+                    <span className="font-semibold">(por ejemplo: 1, 2, 3 — tiene que ser el mismo que el que configures abajo)</span>
+                  </li>
+                  <li>En <strong>"Nombre"</strong> podés poner cualquier nombre descriptivo, por ejemplo: <em>"BG Gestión"</em></li>
+                  <li>En <strong>"Tipo"</strong> seleccioná <strong>"Facturación Electrónica – Web Services"</strong> (o la opción que mencione WebService/MTXCA)</li>
+                  <li>Hacé clic en <strong>"Aceptar"</strong> y confirmá</li>
+                </ol>
+                <p className="text-xs text-amber-700 bg-amber-100 rounded px-3 py-2">
+                  ⚠️ Si ya tenés un punto de venta creado con tipo distinto (por ejemplo "Factura en línea"), tenés que crear uno <strong>nuevo</strong> con tipo WebService. El número debe coincidir exactamente con el que configures en BG Gestión.
                 </p>
               </div>
+
+              <p className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded px-3 py-2">
+                Una vez completados los dos pasos de arriba, completá tus datos y hacé clic en "Activar facturación".
+              </p>
 
               <FiscalDataForm
                 cuit={cuit} setCuit={setCuit}

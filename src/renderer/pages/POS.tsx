@@ -42,7 +42,8 @@ export default function POS() {
 
   // Escáner físico: captura cuando ningún input tiene foco
   const handleBarcodeScan = useCallback((barcode: string) => {
-    const product = products.find(p => p.barcode === barcode)
+    const normalizedBarcode = barcode.trim()
+    const product = products.find(p => p.barcode?.trim() === normalizedBarcode)
     if (product) {
       const ok = addToCart(product, 1)
       if (ok) {
@@ -84,7 +85,8 @@ export default function POS() {
     e.preventDefault()
     if (!barcodeInput.trim()) return
 
-    const product = products.find(p => p.barcode === barcodeInput.trim())
+    const normalizedBarcode = barcodeInput.trim()
+    const product = products.find(p => p.barcode?.trim() === normalizedBarcode)
 
     if (product) {
       const ok = addToCart(product, 1)
@@ -313,7 +315,7 @@ export default function POS() {
                       )}
                     </div>
                     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-                      product.stock_quantity <= product.stock_min
+                      product.stock_quantity < product.stock_min
                         ? 'bg-red-50 text-red-600'
                         : 'bg-green-50 text-green-600'
                     }`}>

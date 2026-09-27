@@ -1,5 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { WifiOff } from 'lucide-react'
 import { useAuthStore } from '@/store/auth'
+import { useNetworkStore } from '@/store/network'
+import { formatSyncDate } from '@/lib/offline'
 import logoImg from '@/assets/logo.png'
 
 export default function Login() {
@@ -7,8 +10,33 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [isLoading, setIsLoading] = useState(false)
-  
+  const [offlineStatus, setOfflineStatus] = useState<{
+    available: boolean
+    email?: string
+    lastOnlineAt?: number
+    maxDays?: number
+  } | null>(null)
+
   const login = useAuthStore((state) => state.login)
+  const { isOnline } = useNetworkStore()
+
+  // ¿Hay credenciales guardadas en esta computadora para ingresar sin internet?
+  useEffect(() => {
+    let cancelled = false
+
+    window.electron?.offlineAuth?.status().then((status) => {
+      if (!cancelled) setOfflineStatus(status)
+    }).catch(() => {})
+
+    return () => { cancelled = true }
+  }, [])
+
+  // Sin conexión, precargar el último usuario que ingresó en esta computadora
+  useEffect(() => {
+    if (!isOnline && offlineStatus?.email && !email) {
+      setEmail(offlineStatus.email)
+    }
+  }, [isOnline, offlineStatus?.email])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -37,6 +65,30 @@ export default function Login() {
             Inicia sesión para continuar
           </p>
         </div>
+
+        {/* Aviso de modo sin conexión */}
+        {!isOnline && (
+          <div className="mb-4 bg-amber-50 border border-amber-200 rounded-xl p-4 flex gap-3">
+            <WifiOff className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-amber-900">
+              <p className="font-semibold">Sin conexión a internet</p>
+              {offlineStatus?.available ? (
+                <p className="mt-1">
+                  Podés ingresar con tu usuario y contraseña habituales para{' '}
+                  <span className="font-medium">consultar productos y precios</span>.
+                  {offlineStatus.lastOnlineAt && (
+                    <> Última sincronización: {formatSyncDate(offlineStatus.lastOnlineAt)}.</>
+                  )}
+                </p>
+              ) : (
+                <p className="mt-1">
+                  Todavía no hay datos guardados en esta computadora, así que hace falta internet para
+                  el primer ingreso.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Login Form */}
         <div className="bg-white rounded-2xl shadow-xl p-8">

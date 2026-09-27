@@ -6,6 +6,7 @@ import {
   getWSAAToken,
   autorizarComprobante,
   consultarUltimoNumero,
+  logWSAATokenRelations,
   type InvoiceRequest,
   type WSAACredentials,
 } from "../_shared/afip.ts"
@@ -55,11 +56,14 @@ Deno.serve(async (req) => {
     if (!org.cuit) return errorResponse("CUIT no configurado")
 
     // Cargar certificado compartido del desarrollador desde env vars
-    const certPem = Deno.env.get("FISCAL_CERT_PEM")
-    const keyPem = Deno.env.get("FISCAL_KEY_PEM")
-    if (!certPem || !keyPem) {
+    const certPemRaw = Deno.env.get("FISCAL_CERT_PEM")
+    const keyPemRaw = Deno.env.get("FISCAL_KEY_PEM")
+    if (!certPemRaw || !keyPemRaw) {
       return errorResponse("Certificado del sistema no configurado. Contactá al soporte.", 500)
     }
+    // Supabase puede guardar los saltos de línea como \n literal
+    const certPem = certPemRaw.replace(/\\n/g, '\n')
+    const keyPem = keyPemRaw.replace(/\\n/g, '\n')
 
     const body = await req.json()
     const { invoiceRequest, saleId, originalComprobanteId }: {
@@ -69,73 +73,113 @@ Deno.serve(async (req) => {
     } = body
 
     // ── 1. Obtener token WSAA (caché global compartido) ───────────────────────
-    let credentials: WSAACredentials
+    const loadCredentials = async (forceRefresh = false): Promise<WSAACredentials> => {
+      if (!forceRefresh) {
+        const { data: cache } = await adminSupabase
+          .from("fiscal_wsaa_cache")
+          .select("wsaa_token, wsaa_sign, wsaa_token_expires")
+          .eq("id", 1)
+          .single()
 
-    const { data: cache } = await adminSupabase
-      .from("fiscal_wsaa_cache")
-      .select("wsaa_token, wsaa_sign, wsaa_token_expires")
-      .eq("id", 1)
-      .single()
+        const tokenExpires = cache?.wsaa_token_expires ? new Date(cache.wsaa_token_expires) : null
+        const tokenValid = tokenExpires && tokenExpires.getTime() - Date.now() > 30 * 60 * 1000
 
-    const tokenExpires = cache?.wsaa_token_expires ? new Date(cache.wsaa_token_expires) : null
-    const tokenValid = tokenExpires && tokenExpires.getTime() - Date.now() > 30 * 60 * 1000
-
-    if (tokenValid && cache?.wsaa_token && cache?.wsaa_sign) {
-      credentials = {
-        token: cache.wsaa_token,
-        sign: cache.wsaa_sign,
-        expires: tokenExpires!,
+        if (tokenValid && cache?.wsaa_token && cache?.wsaa_sign) {
+          logWSAATokenRelations(cache.wsaa_token)
+          return { token: cache.wsaa_token, sign: cache.wsaa_sign, expires: tokenExpires! }
+        }
       }
-    } else {
-      // Pedir nuevo token con el certificado del desarrollador
-      credentials = await getWSAAToken(certPem, keyPem)
 
+      const fresh = await getWSAAToken(certPem, keyPem)
       await adminSupabase
         .from("fiscal_wsaa_cache")
         .upsert({
           id: 1,
-          wsaa_token: credentials.token,
-          wsaa_sign: credentials.sign,
-          wsaa_token_expires: credentials.expires.toISOString(),
+          wsaa_token: fresh.token,
+          wsaa_sign: fresh.sign,
+          wsaa_token_expires: fresh.expires.toISOString(),
         })
+      return fresh
     }
 
-    // ── 2. Consultar último número (usando CUIT del cliente como representado) ─
-    const ultimoNumero = await consultarUltimoNumero(
-      credentials,
-      org.cuit,
-      invoiceRequest.tipoComprobante,
-      invoiceRequest.puntoVenta
-    )
+    let credentials: WSAACredentials = await loadCredentials()
 
-    // ── 3. Emitir comprobante a nombre del cliente ─────────────────────────────
-    const rawRequest = { ...invoiceRequest, ultimoNumero }
+    // ── DIAGNÓSTICO: verificar si wsfe funciona con el CUIT del desarrollador ──
+    const devCuit = Deno.env.get("FISCAL_DEVELOPER_CUIT")
+    if (devCuit) {
+      try {
+        await consultarUltimoNumero(credentials, devCuit, invoiceRequest.tipoComprobante, invoiceRequest.puntoVenta)
+        console.log("[DIAG] wsfe con CUIT desarrollador OK — wsfe funciona para el desarrollador mismo")
+      } catch (devErr: any) {
+        console.log("[DIAG] wsfe con CUIT desarrollador ERROR:", devErr.message)
+      }
+    }
+
+    // ── 2 + 3. Consultar último número y emitir (con retry si el token era stale) ─
+    const rawRequest: Record<string, unknown> = { ...invoiceRequest }
     let rawResponse: object = {}
     let result
+    let ultimoNumero: number
+
+    const attemptEmision = async (creds: WSAACredentials) => {
+      const ultimo = await consultarUltimoNumero(
+        creds,
+        org.cuit,
+        invoiceRequest.tipoComprobante,
+        invoiceRequest.puntoVenta
+      )
+      rawRequest.ultimoNumero = ultimo
+      const res = await autorizarComprobante(creds, org.cuit, invoiceRequest, ultimo)
+      return { res, ultimo }
+    }
 
     try {
-      result = await autorizarComprobante(
-        credentials,
-        org.cuit,   // cuitRepresentada = CUIT del cliente
-        invoiceRequest,
-        ultimoNumero
-      )
-      rawResponse = result
+      const { res, ultimo } = await attemptEmision(credentials)
+      result = res
+      rawResponse = res
+      ultimoNumero = ultimo
     } catch (afipError: any) {
-      await adminSupabase.from("fiscal_comprobantes").insert({
-        organization_id: org.id,
-        sale_id: saleId || null,
-        tipo_cbte: invoiceRequest.tipoComprobante,
-        punto_venta: invoiceRequest.puntoVenta,
-        numero: ultimoNumero + 1,
-        fecha_emision: invoiceRequest.fechaEmision,
-        cuit_receptor: invoiceRequest.cuitReceptor || null,
-        importe_total: invoiceRequest.items.reduce((s, i) => s + i.precioUnitario * i.cantidad, 0),
-        resultado: "R",
-        raw_request: rawRequest,
-        raw_response: { error: afipError.message },
-      })
-      return errorResponse(afipError.message)
+      const isTokenRelationError = /ValidacionDeToken|lista de relaciones|no aparecio/i.test(afipError.message)
+      if (isTokenRelationError) {
+        console.log("[fiscal-emit] ValidacionDeToken — refrescando token WSAA y reintentando")
+        credentials = await loadCredentials(true)
+        try {
+          const { res, ultimo } = await attemptEmision(credentials)
+          result = res
+          rawResponse = res
+          ultimoNumero = ultimo
+        } catch (retryError: any) {
+          await adminSupabase.from("fiscal_comprobantes").insert({
+            organization_id: org.id,
+            sale_id: saleId || null,
+            tipo_cbte: invoiceRequest.tipoComprobante,
+            punto_venta: invoiceRequest.puntoVenta,
+            numero: (rawRequest.ultimoNumero as number ?? 0) + 1,
+            fecha_emision: invoiceRequest.fechaEmision,
+            cuit_receptor: invoiceRequest.cuitReceptor || null,
+            importe_total: invoiceRequest.items.reduce((s, i) => s + i.precioUnitario * i.cantidad, 0),
+            resultado: "R",
+            raw_request: rawRequest,
+            raw_response: { error: retryError.message },
+          })
+          return errorResponse(retryError.message)
+        }
+      } else {
+        await adminSupabase.from("fiscal_comprobantes").insert({
+          organization_id: org.id,
+          sale_id: saleId || null,
+          tipo_cbte: invoiceRequest.tipoComprobante,
+          punto_venta: invoiceRequest.puntoVenta,
+          numero: (rawRequest.ultimoNumero as number ?? 0) + 1,
+          fecha_emision: invoiceRequest.fechaEmision,
+          cuit_receptor: invoiceRequest.cuitReceptor || null,
+          importe_total: invoiceRequest.items.reduce((s, i) => s + i.precioUnitario * i.cantidad, 0),
+          resultado: "R",
+          raw_request: rawRequest,
+          raw_response: { error: afipError.message },
+        })
+        return errorResponse(afipError.message)
+      }
     }
 
     // ── 4. Guardar en DB ───────────────────────────────────────────────────────

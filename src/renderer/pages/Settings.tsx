@@ -3,7 +3,6 @@ import { Building2, Save, RefreshCw, DollarSign, Info, Upload, Trash2, Loader2 }
 import { useAuthStore } from '@/store/auth'
 import { useDollarStore } from '@/store/dollar'
 import { supabase } from '@/lib/supabase'
-import FiscalSetupSection from '@/components/FiscalSetupSection'
 
 export default function SettingsPage() {
   const { user, organization } = useAuthStore()
@@ -390,10 +389,7 @@ export default function SettingsPage() {
         </p>
       </section>
 
-      {/* Facturación Electrónica: solo owner/admin */}
-      {isOwnerOrAdmin && <FiscalSetupSection />}
-
-      {/* Cuenta del usuario */}
+{/* Cuenta del usuario */}
       <section className="bg-white rounded-xl border border-gray-200 p-6">
         <div className="flex items-center gap-3 mb-5">
           <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center text-lg">

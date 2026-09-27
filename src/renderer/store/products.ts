@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from './auth'
+import { useNetworkStore } from './network'
+import { isNetworkError, loadProductsCache, saveProductsCache } from '@/lib/offline'
 
 // Producto maestro (catálogo)
 export interface MasterProduct {
@@ -31,6 +33,7 @@ export interface Product {
   price_sale_usd: number | null // Precio de venta en dólares (manual)
   stock_quantity: number
   stock_min: number
+  expiration_date: string | null // fecha de vencimiento (opcional, no todos los productos vencen)
   alicuota_iva: number // 3=0%, 4=10.5%, 5=21% (default), 6=27%
   is_active: boolean
   created_at: string
@@ -52,11 +55,52 @@ export interface Product {
   }
 }
 
+/** Sucursales cuyos productos hay que traer, según el rol y la sucursal elegida */
+async function resolveBranchIds(): Promise<string[]> {
+  const { user, selectedBranch, branches } = useAuthStore.getState()
+  if (!user) return []
+
+  if (user.role !== 'owner' && user.role !== 'admin') {
+    return user.branch_id ? [user.branch_id] : []
+  }
+
+  if (selectedBranch?.id) return [selectedBranch.id]
+
+  try {
+    const { data, error } = await supabase
+      .from('branches')
+      .select('id')
+      .eq('organization_id', user.organization_id)
+      .eq('is_active', true)
+
+    if (error) throw error
+    return (data || []).map(b => b.id)
+  } catch (error) {
+    // Sin conexión: usar las sucursales que quedaron guardadas en la sesión
+    if (isNetworkError(error)) {
+      return branches.filter(b => b.is_active).map(b => b.id)
+    }
+    throw error
+  }
+}
+
+/** Bloquea las operaciones de escritura mientras no haya conexión */
+function assertOnline() {
+  const { isOffline } = useAuthStore.getState()
+  if (isOffline || !useNetworkStore.getState().isOnline) {
+    throw new Error('Sin conexión: en modo offline solo se puede consultar productos y precios.')
+  }
+}
+
 interface ProductsState {
   products: Product[]
   isLoading: boolean
   error: string | null
   searchQuery: string
+  /** Los productos mostrados vienen de la caché local (sin conexión) */
+  isFromCache: boolean
+  /** Última sincronización con el servidor (timestamp UNIX en segundos) */
+  lastSyncAt: number | null
 
   fetchProducts: () => Promise<void>
   createProduct: (productData: {
@@ -72,6 +116,7 @@ interface ProductsState {
     price_sale_usd?: number | null
     stock_quantity: number
     stock_min: number
+    expiration_date?: string | null
     alicuota_iva?: number
   }) => Promise<void>
   updateProduct: (id: string, updates: Partial<Product>) => Promise<void>
@@ -85,32 +130,19 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
   isLoading: false,
   error: null,
   searchQuery: '',
+  isFromCache: false,
+  lastSyncAt: null,
 
   fetchProducts: async () => {
     set({ isLoading: true, error: null })
 
+    let branchIds: string[] = []
+
     try {
-      const { user, selectedBranch } = useAuthStore.getState()
+      const { user } = useAuthStore.getState()
       if (!user) throw new Error('No authenticated user')
 
-      let branchIds: string[] = []
-
-      if (user.role === 'owner' || user.role === 'admin') {
-        // Si hay una sucursal seleccionada, filtrar solo por esa
-        if (selectedBranch?.id) {
-          branchIds = [selectedBranch.id]
-        } else {
-          const { data: branches } = await supabase
-            .from('branches')
-            .select('id')
-            .eq('organization_id', user.organization_id)
-            .eq('is_active', true)
-
-          branchIds = branches?.map(b => b.id) || []
-        }
-      } else {
-        if (user.branch_id) branchIds = [user.branch_id]
-      }
+      branchIds = await resolveBranchIds()
 
       if (branchIds.length === 0) {
         set({ products: [], isLoading: false })
@@ -121,7 +153,10 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
         .from('products_branch')
         .select(`
           *,
-          product:products(*),
+          product:products(
+            *,
+            category:categories(id, name, color)
+          ),
           branch:branches(id, name)
         `)
         .in('branch_id', branchIds)
@@ -130,37 +165,59 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
 
       if (error) throw error
 
-      // Enriquecer con categoría desde el producto maestro
-      const enrichedData = await Promise.all(
-        (data || []).map(async (item: any) => {
-          let category = null
-          if (item.product?.category_id) {
-            const { data: cat } = await supabase
-              .from('categories')
-              .select('id, name, color')
-              .eq('id', item.product.category_id)
-              .single()
-            category = cat
-          }
-          return { ...item, category }
-        })
-      )
+      const enrichedData = (data || []).map((item: any) => ({
+        ...item,
+        category: item.product?.category || null,
+      }))
 
-      set({ products: enrichedData as Product[], isLoading: false })
+      set({
+        products: enrichedData as Product[],
+        isLoading: false,
+        isFromCache: false,
+        lastSyncAt: Math.floor(Date.now() / 1000),
+      })
+
+      // Guardar copia local para poder consultar precios sin conexión
+      void saveProductsCache(branchIds, enrichedData)
 
     } catch (error: any) {
       console.error('Error fetching products:', error)
-      set({ error: error.message, isLoading: false })
+
+      // Sin conexión (o error del servidor): mostrar la última copia guardada
+      const { products: cached, syncedAt } = branchIds.length > 0
+        ? await loadProductsCache(branchIds)
+        : { products: [] as any[], syncedAt: null }
+
+      if (cached.length > 0) {
+        console.warn(`📴 Productos cargados desde la caché local (${cached.length})`)
+        set({
+          products: cached as Product[],
+          isLoading: false,
+          isFromCache: true,
+          lastSyncAt: syncedAt,
+          error: isNetworkError(error) ? null : error.message,
+        })
+        return
+      }
+
+      set({
+        error: isNetworkError(error)
+          ? 'Sin conexión y todavía no hay productos guardados en esta computadora.'
+          : error.message,
+        isLoading: false,
+        isFromCache: false,
+      })
     }
   },
 
   createProduct: async (productData) => {
     try {
-      const { user, selectedBranch } = useAuthStore.getState()
+      assertOnline()
+      const { user, selectedBranch, branches } = useAuthStore.getState()
       if (!user) throw new Error('No user')
 
-      const branchId = user.role === 'owner' || user.role === 'admin' 
-        ? selectedBranch?.id 
+      const branchId = user.role === 'owner' || user.role === 'admin'
+        ? (selectedBranch?.id ?? branches[0]?.id)
         : user.branch_id
 
       if (!branchId) {
@@ -171,10 +228,11 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
       let masterProduct: MasterProduct | null = null
 
       if (productData.barcode) {
+        const normalizedBarcode = productData.barcode.trim()
         const { data } = await supabase
           .from('products')
           .select('*')
-          .eq('barcode', productData.barcode)
+          .eq('barcode', normalizedBarcode)
           .eq('organization_id', user.organization_id)
           .single()
 
@@ -187,7 +245,7 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
           .from('products')
           .insert({
             organization_id: user.organization_id,
-            barcode: productData.barcode || null,
+            barcode: productData.barcode ? productData.barcode.trim() : null,
             sku: productData.sku || null,
             name: productData.name,
             description: productData.description || null,
@@ -216,38 +274,31 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
         .insert({
           product_id: masterProduct!.id,
           branch_id: branchId,
-          barcode: productData.barcode || null, // denormalizado
+          barcode: productData.barcode ? productData.barcode.trim() : null,
           price_cost: productData.price_cost,
           price_sale: productData.price_sale,
           price_cost_usd: productData.price_cost_usd || null,
           price_sale_usd: productData.price_sale_usd || null,
           stock_quantity: productData.stock_quantity || 0,
           stock_min: productData.stock_min || 0,
+          expiration_date: productData.expiration_date || null,
           alicuota_iva: productData.alicuota_iva ?? 5,
           created_by: user.id,
           updated_by: user.id,
         })
         .select(`
           *,
-          product:products(*),
+          product:products(
+            *,
+            category:categories(id, name, color)
+          ),
           branch:branches(id, name)
         `)
         .single()
 
       if (error) throw error
 
-      // Enriquecer con categoría
-      let category = null
-      if (masterProduct?.category_id) {
-        const { data: cat } = await supabase
-          .from('categories')
-          .select('id, name, color')
-          .eq('id', masterProduct.category_id)
-          .single()
-        category = cat
-      }
-
-      const enrichedProduct = { ...data, category } as Product
+      const enrichedProduct = { ...data, category: (data as any).product?.category || null } as Product
 
       set(state => ({ products: [enrichedProduct, ...state.products] }))
 
@@ -259,6 +310,7 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
 
   updateProduct: async (id, updates) => {
     try {
+      assertOnline()
       const { user } = useAuthStore.getState()
       if (!user) throw new Error('No user')
 
@@ -278,6 +330,7 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
           price_sale_usd: updates.price_sale_usd !== undefined ? updates.price_sale_usd : undefined,
           stock_quantity: updates.stock_quantity,
           stock_min: updates.stock_min,
+          expiration_date: updates.expiration_date !== undefined ? updates.expiration_date : undefined,
           is_active: updates.is_active,
           ...(updates.alicuota_iva !== undefined ? { alicuota_iva: updates.alicuota_iva } : {}),
           updated_by: user.id,
@@ -286,7 +339,10 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
         .eq('id', id)
         .select(`
           *,
-          product:products(*),
+          product:products(
+            *,
+            category:categories(id, name, color)
+          ),
           branch:branches(id, name)
         `)
         .single()
@@ -314,7 +370,10 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
             .from('products_branch')
             .select(`
               *,
-              product:products(*),
+              product:products(
+                *,
+                category:categories(id, name, color)
+              ),
               branch:branches(id, name)
             `)
             .eq('id', id)
@@ -326,18 +385,7 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
         }
       }
 
-      // Enriquecer con categoría
-      let category = null
-      if (data.product?.category_id) {
-        const { data: cat } = await supabase
-          .from('categories')
-          .select('id, name, color')
-          .eq('id', data.product.category_id)
-          .single()
-        category = cat
-      }
-
-      const enrichedProduct = { ...data, category } as Product
+      const enrichedProduct = { ...data, category: (data as any).product?.category || null } as Product
 
       set(state => ({
         products: state.products.map(p => p.id === id ? enrichedProduct : p)
@@ -351,9 +399,10 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
 
   deleteProduct: async (id) => {
     try {
+      assertOnline()
       const { error } = await supabase
         .from('products_branch')
-        .update({ is_active: false })
+        .delete()
         .eq('id', id)
 
       if (error) throw error

@@ -1,4 +1,4 @@
-import { X, Store, Package, DollarSign, TrendingUp, BarChart } from 'lucide-react'
+import { X, Store, Package, DollarSign, TrendingUp, BarChart, Calendar } from 'lucide-react'
 import type { MasterProduct } from '@/store/master-catalog'
 
 interface MasterProductDetailModalProps {
@@ -128,6 +128,12 @@ export default function MasterProductDetailModal({ product, isOpen, onClose }: M
                       <div>
                         <h4 className="font-semibold text-gray-900">{branch.branch_name}</h4>
                         <p className="text-sm text-gray-500">Stock: {branch.stock} unidades</p>
+                        {branch.expiration_date && (
+                          <p className="flex items-center gap-1 text-xs text-gray-500 mt-0.5">
+                            <Calendar className="w-3 h-3" />
+                            Vence: {new Date(branch.expiration_date + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                          </p>
+                        )}
                       </div>
                     </div>
 

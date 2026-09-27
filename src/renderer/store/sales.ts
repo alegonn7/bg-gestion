@@ -43,7 +43,14 @@ interface SalesState {
   endDate: Date | null
   searchQuery: string
   selectedUserId: string | null
-  
+  // Por defecto las anuladas/reembolsadas quedan afuera -- prendiendo esto se pueden ver,
+  // incluidos los pedidos online reembolsados (que si no, desaparecen sin dejar rastro acá).
+  showVoided: boolean
+  // Cuántas hay anuladas/reembolsadas en el rango filtrado actual -- se calcula SIEMPRE,
+  // independiente de showVoided, para que quede un rastro visible aunque el toggle esté
+  // apagado (antes desaparecían del todo, sin ningún indicio).
+  voidedCount: number
+
   // Actions
   fetchSales: () => Promise<void>
   voidSale: (saleId: string) => Promise<{ success: boolean; error?: string }>
@@ -53,9 +60,11 @@ interface SalesState {
     endDate?: Date | null
     searchQuery?: string
     userId?: string | null
+    showVoided?: boolean
   }) => void
   clearFilters: () => void
   getSaleById: (saleId: string) => Sale | undefined
+  reset: () => void
 }
 
 // ✅ Fix: normaliza el string de fecha de Supabase a UTC explícito
@@ -71,15 +80,21 @@ const normalizeUTCDate = (dateString: string): string => {
   return dateString + '+00:00'
 }
 
-export const useSalesStore = create<SalesState>((set, get) => ({
-  sales: [],
+const salesInitialState = {
+  sales: [] as Sale[],
   isLoading: false,
-  error: null,
-  selectedBranchId: null,
-  startDate: null,
-  endDate: null,
+  error: null as string | null,
+  selectedBranchId: null as string | null,
+  startDate: null as Date | null,
+  endDate: null as Date | null,
   searchQuery: '',
-  selectedUserId: null,
+  selectedUserId: null as string | null,
+  showVoided: false,
+  voidedCount: 0,
+}
+
+export const useSalesStore = create<SalesState>((set, get) => ({
+  ...salesInitialState,
 
   fetchSales: async () => {
     set({ isLoading: true, error: null })
@@ -89,7 +104,7 @@ export const useSalesStore = create<SalesState>((set, get) => ({
       if (!user) {
         throw new Error('Usuario no autenticado')
       }
-      const { selectedBranchId, startDate, endDate, selectedUserId } = get()
+      const { selectedBranchId, startDate, endDate, selectedUserId, showVoided } = get()
       let query = supabase
         .from('sales')
         .select(`
@@ -128,6 +143,9 @@ export const useSalesStore = create<SalesState>((set, get) => ({
           )
         `)
         .order('created_at', { ascending: false })
+      if (!showVoided) {
+        query = query.neq('status', 'voided')
+      }
       if (user.role === 'manager' || user.role === 'employee') {
         query = query.eq('branch_id', user.branch_id)
       } else {
@@ -149,7 +167,29 @@ export const useSalesStore = create<SalesState>((set, get) => ({
       if (selectedUserId) {
         query = query.eq('created_by', selectedUserId)
       }
-      const { data: salesData, error } = await query
+
+      // Cuenta de anuladas/reembolsadas en el mismo rango, aparte de showVoided (ver comentario
+      // en el estado) -- mismos filtros de sucursal/fecha/vendedor que la consulta principal.
+      let voidedCountQuery = supabase
+        .from('sales')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'voided')
+      if (user.role === 'manager' || user.role === 'employee') {
+        voidedCountQuery = voidedCountQuery.eq('branch_id', user.branch_id)
+      } else {
+        const { selectedBranch: authBranch } = useAuthStore.getState()
+        const branchFilter = selectedBranchId || authBranch?.id
+        if (branchFilter) voidedCountQuery = voidedCountQuery.eq('branch_id', branchFilter)
+      }
+      if (startDate) voidedCountQuery = voidedCountQuery.gte('created_at', startDate.toISOString())
+      if (endDate) {
+        const endOfDay = new Date(endDate)
+        endOfDay.setHours(23, 59, 59, 999)
+        voidedCountQuery = voidedCountQuery.lte('created_at', endOfDay.toISOString())
+      }
+      if (selectedUserId) voidedCountQuery = voidedCountQuery.eq('created_by', selectedUserId)
+
+      const [{ data: salesData, error }, { count: voidedCount }] = await Promise.all([query, voidedCountQuery])
 
       if (error) throw error
 
@@ -182,8 +222,8 @@ export const useSalesStore = create<SalesState>((set, get) => ({
         transfer_account_name: null // Se puede poblar luego en la UI
       }))
 
-      set({ sales, isLoading: false })
-      
+      set({ sales, isLoading: false, voidedCount: voidedCount ?? 0 })
+
     } catch (error: any) {
       console.error('Error fetching sales:', error)
       set({ error: error.message, isLoading: false })
@@ -196,15 +236,28 @@ export const useSalesStore = create<SalesState>((set, get) => ({
       if (!sale) return { success: false, error: 'Venta no encontrada' }
       if (sale.status === 'voided') return { success: false, error: 'La venta ya fue anulada' }
 
-      // 1. Marcar la venta como anulada
-      const { error: updateError } = await supabase
-        .from('sales')
-        .update({ status: 'voided' })
-        .eq('id', saleId)
+      // Si esta venta viene de un pedido online pagado con Mercado Pago, anularla acá borraría
+      // la venta sin devolverle la plata al cliente -- confirm_store_order_paid guarda
+      // payment_method='Online' para CUALQUIER pedido online (WhatsApp o Mercado Pago), así que
+      // hace falta ir a store_orders para saber si hubo un cobro real de por medio.
+      if (sale.payment_method === 'Online') {
+        const { data: linkedOrder, error: linkedOrderError } = await supabase
+          .from('store_orders')
+          .select('payment_method, status')
+          .eq('sale_id', saleId)
+          .maybeSingle()
 
-      if (updateError) throw updateError
+        if (linkedOrderError) throw linkedOrderError
 
-      // 2. Restaurar stock de cada producto vendido
+        if (linkedOrder?.payment_method === 'mercadopago') {
+          return {
+            success: false,
+            error: 'Esta venta es de un pedido pagado con Mercado Pago. Para anularla hay que reembolsar el pago desde bg-tienda (Admin → Pedidos → Reembolsar), no desde acá.',
+          }
+        }
+      }
+
+      // 1. Restaurar stock de cada producto vendido (SIN dejar registro de movimiento)
       for (const item of sale.items) {
         // Obtener stock actual
         const { data: productBranch, error: fetchError } = await supabase
@@ -217,7 +270,7 @@ export const useSalesStore = create<SalesState>((set, get) => ({
 
         const newStock = productBranch.stock_quantity + item.quantity
 
-        // Actualizar stock
+        // Actualizar stock SOLO (sin movimiento de inventario)
         const { error: stockError } = await supabase
           .from('products_branch')
           .update({ stock_quantity: newStock })
@@ -227,30 +280,35 @@ export const useSalesStore = create<SalesState>((set, get) => ({
           console.error('Error restoring stock for product:', item.product_id, stockError)
           continue
         }
-
-        // Registrar movimiento de inventario (devolución)
-        await supabase
-          .from('inventory_movements')
-          .insert({
-            product_branch_id: item.product_id,
-            branch_id: sale.branch_id,
-            movement_type: 'entry',
-            transaction_type: 'void',
-            quantity: item.quantity,
-            stock_before: productBranch.stock_quantity,
-            stock_after: newStock,
-            price_at_movement: item.price,
-            cost_at_movement: item.cost,
-            notes: `Devolucion por anulacion de venta ${saleId.slice(0, 8)}`,
-            created_by: useAuthStore.getState().user?.id
-          })
       }
 
-      // 3. Actualizar el estado local
+      // 2. Borrar todos los inventory_movements de esta venta
+      const { error: deleteMovementsError } = await supabase
+        .from('inventory_movements')
+        .delete()
+        .eq('sale_id', saleId)
+
+      if (deleteMovementsError) throw deleteMovementsError
+
+      // 3. Borrar todos los sale_items de esta venta
+      const { error: deleteItemsError } = await supabase
+        .from('sale_items')
+        .delete()
+        .eq('sale_id', saleId)
+
+      if (deleteItemsError) throw deleteItemsError
+
+      // 4. Borrar la venta completamente
+      const { error: deleteSaleError } = await supabase
+        .from('sales')
+        .delete()
+        .eq('id', saleId)
+
+      if (deleteSaleError) throw deleteSaleError
+
+      // 5. Actualizar el estado local
       set({
-        sales: get().sales.map(s =>
-          s.id === saleId ? { ...s, status: 'voided' as const } : s
-        )
+        sales: get().sales.filter(s => s.id !== saleId)
       })
 
       return { success: true }
@@ -267,6 +325,7 @@ export const useSalesStore = create<SalesState>((set, get) => ({
       endDate: filters.endDate !== undefined ? filters.endDate : get().endDate,
       searchQuery: filters.searchQuery !== undefined ? filters.searchQuery : get().searchQuery,
       selectedUserId: filters.userId !== undefined ? filters.userId : get().selectedUserId,
+      showVoided: filters.showVoided !== undefined ? filters.showVoided : get().showVoided,
     })
     get().fetchSales()
   },
@@ -276,12 +335,15 @@ export const useSalesStore = create<SalesState>((set, get) => ({
       selectedBranchId: null,
       startDate: null,
       endDate: null,
-      searchQuery: ''
+      searchQuery: '',
+      showVoided: false,
     })
     get().fetchSales()
   },
 
   getSaleById: (saleId) => {
     return get().sales.find(sale => sale.id === saleId)
-  }
+  },
+
+  reset: () => set(salesInitialState),
 }))

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import UpdateChangelogModal from './components/UpdateChangelogModal'
 import { useAuthStore } from '@/store/auth'
+import { useNetworkStore } from '@/store/network'
 import Login from '@/pages/Login'
 import Dashboard from '@/pages/Dashboard'
 
@@ -9,6 +10,20 @@ function App() {
   const [showChangelog, setShowChangelog] = useState(false)
   const [changelog, setChangelog] = useState('')
   const [currentVersion, setCurrentVersion] = useState<string | null>(null)
+
+  // Monitoreo de conexión: al recuperarla se revalida la sesión contra el servidor
+  useEffect(() => {
+    const network = useNetworkStore.getState()
+    network.setOnReconnect(() => {
+      void useAuthStore.getState().handleReconnect()
+    })
+    const stop = network.startMonitoring()
+
+    return () => {
+      stop()
+      useNetworkStore.getState().setOnReconnect(null)
+    }
+  }, [])
 
   useEffect(() => {
     // Obtener device ID de Electron

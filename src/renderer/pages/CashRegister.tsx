@@ -1,88 +1,328 @@
 import { useEffect, useState } from 'react'
-import { Wallet, ArrowUpCircle, ArrowDownCircle, Clock, AlertTriangle, CheckCircle, XCircle, TrendingUp, CreditCard, Banknote, Download, ListPlus, SlidersHorizontal } from 'lucide-react'
+import { Wallet, ArrowUpCircle, ArrowDownCircle, Clock, AlertTriangle, CheckCircle, XCircle, TrendingUp, CreditCard, Banknote, Download, ListPlus, SlidersHorizontal, Star, Trash2 } from 'lucide-react'
 import { useCashRegisterStore, type CashRegister } from '@/store/cash-register'
 import { useAuthStore } from '@/store/auth'
 import { useUsersStore } from '@/store/users'
 import * as Papa from 'papaparse'
 import { useExtraMovementsStore } from '@/store/extra-movements'
 import { supabase } from '@/lib/supabase'
+import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/store/accounting'
+import { useTransferAccounts } from '@/store/transfer-accounts'
 
-// --- Componente para agregar movimiento extraordinario ---
+// ── Tipos de templates frecuentes ────────────────────────────────────────────
+interface MovementTemplate {
+  id: string
+  name: string
+  type: 'gasto' | 'ingreso'
+  amount: number
+  description: string
+  category: string
+  source: 'cash' | 'bank' | 'personal' | 'other'
+  transfer_account_id?: string
+}
+
+const TEMPLATES_KEY = 'bg_movement_templates'
+
+function loadTemplates(): MovementTemplate[] {
+  try { return JSON.parse(localStorage.getItem(TEMPLATES_KEY) || '[]') } catch { return [] }
+}
+function saveTemplates(t: MovementTemplate[]) {
+  localStorage.setItem(TEMPLATES_KEY, JSON.stringify(t))
+}
+
+// ── Componente para agregar movimiento extraordinario ─────────────────────────
 function ExtraMovementForm({ cashRegisterId, onClose }: { cashRegisterId: string, onClose: () => void }) {
   const { addMovement, fetchByRegister, movements, isLoading, error } = useExtraMovementsStore()
+  const { accounts, fetchAccounts } = useTransferAccounts()
+
   const [type, setType] = useState<'gasto' | 'ingreso'>('gasto')
+  const [source, setSource] = useState<'cash' | 'bank' | 'personal' | 'other'>('cash')
+  const [transferAccountId, setTransferAccountId] = useState('')
   const [amount, setAmount] = useState('')
   const [description, setDescription] = useState('')
+  const [category, setCategory] = useState('')
   const [successMsg, setSuccessMsg] = useState('')
+
+  const [templates, setTemplates] = useState<MovementTemplate[]>(loadTemplates)
+  const [savingTemplate, setSavingTemplate] = useState(false)
+  const [templateName, setTemplateName] = useState('')
 
   useEffect(() => {
     fetchByRegister(cashRegisterId)
+    fetchAccounts()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cashRegisterId])
+
+  const applyTemplate = (t: MovementTemplate) => {
+    setType(t.type)
+    setSource(t.source)
+    setTransferAccountId(t.transfer_account_id || '')
+    setAmount(String(t.amount))
+    setDescription(t.description)
+    setCategory(t.category)
+  }
+
+  const deleteTemplate = (id: string) => {
+    const updated = templates.filter(t => t.id !== id)
+    setTemplates(updated)
+    saveTemplates(updated)
+  }
+
+  const handleSaveTemplate = () => {
+    const amt = parseFloat(amount)
+    if (!templateName.trim() || isNaN(amt) || amt <= 0) return
+    const newTemplate: MovementTemplate = {
+      id: Date.now().toString(),
+      name: templateName.trim(),
+      type, amount: amt, description, category, source,
+      transfer_account_id: source === 'bank' ? transferAccountId : undefined,
+    }
+    const updated = [...templates, newTemplate]
+    setTemplates(updated)
+    saveTemplates(updated)
+    setSavingTemplate(false)
+    setTemplateName('')
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     const amt = parseFloat(amount)
     if (isNaN(amt) || amt <= 0) return setSuccessMsg('Monto inválido')
     if (!description.trim()) return setSuccessMsg('Descripción requerida')
+    if (source === 'bank' && !transferAccountId) return setSuccessMsg('Seleccioná una cuenta de transferencia')
     await addMovement({
       cash_register_id: cashRegisterId,
       type,
       amount: amt,
       description,
+      source,
+      category: category || null,
+      transfer_account_id: source === 'bank' ? (transferAccountId || null) : null,
       created_by: ''
     })
     setAmount('')
     setDescription('')
+    setCategory('')
     setSuccessMsg('Movimiento registrado')
     setTimeout(() => setSuccessMsg(''), 1500)
   }
+
+  const sourceOptions: { value: 'cash' | 'bank' | 'personal' | 'other'; label: string; sub: string; affectsCash: boolean }[] = [
+    { value: 'cash',     label: '💵 Caja actual',        sub: 'Afecta el arqueo',        affectsCash: true },
+    { value: 'personal', label: '💵 Efectivo (fuera)',    sub: 'No afecta el arqueo',     affectsCash: false },
+    { value: 'bank',     label: '🏦 Transferencia',       sub: 'Elegir cuenta',           affectsCash: false },
+    { value: 'other',    label: '📌 Otro',                sub: 'No afecta el arqueo',     affectsCash: false },
+  ]
 
   return (
     <div className="relative">
       <button type="button" onClick={onClose} className="absolute top-2 right-2 text-gray-400 hover:text-gray-700">
         <XCircle className="w-6 h-6" />
       </button>
-      <form onSubmit={handleSubmit} className="flex flex-col gap-2 md:flex-row md:items-end md:gap-3 pb-2 border-b mb-4">
-        <div className="flex flex-col w-full md:w-40">
-          <label className="block text-xs font-medium text-gray-700 mb-1">Tipo</label>
-          <select value={type} onChange={e => setType(e.target.value as 'gasto' | 'ingreso')} className="px-2 py-1 border rounded">
-            <option value="gasto">Gasto extraordinario</option>
-            <option value="ingreso">Ingreso extraordinario</option>
-          </select>
+
+      {/* ── Frecuentes ──────────────────────────────────────────── */}
+      {templates.length > 0 && (
+        <div className="mb-3">
+          <p className="text-xs font-medium text-gray-500 mb-1.5">Frecuentes</p>
+          <div className="flex flex-wrap gap-1.5">
+            {templates.map(t => (
+              <div key={t.id} className="flex items-center gap-0 border border-gray-200 rounded-full overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => applyTemplate(t)}
+                  className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                >
+                  <Star className="w-3 h-3 text-yellow-400" />
+                  {t.name}
+                  <span className="text-gray-400">
+                    ${t.amount.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => deleteTemplate(t.id)}
+                  className="px-1.5 py-1 text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors border-l border-gray-200"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="flex flex-col w-full md:w-32">
-          <label className="block text-xs font-medium text-gray-700 mb-1">Monto *</label>
-          <input type="number" step="0.01" min="0" value={amount} onChange={e => setAmount(e.target.value)} className="px-2 py-1 border rounded w-full" placeholder="0.00" />
+      )}
+
+      <form onSubmit={handleSubmit} className="flex flex-col gap-3 pb-3 border-b mb-3">
+
+        {/* Tipo + Monto */}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="flex flex-col">
+            <label className="block text-xs font-medium text-gray-700 mb-1">Tipo</label>
+            <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+              {(['gasto', 'ingreso'] as const).map(t => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setType(t)}
+                  className={`flex-1 py-1.5 text-xs font-medium transition-colors ${
+                    type === t
+                      ? t === 'gasto' ? 'bg-red-500 text-white' : 'bg-green-500 text-white'
+                      : 'bg-white text-gray-500 hover:bg-gray-50'
+                  }`}
+                >
+                  {t === 'gasto' ? '↑ Gasto' : '↓ Ingreso'}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex flex-col">
+            <label className="block text-xs font-medium text-gray-700 mb-1">Monto *</label>
+            <input
+              type="number" step="0.01" min="0" value={amount}
+              onChange={e => setAmount(e.target.value)}
+              className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="0.00"
+            />
+          </div>
         </div>
-        <div className="flex flex-col flex-1">
-          <label className="block text-xs font-medium text-gray-700 mb-1">Descripción *</label>
-          <input type="text" value={description} onChange={e => setDescription(e.target.value)} className="px-2 py-1 border rounded w-full" placeholder="Motivo o detalle" />
+
+        {/* Origen del dinero */}
+        <div>
+          <label className="block text-xs font-medium text-gray-700 mb-1.5">¿De dónde sale el dinero?</label>
+          <div className="grid grid-cols-2 gap-1.5">
+            {sourceOptions.map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => { setSource(opt.value); if (opt.value !== 'bank') setTransferAccountId('') }}
+                className={`flex flex-col items-start px-3 py-2 rounded-lg border text-left transition-colors ${
+                  source === opt.value
+                    ? 'border-blue-500 bg-blue-50 text-blue-700'
+                    : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <span className="text-xs font-medium">{opt.label}</span>
+                <span className={`text-[10px] mt-0.5 ${source === opt.value ? 'text-blue-500' : 'text-gray-400'}`}>{opt.sub}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Selector de cuenta cuando es transferencia */}
+          {source === 'bank' && (
+            <div className="mt-2">
+              <label className="block text-xs font-medium text-gray-700 mb-1">Cuenta de transferencia *</label>
+              <select
+                value={transferAccountId}
+                onChange={e => setTransferAccountId(e.target.value)}
+                className="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">— Elegir cuenta —</option>
+                {accounts.map(a => (
+                  <option key={a.id} value={a.id}>{a.nombre}{a.alias ? ` (${a.alias})` : ''}</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
-        <div className="flex md:items-end">
-          <button type="submit" disabled={isLoading} className="mt-4 md:mt-0 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 w-full md:w-auto">Agregar</button>
+
+        {/* Descripción + Categoría */}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="flex flex-col">
+            <label className="block text-xs font-medium text-gray-700 mb-1">Descripción *</label>
+            <input
+              type="text" value={description} onChange={e => setDescription(e.target.value)}
+              className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Motivo o detalle"
+            />
+          </div>
+          <div className="flex flex-col">
+            <label className="block text-xs font-medium text-gray-700 mb-1">Categoría</label>
+            <select
+              value={category} onChange={e => setCategory(e.target.value)}
+              className="px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Sin categoría</option>
+              {(type === 'gasto' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES).map(c => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
+            </select>
+          </div>
         </div>
+
+        {/* Botones */}
+        <div className="flex items-center gap-2">
+          <button
+            type="submit" disabled={isLoading}
+            className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
+          >
+            {isLoading ? 'Guardando...' : 'Registrar movimiento'}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setSavingTemplate(v => !v); setTemplateName('') }}
+            className="px-3 py-2 border border-gray-200 rounded-lg text-gray-500 hover:bg-yellow-50 hover:border-yellow-300 hover:text-yellow-600 text-xs"
+            title="Guardar como frecuente"
+          >
+            <Star className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Guardar template inline */}
+        {savingTemplate && (
+          <div className="flex gap-2 items-center">
+            <input
+              type="text" value={templateName} onChange={e => setTemplateName(e.target.value)}
+              placeholder="Nombre del frecuente (ej: Alquiler)"
+              className="flex-1 px-2 py-1.5 border border-yellow-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-yellow-400"
+              autoFocus
+            />
+            <button
+              type="button" onClick={handleSaveTemplate}
+              className="px-3 py-1.5 bg-yellow-400 text-white rounded-lg text-xs font-medium hover:bg-yellow-500"
+            >
+              Guardar
+            </button>
+          </div>
+        )}
+
       </form>
-      <div className="min-h-[20px]">
-        {successMsg && <span className="text-green-600 text-xs ml-2">{successMsg}</span>}
-        {error && <span className="text-red-600 text-xs ml-2">{error}</span>}
+      <div className="min-h-[16px] mb-1">
+        {successMsg && <span className="text-green-600 text-xs">{successMsg}</span>}
+        {error && <span className="text-red-600 text-xs">{error}</span>}
       </div>
       <div className="mb-2">
-        <h4 className="text-sm font-semibold text-gray-700 mb-2">Movimientos extraordinarios</h4>
+        <h4 className="text-sm font-semibold text-gray-700 mb-2">Movimientos registrados</h4>
         {movements.length === 0 ? (
           <p className="text-xs text-gray-400">No hay movimientos registrados.</p>
         ) : (
           <ul className="divide-y divide-gray-200">
-            {movements.map(mov => (
-              <li key={mov.id} className="py-2 flex items-center gap-3 text-sm">
-                <span className={mov.type === 'gasto' ? 'text-red-600 font-bold' : 'text-green-700 font-bold'}>
-                  {mov.type === 'gasto' ? '-' : '+'}{mov.amount.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' })}
-                </span>
-                <span className="flex-1 text-gray-700">{mov.description}</span>
-                <span className="text-gray-400 text-xs">{new Date(mov.created_at).toLocaleString('es-AR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}</span>
-                {mov.created_by_name && <span className="text-gray-400 text-xs ml-2">por {mov.created_by_name}</span>}
-              </li>
-            ))}
+            {movements.map(mov => {
+              const sourceLabel = {
+                'cash':     '💵 Caja actual',
+                'bank':     '🏦 Transferencia',
+                'personal': '💵 Efectivo (fuera)',
+                'other':    '📌 Otro'
+              }[mov.source || 'cash']
+
+              const affectsCash = !mov.source || mov.source === 'cash'
+
+              return (
+                <li key={mov.id} className={`py-2 flex flex-col gap-0.5 text-sm ${!affectsCash ? 'bg-amber-50 px-1 rounded' : ''}`}>
+                  <div className="flex items-center gap-3">
+                    <span className={`font-bold ${mov.type === 'gasto' ? 'text-red-600' : 'text-green-700'}`}>
+                      {mov.type === 'gasto' ? '-' : '+'}{mov.amount.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' })}
+                    </span>
+                    <span className="flex-1 text-gray-700">{mov.description}</span>
+                    <span className="px-2 py-0.5 bg-gray-100 text-gray-500 rounded text-xs">{sourceLabel}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-gray-400 pl-1">
+                    <span>{new Date(mov.created_at).toLocaleString('es-AR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}</span>
+                    {mov.created_by_name && <span>• {mov.created_by_name}</span>}
+                    {(mov as any).category && <span className="text-blue-400">• {EXPENSE_CATEGORIES.find(c => c.value === (mov as any).category)?.label || (mov as any).category}</span>}
+                    {!affectsCash && <span className="text-amber-500 font-medium">• No afecta arqueo</span>}
+                  </div>
+                </li>
+              )
+            })}
           </ul>
         )}
       </div>
@@ -91,7 +331,7 @@ function ExtraMovementForm({ cashRegisterId, onClose }: { cashRegisterId: string
 }
 
 // --- Componente lector/visor de movimientos (solo lista) ---
-function ExtraMovementsViewer({ cashRegisterId, from, to }: { cashRegisterId: string, from: string, to?: string }) {
+function ExtraMovementsViewer({ cashRegisterId, from, to, branchId }: { cashRegisterId: string, from: string, to?: string, branchId: string }) {
   const { movements, fetchByRegister, isLoading: loadingExtra, error: errorExtra } = useExtraMovementsStore()
   const [sales, setSales] = useState<any[]>([])
   const [loadingSales, setLoadingSales] = useState(false)
@@ -112,6 +352,7 @@ function ExtraMovementsViewer({ cashRegisterId, from, to }: { cashRegisterId: st
         const { data, error } = await supabase
           .from('sales')
           .select('id,total,payment_method,created_at,created_by,creator:created_by(full_name)')
+          .eq('branch_id', branchId)
           .gte('created_at', from)
           .lte('created_at', end)
           .neq('status', 'voided')
@@ -194,7 +435,7 @@ export default function CashRegisterPage() {
   const [showMovementsModal, setShowMovementsModal] = useState(false)
 
   const { registers, currentRegister, isLoading, fetchRegisters, fetchCurrentRegister, openRegister, closeRegister } = useCashRegisterStore()
-  const { user } = useAuthStore()
+  const { user, organization } = useAuthStore()
   const { users, fetchUsers } = useUsersStore()
 
   const [showOpenModal, setShowOpenModal] = useState(false)
@@ -204,6 +445,8 @@ export default function CashRegisterPage() {
   const [closingAmount, setClosingAmount] = useState('')
   const [notesOpen, setNotesOpen] = useState('')
   const [notesClose, setNotesClose] = useState('')
+  const [retiroFuerte, setRetiroFuerte] = useState('')
+  const [fromSafe, setFromSafe] = useState(false)
   const [processing, setProcessing] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
@@ -240,20 +483,64 @@ export default function CashRegisterPage() {
     setProcessing(true)
     setErrorMsg('')
     const result = await openRegister(amount, notesOpen)
+    if (result.success) {
+      // Si el dinero viene de la caja fuerte, registrar solo el sobrante (lo que realmente salió
+      // de la caja fuerte). El remanente del cierre anterior ya estaba en caja.
+      if (fromSafe && organization) {
+        const amountFromSafe = (diffWithLast !== null && diffWithLast > 0) ? diffWithLast : amount
+        if (amountFromSafe > 0) {
+          await supabase.from('extra_movements').insert({
+            organization_id: organization.id,
+            cash_register_id: null,
+            type: 'gasto',
+            amount: amountFromSafe,
+            description: `Apertura de caja desde caja fuerte`,
+            category: 'caja_fuerte',
+            source: 'personal',
+            created_by: user!.id,
+          })
+        }
+      }
+      setShowOpenModal(false)
+      setOpeningAmount('')
+      setNotesOpen('')
+      setFromSafe(false)
+    } else {
+      setErrorMsg(result.error || 'Error al abrir caja')
+    }
     setProcessing(false)
-    if (result.success) { setShowOpenModal(false); setOpeningAmount(''); setNotesOpen('') }
-    else setErrorMsg(result.error || 'Error al abrir caja')
   }
 
   const handleCloseRegister = async () => {
     const amount = parseFloat(closingAmount)
     if (isNaN(amount) || amount < 0) { setErrorMsg('Ingresa un monto válido'); return }
+    const retiro = parseFloat(retiroFuerte) || 0
+    if (retiro > amount) { setErrorMsg('El retiro a caja fuerte no puede ser mayor al monto contado'); return }
     setProcessing(true)
     setErrorMsg('')
-    const result = await closeRegister(amount, notesClose)
+    const result = await closeRegister(amount, notesClose, retiro > 0 ? retiro : undefined)
+    if (result.success) {
+      // Registrar el retiro a caja fuerte como ingreso al pool personal
+      if (retiro > 0 && organization) {
+        await supabase.from('extra_movements').insert({
+          organization_id: organization.id,
+          cash_register_id: null,
+          type: 'ingreso',
+          amount: retiro,
+          description: `Retiro a caja fuerte al cierre`,
+          category: 'caja_fuerte',
+          source: 'personal',
+          created_by: user!.id,
+        })
+      }
+      setShowCloseModal(false)
+      setClosingAmount('')
+      setNotesClose('')
+      setRetiroFuerte('')
+    } else {
+      setErrorMsg(result.error || 'Error al cerrar caja')
+    }
     setProcessing(false)
-    if (result.success) { setShowCloseModal(false); setClosingAmount(''); setNotesClose('') }
-    else setErrorMsg(result.error || 'Error al cerrar caja')
   }
 
 
@@ -303,9 +590,9 @@ export default function CashRegisterPage() {
     .filter(r => r.status === 'closed')
     .sort((a, b) => (b.closed_at && a.closed_at ? b.closed_at.localeCompare(a.closed_at) : 0))[0]
 
-  let diffWithLast = null
+  let diffWithLast: number | null = null
   if (lastClosedRegister && openingAmount) {
-    const lastClose = lastClosedRegister.closing_amount || 0
+    const lastClose = (lastClosedRegister.closing_amount || 0) - (lastClosedRegister.retiro_caja_fuerte || 0)
     const open = parseFloat(openingAmount)
     if (!isNaN(open) && open !== lastClose) diffWithLast = open - lastClose
   }
@@ -532,13 +819,31 @@ export default function CashRegisterPage() {
                 </div>
               </div>
               <div>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input type="checkbox" checked={fromSafe} onChange={e => setFromSafe(e.target.checked)} className="w-4 h-4 accent-blue-600" />
+                  <span className="text-sm font-medium text-gray-700">El dinero viene de la caja fuerte</span>
+                </label>
+                {fromSafe && (
+                  <p className="text-xs text-blue-600 mt-1 ml-6">
+                    {(() => {
+                      const amountFromSafe = (diffWithLast !== null && diffWithLast > 0)
+                        ? diffWithLast
+                        : (parseFloat(openingAmount) || 0)
+                      return amountFromSafe > 0
+                        ? `Se registrará una salida de $${amountFromSafe.toFixed(2)} de la caja fuerte en contabilidad`
+                        : 'El monto de apertura está cubierto por el sobrante del cierre anterior'
+                    })()}
+                  </p>
+                )}
+              </div>
+              <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Notas (opcional)</label>
                 <textarea value={notesOpen} onChange={(e) => setNotesOpen(e.target.value)} rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent resize-none" placeholder="Observaciones..." />
               </div>
               {errorMsg && <p className="text-sm text-red-600 bg-red-50 p-2 rounded">{errorMsg}</p>}
             </div>
             <div className="flex gap-3 mt-6">
-              <button onClick={() => { setShowOpenModal(false); setOpeningAmount(''); setNotesOpen(''); setErrorMsg('') }} className="flex-1 px-4 py-2.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium">Cancelar</button>
+              <button onClick={() => { setShowOpenModal(false); setOpeningAmount(''); setNotesOpen(''); setFromSafe(false); setErrorMsg('') }} className="flex-1 px-4 py-2.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium">Cancelar</button>
               <button onClick={handleOpenRegister} disabled={processing} className="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium disabled:opacity-50">{processing ? 'Abriendo...' : 'Abrir Caja'}</button>
             </div>
           </div>
@@ -565,6 +870,29 @@ export default function CashRegisterPage() {
                   <input type="number" step="0.01" min="0" value={closingAmount} onChange={handleAmountInput(setClosingAmount)} className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-lg text-lg font-semibold focus:ring-2 focus:ring-red-500 focus:border-transparent" placeholder="0.00" autoFocus />
                 </div>
               </div>
+              {/* Retiro a caja fuerte */}
+              <div className="border border-gray-200 rounded-lg p-3 space-y-2">
+                <label className="block text-sm font-medium text-gray-700">Retiro a caja fuerte (opcional)</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                  <input type="number" step="0.01" min="0" value={retiroFuerte} onChange={handleAmountInput(setRetiroFuerte)}
+                    className="w-full pl-8 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-400 focus:border-transparent"
+                    placeholder="0.00" />
+                </div>
+                {(() => {
+                  const cierre = parseFloat(closingAmount) || 0
+                  const retiro = parseFloat(retiroFuerte) || 0
+                  const queda = cierre - retiro
+                  if (retiro > 0) return (
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-500">Queda para mañana:</span>
+                      <span className={`font-semibold ${queda >= 0 ? 'text-green-600' : 'text-red-600'}`}>${queda.toFixed(2)}</span>
+                    </div>
+                  )
+                  return null
+                })()}
+                <p className="text-xs text-gray-400">Se registra en contabilidad como ingreso a efectivo fuera de caja</p>
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Notas (opcional)</label>
                 <textarea value={notesClose} onChange={(e) => setNotesClose(e.target.value)} rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent resize-none" placeholder="Observaciones del cierre..." />
@@ -572,7 +900,7 @@ export default function CashRegisterPage() {
               {errorMsg && <p className="text-sm text-red-600 bg-red-50 p-2 rounded">{errorMsg}</p>}
             </div>
             <div className="flex gap-3 mt-6">
-              <button onClick={() => { setShowCloseModal(false); setClosingAmount(''); setNotesClose(''); setErrorMsg('') }} className="flex-1 px-4 py-2.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium">Cancelar</button>
+              <button onClick={() => { setShowCloseModal(false); setClosingAmount(''); setNotesClose(''); setRetiroFuerte(''); setErrorMsg('') }} className="flex-1 px-4 py-2.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium">Cancelar</button>
               <button onClick={handleCloseRegister} disabled={processing} className="flex-1 px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium disabled:opacity-50">{processing ? 'Cerrando...' : 'Cerrar Caja'}</button>
             </div>
           </div>
@@ -681,7 +1009,7 @@ export default function CashRegisterPage() {
               <button onClick={() => setShowMovementsModal(false)} className="text-gray-400 hover:text-gray-600"><XCircle className="w-6 h-6" /></button>
             </div>
             <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-              <ExtraMovementsViewer cashRegisterId={showDetailModal.id} from={showDetailModal.opened_at} to={showDetailModal.closed_at || undefined} />
+              <ExtraMovementsViewer cashRegisterId={showDetailModal.id} from={showDetailModal.opened_at} to={showDetailModal.closed_at || undefined} branchId={showDetailModal.branch_id} />
             </div>
             <div className="mt-4">
               <button onClick={() => setShowMovementsModal(false)} className="w-full px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">Cerrar</button>

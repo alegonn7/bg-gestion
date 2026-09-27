@@ -2,6 +2,9 @@ import { create } from 'zustand'
 
 import { useAuthStore } from '@/store/auth'
 import { supabase } from '@/lib/supabase'
+import { loadMeta, saveMeta } from '@/lib/offline'
+
+const DOLLAR_CACHE_KEY = 'dollar_blue'
 
 interface DollarState {
   blueRate: number | null // Precio venta del dólar blue
@@ -97,12 +100,14 @@ export const useDollarStore = create<DollarState>((set, get) => ({
       const data = await response.json()
 
       // La API devuelve: { moneda, casa, nombre, compra, venta, fechaActualizacion }
-      set({
+      const rates = {
         blueRate: data.venta,
         blueBuyRate: data.compra,
         lastUpdated: data.fechaActualizacion || new Date().toISOString(),
-        isLoading: false,
-      })
+      }
+
+      set({ ...rates, isLoading: false })
+      void saveMeta(DOLLAR_CACHE_KEY, rates)
 
       console.log(`💵 Dólar Blue: Compra $${data.compra} / Venta $${data.venta}`)
     } catch (error: any) {
@@ -114,19 +119,36 @@ export const useDollarStore = create<DollarState>((set, get) => ({
         if (!response.ok) throw new Error('Fallback API failed')
         
         const data = await response.json()
-        
-        set({
+
+        const rates = {
           blueRate: data.blue?.value_sell,
           blueBuyRate: data.blue?.value_buy,
           lastUpdated: new Date().toISOString(),
-          isLoading: false,
-        })
+        }
+
+        set({ ...rates, isLoading: false })
+        void saveMeta(DOLLAR_CACHE_KEY, rates)
 
         console.log(`💵 Dólar Blue (fallback): Compra $${data.blue?.value_buy} / Venta $${data.blue?.value_sell}`)
       } catch {
-        set({ 
+        // Sin conexión: usar la última cotización guardada localmente
+        const cached = await loadMeta<{ blueRate: number; blueBuyRate: number; lastUpdated: string }>(DOLLAR_CACHE_KEY)
+
+        if (cached?.blueRate) {
+          console.warn('📴 Cotización del dólar tomada de la caché local')
+          set({
+            blueRate: cached.blueRate,
+            blueBuyRate: cached.blueBuyRate,
+            lastUpdated: cached.lastUpdated,
+            isLoading: false,
+            error: null,
+          })
+          return
+        }
+
+        set({
           error: 'No se pudo obtener la cotización del dólar blue',
-          isLoading: false 
+          isLoading: false
         })
       }
     }

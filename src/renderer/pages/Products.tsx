@@ -5,8 +5,11 @@ import { useSuppliersStore } from '@/store/suppliers'
 import { useCategoriesStore } from '@/store/categories'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/auth'
+import { useNetworkStore } from '@/store/network'
 import { useDollarStore } from '@/store/dollar'
-import { exportProductsToCSV, parseCSV, importProductsFromCSV, type ImportResult } from '@/lib/csv'
+import { formatSyncAge } from '@/lib/offline'
+import { parseCSV, importProductsFromCSV, type ImportResult } from '@/lib/csv'
+import { exportProductsToExcel } from '@/lib/excelExport'
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner'
 import { playScanSuccess, playScanError } from '@/lib/scan-sound'
 import ProductCard from '@/components/ProductCard'
@@ -19,9 +22,12 @@ import ManageCategoriesModal from '@/components/ManageCategoriesModal'
 import BulkPriceUpdateModal from '@/components/BulkPriceUpdateModal'
 
 export default function Products() {
-  const { isLoading, error, searchQuery, fetchProducts, setSearchQuery, getFilteredProducts, deleteProduct } = useProductsStore()
+  const { isLoading, error, searchQuery, fetchProducts, setSearchQuery, getFilteredProducts, deleteProduct, isFromCache, lastSyncAt } = useProductsStore()
   const { categories, fetchCategories } = useCategoriesStore()
   const { suppliers, fetchSuppliers } = useSuppliersStore()
+  const { isOnline } = useNetworkStore()
+  const isOfflineSession = useAuthStore((state) => state.isOffline)
+  const offlineMode = isOfflineSession || !isOnline
 
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
@@ -49,23 +55,29 @@ export default function Products() {
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
   const [scannedBarcode, setScannedBarcode] = useState<string | null>(null)
   const [scanFeedback, setScanFeedback] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null)
+  const [isExporting, setIsExporting] = useState(false)
 
   // Escáner físico: busca producto o abre modal de creación
   const handleBarcodeScan = useCallback((barcode: string) => {
     const allProducts = getFilteredProducts()
-    const product = allProducts.find(p => p.barcode === barcode)
+    const normalizedBarcode = barcode.trim()
+    const product = allProducts.find(p => p.barcode?.trim() === normalizedBarcode)
     if (product) {
       setSelectedProduct(product)
       setIsDetailOpen(true)
       setScanFeedback({ type: 'success', message: `✓ ${product.product?.name || barcode}` })
       playScanSuccess()
+    } else if (offlineMode) {
+      // Sin conexión no se pueden dar de alta productos
+      setScanFeedback({ type: 'error', message: `Sin conexión: código ${barcode} no encontrado en los datos guardados` })
+      playScanError()
     } else {
       setScannedBarcode(barcode)
       setIsCreateOpen(true)
       setScanFeedback({ type: 'info', message: `Producto no encontrado, creando con código: ${barcode}` })
       playScanError()
     }
-  }, [getFilteredProducts])
+  }, [getFilteredProducts, offlineMode])
 
   useBarcodeScanner(handleBarcodeScan)
 
@@ -100,7 +112,7 @@ export default function Products() {
     setCurrentPage(1)
   }, [searchQuery, selectedCategories, selectedSupplier, getFilteredProducts])
 
-  const lowStockCount = filteredProducts.filter(p => p.stock_quantity <= p.stock_min).length
+  const lowStockCount = filteredProducts.filter(p => p.stock_quantity < p.stock_min).length
 
   // ✅ nombre del producto viene de product.product.name
   const getProductName = (product: Product) => product.product?.name || ''
@@ -157,11 +169,19 @@ export default function Products() {
     }
   }, [scanFeedback])
 
-  // CSV Export
-  const handleExport = () => {
+  // Exportar a Excel (una hoja por categoría)
+  const handleExport = async () => {
     const products = filteredProducts
-    if (products.length === 0) return
-    exportProductsToCSV(products, selectedBranch?.name)
+    if (products.length === 0 || isExporting) return
+    setIsExporting(true)
+    try {
+      await exportProductsToExcel(products, {
+        contextLabel: selectedBranch?.name ? `Sucursal: ${selectedBranch.name}` : undefined,
+        fileBaseName: selectedBranch?.name ? `productos_${selectedBranch.name}` : 'productos',
+      })
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   // CSV Import
@@ -231,67 +251,82 @@ export default function Products() {
               <p className="text-sm text-gray-500 mt-1">
                 {filteredProducts.length} productos
                 {lowStockCount > 0 && <span className="ml-2 text-red-600 font-medium">· {lowStockCount} con stock bajo</span>}
+                {isFromCache && (
+                  <span className="ml-2 text-amber-600 font-medium">
+                    · datos guardados {formatSyncAge(lastSyncAt)}
+                  </span>
+                )}
               </p>
             </div>
             <div className="flex gap-3">
-              <button
-                onClick={() => setIsCategoriesOpen(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg transition font-medium"
-              >
-                <Tag className="w-5 h-5" /> Categorías
-              </button>
+              {!offlineMode && (
+                <button
+                  onClick={() => setIsCategoriesOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg transition font-medium"
+                >
+                  <Tag className="w-5 h-5" /> Categorías
+                </button>
+              )}
 
-              {/* CSV Export */}
+              {/* Exportar a Excel (funciona offline: se genera desde los datos en pantalla) */}
               <button
                 onClick={handleExport}
-                disabled={filteredProducts.length === 0}
+                disabled={filteredProducts.length === 0 || isExporting}
                 className="flex items-center gap-2 px-4 py-2 bg-green-100 hover:bg-green-200 text-green-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition font-medium"
-                title="Exportar productos a CSV"
+                title="Exportar productos a Excel, con una hoja por categoría"
               >
-                <Download className="w-5 h-5" /> Exportar
+                {isExporting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+                {isExporting ? 'Exportando...' : 'Exportar Excel'}
               </button>
 
-              {/* Bulk Price Update */}
-              <button
-                onClick={() => setIsBulkPriceOpen(true)}
-                disabled={filteredProducts.length === 0}
-                className="flex items-center gap-2 px-4 py-2 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition font-medium"
-                title="Actualizar precios masivamente"
-              >
-                <Percent className="w-5 h-5" /> Precios
-              </button>
+              {!offlineMode && (
+                <>
+                  {/* Bulk Price Update */}
+                  <button
+                    onClick={() => setIsBulkPriceOpen(true)}
+                    disabled={filteredProducts.length === 0}
+                    className="flex items-center gap-2 px-4 py-2 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition font-medium"
+                    title="Actualizar precios masivamente"
+                  >
+                    <Percent className="w-5 h-5" /> Precios
+                  </button>
 
-              {/* CSV Import */}
-              <button
-                onClick={handleImportClick}
-                disabled={isImporting}
-                className="flex items-center gap-2 px-4 py-2 bg-orange-100 hover:bg-orange-200 text-orange-700 disabled:opacity-50 rounded-lg transition font-medium"
-                title="Importar productos desde CSV"
-              >
-                {isImporting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
-                {isImporting ? 'Importando...' : 'Importar'}
-              </button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".csv"
-                onChange={handleFileSelected}
-                className="hidden"
-              />
+                  {/* CSV Import */}
+                  <button
+                    onClick={handleImportClick}
+                    disabled={isImporting}
+                    className="flex items-center gap-2 px-4 py-2 bg-orange-100 hover:bg-orange-200 text-orange-700 disabled:opacity-50 rounded-lg transition font-medium"
+                    title="Importar productos desde CSV"
+                  >
+                    {isImporting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Upload className="w-5 h-5" />}
+                    {isImporting ? 'Importando...' : 'Importar'}
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".csv"
+                    onChange={handleFileSelected}
+                    className="hidden"
+                  />
+                </>
+              )}
 
               <button
                 onClick={() => fetchProducts()}
+                title={offlineMode ? 'Reintentar sincronización' : 'Actualizar'}
                 className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition"
               >
                 <RefreshCw className="w-5 h-5" />
               </button>
 
-              <button
-                onClick={() => setIsCreateOpen(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium"
-              >
-                <Plus className="w-5 h-5" /> Nuevo Producto
-              </button>
+              {!offlineMode && (
+                <button
+                  onClick={() => setIsCreateOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium"
+                >
+                  <Plus className="w-5 h-5" /> Nuevo Producto
+                </button>
+              )}
             </div>
           </div>
 
@@ -408,7 +443,7 @@ export default function Products() {
             <p className="text-gray-500 mb-6 max-w-sm">
               {searchQuery || selectedCategories.length > 0 ? 'Intenta con otro filtro o búsqueda' : 'Creá tu primer producto'}
             </p>
-            {!searchQuery && selectedCategories.length === 0 && (
+            {!searchQuery && selectedCategories.length === 0 && !offlineMode && (
               <button
                 onClick={() => setIsCreateOpen(true)}
                 className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium"
@@ -459,12 +494,15 @@ export default function Products() {
         )}
       </div>
 
+      {/* Sin conexión el detalle es de solo lectura: sin acciones que requieran servidor */}
       <ProductDetailModal
         product={selectedProduct} isOpen={isDetailOpen}
-        onClose={() => setIsDetailOpen(false)} onEdit={handleEdit}
-        onDelete={handleDeleteRequest} onMovement={handleMovement}
-        onViewHistory={handleViewHistory}
-        onDuplicate={handleDuplicate}
+        onClose={() => setIsDetailOpen(false)}
+        onEdit={offlineMode ? undefined : handleEdit}
+        onDelete={offlineMode ? undefined : handleDeleteRequest}
+        onMovement={offlineMode ? undefined : handleMovement}
+        onViewHistory={offlineMode ? undefined : handleViewHistory}
+        onDuplicate={offlineMode ? undefined : handleDuplicate}
       />
 
       <CreateProductModal

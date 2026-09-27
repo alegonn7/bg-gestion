@@ -11,9 +11,14 @@ const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const Database = require('better-sqlite3');
 const fs = require('fs');
+const crypto = require('crypto');
 
 let mainWindow;
 let db;
+
+// Días máximos que se permite ingresar sin conexión desde el último login online.
+// Pasado ese plazo se exige internet (para respetar bajas de usuarios / suspensiones).
+const OFFLINE_MAX_DAYS = 30;
 
 // ============================================================
 // BASE DE DATOS
@@ -49,9 +54,49 @@ function initDatabase() {
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+
+    -- Caché de productos por sucursal para consulta offline (precios / stock)
+    CREATE TABLE IF NOT EXISTS cached_products (
+      id TEXT PRIMARY KEY,
+      branch_id TEXT NOT NULL,
+      barcode TEXT,
+      name TEXT,
+      data TEXT NOT NULL,
+      updated_at INTEGER DEFAULT (strftime('%s', 'now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_cached_products_branch ON cached_products(branch_id);
+    CREATE INDEX IF NOT EXISTS idx_cached_products_barcode ON cached_products(barcode);
+
+    -- Credenciales y perfil cacheados para poder ingresar sin conexión
+    CREATE TABLE IF NOT EXISTS offline_auth (
+      email TEXT PRIMARY KEY,
+      salt TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      payload TEXT NOT NULL,
+      last_online_at INTEGER NOT NULL
+    );
   `);
 
   console.log('Tablas creadas. Local database initialized');
+}
+
+// ============================================================
+// OFFLINE AUTH - helpers de hashing (scrypt + salt aleatorio)
+// ============================================================
+function hashPassword(password, salt) {
+  return crypto.scryptSync(password, salt, 64, { N: 16384, r: 8, p: 1 }).toString('hex');
+}
+
+function verifyPassword(password, salt, expectedHash) {
+  const actual = Buffer.from(hashPassword(password, salt), 'hex');
+  const expected = Buffer.from(expectedHash, 'hex');
+  if (actual.length !== expected.length) return false;
+  return crypto.timingSafeEqual(actual, expected);
+}
+
+function daysSince(timestampSeconds) {
+  return (Date.now() / 1000 - timestampSeconds) / 86400;
 }
 
 // ============================================================
@@ -189,6 +234,217 @@ ipcMain.handle('db:get', async (event, sql, params) => {
 });
 
 // ============================================================
+// IPC HANDLERS - CACHÉ OFFLINE DE PRODUCTOS
+// ============================================================
+ipcMain.handle('cache:save-products', async (event, { branchIds, products }) => {
+  try {
+    if (!Array.isArray(products)) return { success: false, error: 'products debe ser un array' };
+
+    const ids = Array.isArray(branchIds) ? branchIds.filter(Boolean) : [];
+    const now = Math.floor(Date.now() / 1000);
+
+    const insert = db.prepare(`
+      INSERT OR REPLACE INTO cached_products (id, branch_id, barcode, name, data, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+
+    const replaceAll = db.transaction(() => {
+      // Reemplazar solo el scope sincronizado (las sucursales consultadas)
+      if (ids.length > 0) {
+        const placeholders = ids.map(() => '?').join(',');
+        db.prepare(`DELETE FROM cached_products WHERE branch_id IN (${placeholders})`).run(...ids);
+      }
+
+      for (const p of products) {
+        if (!p || !p.id || !p.branch_id) continue;
+        insert.run(
+          p.id,
+          p.branch_id,
+          p.barcode || null,
+          (p.product && p.product.name) || null,
+          JSON.stringify(p),
+          now
+        );
+      }
+
+      db.prepare('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)')
+        .run('products_synced_at', String(now));
+    });
+
+    replaceAll();
+
+    return { success: true, count: products.length, syncedAt: now };
+  } catch (error) {
+    console.error('Error cache:save-products:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('cache:get-products', async (event, { branchIds } = {}) => {
+  try {
+    const ids = Array.isArray(branchIds) ? branchIds.filter(Boolean) : [];
+
+    const rows = ids.length > 0
+      ? db.prepare(
+          `SELECT data, updated_at FROM cached_products WHERE branch_id IN (${ids.map(() => '?').join(',')})`
+        ).all(...ids)
+      : db.prepare('SELECT data, updated_at FROM cached_products').all();
+
+    const products = [];
+    let syncedAt = null;
+
+    for (const row of rows) {
+      try {
+        products.push(JSON.parse(row.data));
+      } catch {
+        // fila corrupta: se ignora
+      }
+      if (syncedAt === null || row.updated_at > syncedAt) syncedAt = row.updated_at;
+    }
+
+    return { success: true, data: products, syncedAt };
+  } catch (error) {
+    console.error('Error cache:get-products:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('cache:set-meta', async (event, { key, value }) => {
+  try {
+    db.prepare('INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)')
+      .run(`meta:${key}`, JSON.stringify(value ?? null));
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('cache:get-meta', async (event, { key }) => {
+  try {
+    const row = db.prepare('SELECT value FROM app_settings WHERE key = ?').get(`meta:${key}`);
+    return { success: true, data: row ? JSON.parse(row.value) : null };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+// ============================================================
+// IPC HANDLERS - LOGIN OFFLINE
+// El hash de la contraseña (scrypt + salt) y el perfil del usuario se guardan
+// localmente en cada login online exitoso, para poder validar sin internet.
+// ============================================================
+ipcMain.handle('offline-auth:save', async (event, { email, password, payload }) => {
+  try {
+    if (!email || !password || !payload) {
+      return { success: false, error: 'Datos incompletos' };
+    }
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const salt = crypto.randomBytes(16).toString('hex');
+    const passwordHash = hashPassword(password, salt);
+
+    db.prepare(`
+      INSERT OR REPLACE INTO offline_auth (email, salt, password_hash, payload, last_online_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(normalizedEmail, salt, passwordHash, JSON.stringify(payload), Math.floor(Date.now() / 1000));
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error offline-auth:save:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Refresca el perfil cacheado y la fecha de último acceso online sin tocar la contraseña
+// (se usa cuando la sesión se restaura sola, sin que el usuario tipee su clave).
+ipcMain.handle('offline-auth:touch', async (event, { email, payload }) => {
+  try {
+    if (!email) return { success: false, error: 'Falta email' };
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const row = db.prepare('SELECT email FROM offline_auth WHERE email = ?').get(normalizedEmail);
+    if (!row) return { success: false, error: 'no-cache' };
+
+    db.prepare('UPDATE offline_auth SET payload = ?, last_online_at = ? WHERE email = ?')
+      .run(JSON.stringify(payload), Math.floor(Date.now() / 1000), normalizedEmail);
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error offline-auth:touch:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('offline-auth:verify', async (event, { email, password }) => {
+  try {
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    const row = db.prepare('SELECT * FROM offline_auth WHERE email = ?').get(normalizedEmail);
+
+    if (!row) return { success: false, reason: 'no-cache' };
+
+    if (daysSince(row.last_online_at) > OFFLINE_MAX_DAYS) {
+      return { success: false, reason: 'expired', maxDays: OFFLINE_MAX_DAYS };
+    }
+
+    if (!verifyPassword(String(password || ''), row.salt, row.password_hash)) {
+      return { success: false, reason: 'bad-password' };
+    }
+
+    return {
+      success: true,
+      payload: JSON.parse(row.payload),
+      lastOnlineAt: row.last_online_at,
+    };
+  } catch (error) {
+    console.error('Error offline-auth:verify:', error);
+    return { success: false, reason: 'error', error: error.message };
+  }
+});
+
+// Devuelve el perfil cacheado sin validar contraseña.
+// Solo se usa cuando ya existe una sesión de Supabase válida en disco.
+ipcMain.handle('offline-auth:get-snapshot', async (event, { email } = {}) => {
+  try {
+    const row = email
+      ? db.prepare('SELECT * FROM offline_auth WHERE email = ?').get(String(email).trim().toLowerCase())
+      : db.prepare('SELECT * FROM offline_auth ORDER BY last_online_at DESC LIMIT 1').get();
+
+    if (!row) return { success: false, reason: 'no-cache' };
+
+    if (daysSince(row.last_online_at) > OFFLINE_MAX_DAYS) {
+      return { success: false, reason: 'expired', maxDays: OFFLINE_MAX_DAYS };
+    }
+
+    return {
+      success: true,
+      email: row.email,
+      payload: JSON.parse(row.payload),
+      lastOnlineAt: row.last_online_at,
+    };
+  } catch (error) {
+    console.error('Error offline-auth:get-snapshot:', error);
+    return { success: false, reason: 'error', error: error.message };
+  }
+});
+
+// Info liviana para la pantalla de login (¿hay acceso offline disponible?)
+ipcMain.handle('offline-auth:status', async () => {
+  try {
+    const row = db.prepare('SELECT email, last_online_at FROM offline_auth ORDER BY last_online_at DESC LIMIT 1').get();
+    if (!row) return { available: false, maxDays: OFFLINE_MAX_DAYS };
+
+    return {
+      available: daysSince(row.last_online_at) <= OFFLINE_MAX_DAYS,
+      email: row.email,
+      lastOnlineAt: row.last_online_at,
+      maxDays: OFFLINE_MAX_DAYS,
+    };
+  } catch (error) {
+    return { available: false, maxDays: OFFLINE_MAX_DAYS, error: error.message };
+  }
+});
+
+// ============================================================
 // IPC HANDLERS - SISTEMA
 // ============================================================
 ipcMain.handle('get-device-id', async () => {
@@ -298,6 +554,40 @@ ipcMain.handle('admin:delete-user', async (event, { authId }) => {
     return { success: true };
   } catch (error) {
     console.error('Error admin:delete-user:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// ============================================================
+// IPC HANDLERS - EXPORTAR PDF
+// ============================================================
+ipcMain.handle('export-pdf', async (event, { html, filename }) => {
+  try {
+    const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: filename || 'etiquetas.pdf',
+      filters: [{ name: 'PDF', extensions: ['pdf'] }],
+    });
+    if (canceled || !filePath) return { success: false, canceled: true };
+
+    const tempPath = path.join(app.getPath('temp'), `bg_print_${Date.now()}.html`);
+    fs.writeFileSync(tempPath, html, 'utf-8');
+
+    const printWin = new BrowserWindow({ show: false, webPreferences: { nodeIntegration: false } });
+    await printWin.loadFile(tempPath);
+
+    const pdfBuffer = await printWin.webContents.printToPDF({
+      pageSize: 'A4',
+      printBackground: false,
+      margins: { marginType: 'none' },
+    });
+
+    printWin.close();
+    fs.unlinkSync(tempPath);
+    fs.writeFileSync(filePath, pdfBuffer);
+
+    return { success: true, path: filePath };
+  } catch (error) {
+    console.error('Error export-pdf:', error);
     return { success: false, error: error.message };
   }
 });

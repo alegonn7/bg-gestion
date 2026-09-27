@@ -1,12 +1,13 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { ScanLine, Package, AlertTriangle, DollarSign, Hash, Tag, Building2, TrendingUp, TrendingDown, Box } from 'lucide-react'
 import { useProductsStore, type Product } from '@/store/products'
 import { useDollarStore } from '@/store/dollar'
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner'
 import { playScanSuccess, playScanError } from '@/lib/scan-sound'
+import { formatSyncAge } from '@/lib/offline'
 
 export default function ScannerPage() {
-  const { products } = useProductsStore()
+  const { products, fetchProducts, isFromCache, lastSyncAt } = useProductsStore()
   const { blueRate } = useDollarStore()
   const [scannedProduct, setScannedProduct] = useState<Product | null>(null)
   const [lastBarcode, setLastBarcode] = useState<string | null>(null)
@@ -15,7 +16,14 @@ export default function ScannerPage() {
 
   const handleBarcodeScan = useCallback((barcode: string) => {
     setLastBarcode(barcode)
-    const product = products.find(p => p.barcode === barcode)
+    const normalizedBarcode = barcode.trim()
+    
+    console.log('🔍 Escaneado:', barcode)
+    console.log('📦 Total productos:', products.length)
+    console.log('🔎 Buscando:', normalizedBarcode)
+    console.log('Producto encontrado:', products.find(p => p.barcode?.trim() === normalizedBarcode))
+    
+    const product = products.find(p => p.barcode?.trim() === normalizedBarcode)
 
     if (product) {
       setScannedProduct(product)
@@ -38,6 +46,10 @@ export default function ScannerPage() {
 
   useBarcodeScanner(handleBarcodeScan)
 
+  useEffect(() => {
+    fetchProducts()
+  }, [fetchProducts])
+
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(value)
 
@@ -56,7 +68,14 @@ export default function ScannerPage() {
           <ScanLine className="h-6 w-6 text-blue-600" />
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Escáner</h1>
-            <p className="text-sm text-gray-500">Escaneá un producto para ver su información detallada</p>
+            <p className="text-sm text-gray-500">
+              Escaneá un producto para ver su información detallada
+              {isFromCache && (
+                <span className="text-amber-600 font-medium">
+                  {' '}· datos sin conexión, guardados {formatSyncAge(lastSyncAt)}
+                </span>
+              )}
+            </p>
           </div>
         </div>
       </div>
@@ -78,7 +97,11 @@ export default function ScannerPage() {
               <h2 className="text-2xl font-semibold text-gray-900 mb-2">Producto no encontrado</h2>
               <p className="text-gray-500 mb-2">No se encontró ningún producto con el código:</p>
               <span className="font-mono text-xl bg-gray-100 px-4 py-2 rounded-lg">{lastBarcode}</span>
-              <p className="text-sm text-gray-400 mt-6">Podés darlo de alta desde la sección de Productos</p>
+              <p className="text-sm text-gray-400 mt-6">
+                {isFromCache
+                  ? 'Estás sin conexión: puede que el producto exista pero no esté en los datos guardados'
+                  : 'Podés darlo de alta desde la sección de Productos'}
+              </p>
             </div>
           )}
 
@@ -95,7 +118,7 @@ export default function ScannerPage() {
                       <p className="text-gray-500 mt-1">{scannedProduct.product.description}</p>
                     )}
                   </div>
-                  {scannedProduct.stock_quantity <= scannedProduct.stock_min && (
+                  {scannedProduct.stock_quantity < scannedProduct.stock_min && (
                     <span className="flex items-center gap-1 bg-red-100 text-red-700 text-xs font-semibold px-3 py-1 rounded-full">
                       <AlertTriangle className="h-3 w-3" />
                       Stock bajo
@@ -176,7 +199,7 @@ export default function ScannerPage() {
                     <Box className="h-4 w-4" />
                     Stock actual
                   </div>
-                  <p className={`text-3xl font-bold ${scannedProduct.stock_quantity <= scannedProduct.stock_min ? 'text-red-600' : 'text-gray-900'}`}>
+                  <p className={`text-3xl font-bold ${scannedProduct.stock_quantity < scannedProduct.stock_min ? 'text-red-600' : 'text-gray-900'}`}>
                     {scannedProduct.stock_quantity}
                   </p>
                   <p className="text-xs text-gray-400 mt-1">Mínimo: {scannedProduct.stock_min}</p>

@@ -17,6 +17,7 @@ export interface MasterProduct {
     stock: number
     price_cost: number
     price_sale: number
+    expiration_date: string | null
   }[]
 }
 
@@ -103,7 +104,8 @@ export const useMasterCatalogStore = create<MasterCatalogState>((set, get) => ({
           branch_name: product.branches.name,
           stock: product.stock_quantity,
           price_cost: product.price_cost,
-          price_sale: product.price_sale
+          price_sale: product.price_sale,
+          expiration_date: product.expiration_date || null
         })
 
         masterProduct.branches_count = masterProduct.branches.length

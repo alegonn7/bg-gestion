@@ -1,4 +1,4 @@
-import { Barcode, TrendingUp, TrendingDown, DollarSign } from 'lucide-react'
+import { Barcode, TrendingUp, TrendingDown, DollarSign, Calendar } from 'lucide-react'
 import type { Product } from '@/store/products'
 import { useDollarStore } from '@/store/dollar'
 
@@ -21,7 +21,7 @@ export default function ProductCard({ product, onClick }: ProductCardProps) {
     : 0
 
   // Determinar si stock es bajo
-  const isLowStock = product.stock_quantity <= product.stock_min
+  const isLowStock = product.stock_quantity < product.stock_min
 
   // Conversión USD a ARS
   const costUsdToArs = product.price_cost_usd ? convertUsdToArs(product.price_cost_usd) : null
@@ -74,6 +74,13 @@ export default function ProductCard({ product, onClick }: ProductCardProps) {
           <div className="flex items-center gap-1 text-xs text-red-600">
             <TrendingDown className="w-3 h-3" />
             <span>Stock bajo (mín: {product.stock_min})</span>
+          </div>
+        )}
+
+        {product.expiration_date && (
+          <div className="flex items-center gap-1 text-xs text-gray-500 mt-1">
+            <Calendar className="w-3 h-3" />
+            <span>Vence: {new Date(product.expiration_date + 'T00:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
           </div>
         )}
       </div>

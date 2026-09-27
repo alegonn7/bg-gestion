@@ -2,7 +2,7 @@ import SuppliersPage from './Suppliers'
 import { useAuthStore } from '@/store/auth'
 import { useReportsStore } from '@/store/reports'
 import { useSalesStore } from '@/store/sales'
-import { Package, LayoutDashboard, Building2, Users, Settings, LogOut, BarChart3, BookOpen, CreditCard, Receipt, ChevronLeft, ChevronRight, AlertTriangle, TrendingUp, DollarSign, ShoppingCart, ArrowUp, ArrowDown, Wallet, ScanLine, FileText } from 'lucide-react'
+import { Package, LayoutDashboard, Building2, Users, Settings, LogOut, BarChart3, BookOpen, CreditCard, Receipt, ChevronLeft, ChevronRight, AlertTriangle, TrendingUp, DollarSign, ShoppingCart, ArrowUp, ArrowDown, Wallet, ScanLine, FileText, Sparkles, Calculator, WifiOff } from 'lucide-react'
 import { useState, useEffect, useMemo } from 'react'
 import Products from './Products'
 import MasterCatalog from './MasterCatalog'
@@ -15,21 +15,48 @@ import SettingsPage from './Settings'
 import CashRegisterPage from './CashRegister'
 import ScannerPage from './ScannerPage'
 import FiscalPage from './FiscalPage'
+import ExtrasPage from './Extras'
+import AccountingPage from './Accounting'
+import OfflineBanner from '@/components/OfflineBanner'
+import { useNetworkStore } from '@/store/network'
+import { useProductsStore } from '@/store/products'
+import { useCategoriesStore } from '@/store/categories'
+import { useSuppliersStore } from '@/store/suppliers'
+import { useDollarStore } from '@/store/dollar'
 import logoImg from '@/assets/logo.png'
 
-type Page = 'dashboard' | 'products' | 'master-catalog' | 'branches' | 'users' | 'reports' | 'pos' | 'sales-history' | 'settings' | 'cash-register' | 'scanner' | 'suppliers' | 'fiscal'
+type Page = 'dashboard' | 'products' | 'master-catalog' | 'branches' | 'users' | 'reports' | 'pos' | 'sales-history' | 'settings' | 'cash-register' | 'scanner' | 'suppliers' | 'fiscal' | 'extras' | 'accounting'
+
+/** Secciones que funcionan con la caché local, sin internet */
+const OFFLINE_PAGES: Page[] = ['products', 'scanner']
 
 export default function Dashboard() {
-  const { user, organization, logout, branches, selectedBranch, selectBranch } = useAuthStore()
+  const { user, organization, logout, branches, selectedBranch, selectBranch, isOffline } = useAuthStore()
+  const { isOnline } = useNetworkStore()
   const { lowStockCount, outOfStockCount, fetchReports } = useReportsStore()
   const [currentPage, setCurrentPage] = useState<Page>('dashboard')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   const stockAlertTotal = lowStockCount + outOfStockCount
+  const offlineMode = isOffline || !isOnline
 
   useEffect(() => {
+    if (offlineMode) return
     fetchReports()
-  }, [selectedBranch?.id])
+    // Precargar la caché offline aunque el usuario no entre a Productos:
+    // es lo que permite consultar precios y filtrar cuando se corta internet.
+    void useProductsStore.getState().fetchProducts()
+    void useCategoriesStore.getState().warmOfflineCache()
+    void useSuppliersStore.getState().fetchSuppliers()
+    void useDollarStore.getState().fetchBlueRate()
+  }, [selectedBranch?.id, offlineMode])
+
+  // Sin conexión solo se habilitan las secciones de consulta
+  useEffect(() => {
+    if (offlineMode && !OFFLINE_PAGES.includes(currentPage)) {
+      setCurrentPage('products')
+    }
+  }, [offlineMode, currentPage])
 
   const menuItems = [
     { id: 'dashboard' as Page, label: 'Dashboard', icon: LayoutDashboard },
@@ -39,11 +66,13 @@ export default function Dashboard() {
     { id: 'scanner' as Page, label: 'Escáner', icon: ScanLine, roles: ['owner', 'admin', 'manager', 'employee'] },
     { id: 'products' as Page, label: 'Productos', icon: Package, stockBadge: true },
     { id: 'master-catalog' as Page, label: 'Catálogo Maestro', icon: BookOpen, roles: ['owner', 'admin', 'manager', 'employee'] },
-    { id: 'branches' as Page, label: 'Sucursales', icon: Building2, roles: ['owner', 'admin'] },
-    { id: 'users' as Page, label: 'Usuarios', icon: Users, roles: ['owner', 'admin', 'manager'] },
+    { id: 'accounting' as Page, label: 'Contabilidad', icon: Calculator, roles: ['owner', 'admin'] },
     { id: 'suppliers' as Page, label: 'Proveedores', icon: Building2, roles: ['owner', 'admin', 'manager'] },
     { id: 'reports' as Page, label: 'Reportes', icon: BarChart3, roles: ['owner', 'admin', 'manager'] },
-    { id: 'fiscal' as Page, label: 'Facturación ARCA', icon: FileText, roles: ['owner', 'admin'] },
+    { id: 'branches' as Page, label: 'Sucursales', icon: Building2, roles: ['owner', 'admin'] },
+    { id: 'users' as Page, label: 'Usuarios', icon: Users, roles: ['owner', 'admin', 'manager'] },
+    // { id: 'fiscal' as Page, label: 'Facturación ARCA', icon: FileText, roles: ['owner', 'admin'] },
+    { id: 'extras' as Page, label: 'Extras', icon: Sparkles, roles: ['owner', 'admin', 'manager'] },
     { id: 'settings' as Page, label: 'Configuración', icon: Settings },
   ]
 
@@ -76,6 +105,10 @@ export default function Dashboard() {
         return <ScannerPage />
       case 'fiscal':
         return <FiscalPage />
+      case 'accounting':
+        return <AccountingPage />
+      case 'extras':
+        return <ExtrasPage />
       case 'settings':
         return <SettingsPage />
       case 'dashboard':
@@ -161,20 +194,25 @@ export default function Dashboard() {
             const Icon = item.icon
             const isActive = currentPage === item.id
             const showStockBadge = (item as any).stockBadge && stockAlertTotal > 0
+            const isBlocked = offlineMode && !OFFLINE_PAGES.includes(item.id)
 
             return (
               <button
                 key={item.id}
                 onClick={() => setCurrentPage(item.id)}
-                title={sidebarCollapsed ? item.label : undefined}
+                disabled={isBlocked}
+                title={isBlocked ? `${item.label} · no disponible sin conexión` : (sidebarCollapsed ? item.label : undefined)}
                 className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : ''} gap-3 ${sidebarCollapsed ? 'px-2 py-3' : 'px-4 py-3'} rounded-lg transition relative ${
-                  isActive
-                    ? 'bg-blue-50 text-blue-700 font-medium'
-                    : 'text-gray-700 hover:bg-gray-50'
+                  isBlocked
+                    ? 'text-gray-300 cursor-not-allowed'
+                    : isActive
+                      ? 'bg-blue-50 text-blue-700 font-medium'
+                      : 'text-gray-700 hover:bg-gray-50'
                 }`}
               >
-                <Icon className={`w-5 h-5 flex-shrink-0 ${isActive ? 'text-blue-700' : 'text-gray-400'}`} />
+                <Icon className={`w-5 h-5 flex-shrink-0 ${isBlocked ? 'text-gray-300' : isActive ? 'text-blue-700' : 'text-gray-400'}`} />
                 {!sidebarCollapsed && <span className="flex-1 text-left">{item.label}</span>}
+                {isBlocked && !sidebarCollapsed && <WifiOff className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" />}
                 {/* Badge de stock bajo */}
                 {showStockBadge && (
                   <span className={`flex items-center justify-center min-w-[20px] h-5 px-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full flex-shrink-0 ${sidebarCollapsed ? 'absolute -top-0.5 -right-0.5' : ''}`}>
@@ -213,8 +251,11 @@ export default function Dashboard() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto">
-        {renderContent()}
+      <main className="flex-1 flex flex-col overflow-hidden">
+        <OfflineBanner />
+        <div className="flex-1 overflow-auto">
+          {renderContent()}
+        </div>
       </main>
     </div>
   )

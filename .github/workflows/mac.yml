@@ -1,0 +1,61 @@
+# Arma la versión de Mac en una Mac de GitHub (no hace falta tener una Mac).
+# Se corre a mano: GitHub → Actions → "Versión Mac" → Run workflow.
+name: Versión Mac
+
+on:
+  workflow_dispatch:
+    inputs:
+      publicar:
+        description: "Subir los archivos a la última versión publicada (para que las Mac se actualicen solas)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Compilar la app
+        run: npx tsc && npx vite build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
+      - name: Armar, firmar y notarizar el instalador
+        run: npx electron-builder --mac --publish never -c.mac.notarize.teamId="$APPLE_TEAM_ID"
+        env:
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Dejar los instaladores para descargar
+        uses: actions/upload-artifact@v4
+        with:
+          name: bggestion-mac
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.blockmap
+            release/latest-mac.yml
+
+      - name: Subir a la última versión publicada
+        if: ${{ inputs.publicar }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG=$(gh release view --json tagName --jq .tagName)
+          gh release upload "$TAG" release/*.dmg release/*.zip release/*.blockmap release/latest-mac.yml --clobber

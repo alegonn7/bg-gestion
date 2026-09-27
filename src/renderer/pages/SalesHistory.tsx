@@ -24,7 +24,8 @@ export default function SalesHistory() {
     fetchSales,
     voidSale,
     setFilters,
-    clearFilters
+    clearFilters,
+    voidedCount,
   } = useSalesStore()
 
   const { branches, fetchBranches } = useBranchesStore()
@@ -42,6 +43,7 @@ export default function SalesHistory() {
   const [voidConfirmId, setVoidConfirmId] = useState<string | null>(null)
   const [isVoiding, setIsVoiding] = useState(false)
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
+  const [localShowVoided, setLocalShowVoided] = useState(false)
   const [invoicingSale, setInvoicingSale] = useState<any | null>(null)
   const [creditNoteSale, setCreditNoteSale] = useState<any | null>(null)
   const [debitNoteSale, setDebitNoteSale] = useState<any | null>(null)
@@ -89,7 +91,8 @@ export default function SalesHistory() {
       startDate: localStartDate ? new Date(localStartDate) : null,
       endDate: localEndDate ? new Date(localEndDate) : null,
       searchQuery: localSearchQuery,
-      userId: selectedUserId || undefined
+      userId: selectedUserId || undefined,
+      showVoided: localShowVoided,
     })
     setShowFilters(false)
   }
@@ -98,6 +101,7 @@ export default function SalesHistory() {
     setLocalStartDate('')
     setLocalEndDate('')
     setLocalSearchQuery('')
+    setLocalShowVoided(false)
     setSelectedUserId(null)
     clearFilters()
   }
@@ -306,7 +310,6 @@ export default function SalesHistory() {
   const totalSales = activeSales.length
   const totalRevenue = activeSales.reduce((sum, sale) => sum + sale.total, 0)
   const averageSale = totalSales > 0 ? totalRevenue / totalSales : 0
-  const voidedCount = filteredSales.filter((s) => s.status === 'voided').length
 
   // Resetear página al cambiar filtros o fechas
   useEffect(() => {
@@ -333,8 +336,14 @@ export default function SalesHistory() {
         </div>
 
         {/* Stats Cards */}
-        <div className="mb-2">
+        <div className="mb-2 flex items-center gap-2">
           <span className="inline-block bg-blue-100 text-blue-700 text-xs font-semibold px-3 py-1 rounded">Estadísticas del mes seleccionado</span>
+          {voidedCount > 0 && (
+            <span className="inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs font-semibold px-3 py-1 rounded">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              {voidedCount} anulada{voidedCount === 1 ? '' : 's'}/reembolsada{voidedCount === 1 ? '' : 's'} en este período
+            </span>
+          )}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-blue-50 rounded-lg p-4">
@@ -436,6 +445,19 @@ export default function SalesHistory() {
                 ))}
               </select>
             </div>
+          </div>
+
+          <div className="mt-4 flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="show_voided"
+              checked={localShowVoided}
+              onChange={(e) => setLocalShowVoided(e.target.checked)}
+              className="h-4 w-4"
+            />
+            <label htmlFor="show_voided" className="text-sm text-gray-700">
+              Mostrar anuladas y reembolsadas (incluye pedidos online reembolsados)
+            </label>
           </div>
 
           <div className="flex gap-2 mt-4">

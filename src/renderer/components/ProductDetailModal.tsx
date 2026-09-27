@@ -39,7 +39,7 @@ export default function ProductDetailModal({ product, isOpen, onClose, onEdit, o
   const marginAmount = product.price_sale - product.price_cost
 
   // Estado del stock
-  const isLowStock = product.stock_quantity <= product.stock_min
+  const isLowStock = product.stock_quantity < product.stock_min
   const stockPercentage = product.stock_min > 0 
     ? (product.stock_quantity / product.stock_min) * 100 
     : 100
@@ -90,6 +90,20 @@ export default function ProductDetailModal({ product, isOpen, onClose, onEdit, o
                 }}
               >
                 {product.category.name}
+              </div>
+            </div>
+          )}
+
+          {/* Vencimiento */}
+          {product.expiration_date && (
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 mb-2">Vencimiento</h3>
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-amber-50 text-amber-800 border border-amber-200">
+                {new Date(product.expiration_date + 'T00:00:00').toLocaleDateString('es-AR', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                })}
               </div>
             </div>
           )}

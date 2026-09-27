@@ -1,6 +1,10 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from './auth'
+import { loadMeta, saveMeta } from '@/lib/offline'
+
+/** Clave de la copia local, separada por organización */
+const cacheKey = (organizationId: string) => `suppliers:${organizationId}`
 
 export interface Supplier {
   id: string
@@ -43,7 +47,21 @@ export const useSuppliersStore = create<SuppliersState>((set, get) => ({
         .order('name', { ascending: true })
       if (error) throw error
       set({ suppliers: data || [], isLoading: false })
+
+      // Copia local para que el filtro por proveedor funcione sin conexión
+      void saveMeta(cacheKey(organization.id), data || [])
     } catch (error: any) {
+      const organizationId = useAuthStore.getState().organization?.id
+      const cached = organizationId
+        ? await loadMeta<Supplier[]>(cacheKey(organizationId))
+        : null
+
+      if (cached && cached.length > 0) {
+        console.warn(`📴 Proveedores cargados desde la caché local (${cached.length})`)
+        set({ suppliers: cached, isLoading: false, error: null })
+        return
+      }
+
       set({ error: error.message, isLoading: false })
     }
   },

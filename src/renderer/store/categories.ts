@@ -1,6 +1,10 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from './auth'
+import { loadMeta, saveMeta } from '@/lib/offline'
+
+/** Clave de la copia local, separada por organización */
+const cacheKey = (organizationId: string) => `categories:${organizationId}`
 
 export interface Category {
   id: string
@@ -22,6 +26,7 @@ interface CategoriesState {
 
   // Actions
   fetchCategories: () => Promise<void>
+  warmOfflineCache: () => Promise<void>
   createCategory: (category: Partial<Category>) => Promise<void>
   updateCategory: (id: string, updates: Partial<Category>) => Promise<void>
   deleteCategory: (id: string) => Promise<void>
@@ -60,18 +65,48 @@ export const useCategoriesStore = create<CategoriesState>((set, get) => ({
         })
       )
 
-      set({ 
+      set({
         categories: categoriesWithStats,
-        isLoading: false 
+        isLoading: false
       })
+
+      // Copia local para que los filtros por categoría funcionen sin conexión
+      void saveMeta(cacheKey(organization.id), categoriesWithStats)
 
     } catch (error: any) {
       console.error('Error fetching categories:', error)
-      set({ 
+
+      const organizationId = useAuthStore.getState().organization?.id
+      const cached = organizationId
+        ? await loadMeta<Category[]>(cacheKey(organizationId))
+        : null
+
+      if (cached && cached.length > 0) {
+        console.warn(`📴 Categorías cargadas desde la caché local (${cached.length})`)
+        set({ categories: cached, isLoading: false, error: null })
+        return
+      }
+
+      set({
         error: error.message,
-        isLoading: false 
+        isLoading: false
       })
     }
+  },
+
+  /**
+   * Garantiza que exista una copia local de las categorías para los filtros offline.
+   * No refetchea si ya hay copia: `fetchCategories` consulta stats por categoría y
+   * no vale la pena repetirlo en cada ingreso (Productos la refresca al abrirse).
+   */
+  warmOfflineCache: async () => {
+    const organizationId = useAuthStore.getState().organization?.id
+    if (!organizationId) return
+
+    const cached = await loadMeta<Category[]>(cacheKey(organizationId))
+    if (cached && cached.length > 0) return
+
+    await get().fetchCategories()
   },
 
   createCategory: async (categoryData) => {

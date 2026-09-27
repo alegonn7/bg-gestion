@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
-import { X, TrendingUp, TrendingDown, Package, ShoppingCart, Banknote, ArrowLeftRight, AlertCircle } from 'lucide-react'
+import { X, TrendingUp, TrendingDown, Package, ShoppingCart, Banknote, ArrowLeftRight, AlertCircle, RefreshCw } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/auth'
 import { useProductsStore, Product } from '@/store/products'
 import { useCashRegisterStore } from '@/store/cash-register'
+import { useTransferAccounts } from '@/store/transfer-accounts'
 
 interface InventoryMovementModalProps {
   product: Product | null
@@ -33,10 +34,13 @@ const MOVEMENT_OPTIONS = {
   ],
 }
 
+type PaymentSource = 'cash' | 'personal' | 'bank'
+
 export default function InventoryMovementModal({ product, isOpen, onClose }: InventoryMovementModalProps) {
-  const { user, branch } = useAuthStore()
+  const { user, branch, organization } = useAuthStore()
   const { updateProduct } = useProductsStore()
   const { currentRegister } = useCashRegisterStore()
+  const { accounts, fetchAccounts } = useTransferAccounts()
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -48,10 +52,15 @@ export default function InventoryMovementModal({ product, isOpen, onClose }: Inv
 
   // Campos extra solo para compras
   const [purchaseCost, setPurchaseCost] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'transferencia'>('efectivo')
-  const [registerExpense, setRegisterExpense] = useState(true)
+  const [paymentSource, setPaymentSource] = useState<PaymentSource>('cash')
+  const [transferAccountId, setTransferAccountId] = useState('')
 
   const isPurchase = selectedOption === 'compra'
+
+  useEffect(() => {
+    fetchAccounts()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Auto-calcular costo cuando cambia la cantidad en una compra
   useEffect(() => {
@@ -64,9 +73,16 @@ export default function InventoryMovementModal({ product, isOpen, onClose }: Inv
   // Resetear campos de compra al cambiar el tipo de movimiento
   useEffect(() => {
     setPurchaseCost('')
-    setPaymentMethod('efectivo')
-    setRegisterExpense(true)
+    setPaymentSource('cash')
+    setTransferAccountId('')
   }, [selectedOption])
+
+  const recalculateCost = () => {
+    if (product && quantity) {
+      const auto = (parseInt(quantity) || 0) * product.price_cost
+      setPurchaseCost(auto > 0 ? auto.toFixed(2) : '')
+    }
+  }
 
   if (!isOpen || !product) return null
 
@@ -122,28 +138,39 @@ export default function InventoryMovementModal({ product, isOpen, onClose }: Inv
       // 2. Actualizar stock del producto
       await updateProduct(product.id, { stock_quantity: stockAfter })
 
-      // 3. Si es compra y hay que registrar el egreso
-      if (isPurchase && registerExpense) {
+      // 3. Registrar egreso de compra
+      if (isPurchase) {
         const cost = parseFloat(purchaseCost) || 0
         if (cost > 0) {
-          if (!currentRegister) {
-            // El movimiento ya se registró, solo avisamos
+          // Para caja actual requerimos registro abierto
+          if (paymentSource === 'cash' && !currentRegister) {
             setError('⚠️ No hay caja abierta. El stock fue actualizado pero el egreso no se registró en caja.')
             setLoading(false)
             return
           }
 
-          const { error: expenseError } = await supabase
-            .from('extra_movements')
-            .insert({
-              cash_register_id: currentRegister.id,
-              type: 'gasto',
-              amount: cost,
-              description: `Compra: ${product.product?.name} x${qty} unid. — pago ${paymentMethod}`,
-              created_by: user?.id,
-              created_by_name: user?.full_name || user?.email || '',
-            })
+          const sourceLabel = paymentSource === 'cash' ? 'caja' : paymentSource === 'bank' ? 'transferencia' : 'efectivo (fuera)'
+          const movData: any = {
+            type: 'gasto',
+            amount: cost,
+            description: `Compra: ${product.product?.name} x${qty} unid. — pago ${sourceLabel}`,
+            source: paymentSource,
+            category: 'mercaderia',
+            created_by: user?.id,
+            created_by_name: user?.full_name || user?.email || '',
+          }
 
+          if (currentRegister) {
+            movData.cash_register_id = currentRegister.id
+          } else {
+            movData.organization_id = organization?.id
+          }
+
+          if (paymentSource === 'bank' && transferAccountId) {
+            movData.transfer_account_id = transferAccountId
+          }
+
+          const { error: expenseError } = await supabase.from('extra_movements').insert(movData)
           if (expenseError) throw expenseError
         }
       }
@@ -154,9 +181,9 @@ export default function InventoryMovementModal({ product, isOpen, onClose }: Inv
       setNotes('')
       setMovementType('entry')
       setPurchaseCost('')
-      setPaymentMethod('efectivo')
-      setRegisterExpense(true)
-      onClose()
+      setPaymentSource('cash')
+      setTransferAccountId('')
+        onClose()
 
     } catch (err: any) {
       console.error('Error registering movement:', err)
@@ -291,86 +318,93 @@ export default function InventoryMovementModal({ product, isOpen, onClose }: Inv
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Costo total pagado
-                  <span className="ml-1 text-xs text-gray-400 font-normal">
-                    (auto: {parseInt(quantity) || 0} × ${product.price_cost.toFixed(2)})
-                  </span>
                 </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium">$</span>
-                  <input
-                    type="number"
-                    value={purchaseCost}
-                    onChange={e => setPurchaseCost(e.target.value)}
-                    placeholder="0.00"
-                    min="0"
-                    step="0.01"
-                    className="w-full pl-7 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                  />
-                </div>
-                <p className="text-xs text-gray-400 mt-1">Podés editarlo si el precio real fue distinto</p>
-              </div>
-
-              {/* Forma de pago */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Forma de pago</label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('efectivo')}
-                    className={`flex items-center justify-center gap-2 px-3 py-2 border-2 rounded-lg text-sm transition ${
-                      paymentMethod === 'efectivo'
-                        ? 'border-blue-500 bg-blue-100 text-blue-700'
-                        : 'border-gray-200 text-gray-600 hover:border-gray-300'
-                    }`}
-                  >
-                    <Banknote className="w-4 h-4" />
-                    Efectivo
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('transferencia')}
-                    className={`flex items-center justify-center gap-2 px-3 py-2 border-2 rounded-lg text-sm transition ${
-                      paymentMethod === 'transferencia'
-                        ? 'border-blue-500 bg-blue-100 text-blue-700'
-                        : 'border-gray-200 text-gray-600 hover:border-gray-300'
-                    }`}
-                  >
-                    <ArrowLeftRight className="w-4 h-4" />
-                    Transferencia
-                  </button>
-                </div>
-              </div>
-
-              {/* Registrar egreso en caja */}
-              <div>
-                <label className="flex items-start gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={registerExpense}
-                    onChange={e => setRegisterExpense(e.target.checked)}
-                    className="mt-0.5 w-4 h-4 accent-blue-600"
-                  />
-                  <div>
-                    <span className="text-sm font-medium text-gray-700">Registrar como egreso en caja</span>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      Descuenta el monto de la caja actual para reflejar el gasto real
-                    </p>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium">$</span>
+                    <input
+                      type="number"
+                      value={purchaseCost}
+                      onChange={e => setPurchaseCost(e.target.value)}
+                      placeholder="0.00"
+                      min="0"
+                      step="0.01"
+                      className="w-full pl-7 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    />
                   </div>
-                </label>
+                  <button
+                    type="button"
+                    onClick={recalculateCost}
+                    title={`Recalcular: ${parseInt(quantity) || 0} × $${product.price_cost.toFixed(2)}`}
+                    className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 rounded-lg text-xs text-gray-600 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-700 transition"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Auto
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">
+                  Precio de costo: {parseInt(quantity) || 0} × ${product.price_cost.toFixed(2)} = ${((parseInt(quantity) || 0) * product.price_cost).toFixed(2)}
+                </p>
+              </div>
 
-                {registerExpense && !currentRegister && (
-                  <div className="flex items-start gap-2 mt-2 bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2">
-                    <AlertCircle className="w-4 h-4 text-yellow-600 flex-shrink-0 mt-0.5" />
-                    <p className="text-xs text-yellow-700">
-                      No hay caja abierta. El stock se actualizará pero el egreso no se registrará.
-                    </p>
+              {/* ¿De dónde sale la plata? */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">¿De dónde sale la plata?</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    { value: 'cash',     icon: Banknote,      label: '💵 Caja actual',     sub: 'Afecta arqueo' },
+                    { value: 'personal', icon: Banknote,      label: '💵 Efectivo',         sub: 'Fuera de caja' },
+                    { value: 'bank',     icon: ArrowLeftRight, label: '🏦 Transferencia',   sub: 'Elegir cuenta' },
+                  ] as { value: PaymentSource; icon: any; label: string; sub: string }[]).map(opt => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => { setPaymentSource(opt.value); if (opt.value !== 'bank') setTransferAccountId('') }}
+                      className={`flex flex-col items-center px-2 py-2 border-2 rounded-lg text-xs transition ${
+                        paymentSource === opt.value
+                          ? 'border-blue-500 bg-blue-50 text-blue-700'
+                          : 'border-gray-200 text-gray-600 hover:border-gray-300'
+                      }`}
+                    >
+                      <span className="font-medium">{opt.label}</span>
+                      <span className={`mt-0.5 ${paymentSource === opt.value ? 'text-blue-400' : 'text-gray-400'}`}>{opt.sub}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Selector de cuenta */}
+                {paymentSource === 'bank' && (
+                  <div className="mt-2">
+                    <select
+                      value={transferAccountId}
+                      onChange={e => setTransferAccountId(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                    >
+                      <option value="">— Elegir cuenta —</option>
+                      {accounts.map(a => (
+                        <option key={a.id} value={a.id}>{a.nombre}{a.alias ? ` (${a.alias})` : ''}</option>
+                      ))}
+                    </select>
                   </div>
                 )}
+              </div>
 
-                {registerExpense && currentRegister && (
-                  <p className="text-xs text-green-600 mt-2 flex items-center gap-1">
-                    ✓ Se registrará como egreso en la caja abierta
-                  </p>
+              {/* Info de registro */}
+              <div className="text-xs text-gray-500 pt-1">
+                {paymentSource === 'cash' && !currentRegister && (
+                  <div className="flex items-start gap-2 bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2">
+                    <AlertCircle className="w-4 h-4 text-yellow-600 flex-shrink-0 mt-0.5" />
+                    <p className="text-yellow-700">No hay caja abierta. El stock se actualizará pero el egreso en caja no se registrará.</p>
+                  </div>
+                )}
+                {paymentSource === 'cash' && currentRegister && (
+                  <p className="text-green-600">✓ El pago se descuenta de la caja actual</p>
+                )}
+                {paymentSource === 'personal' && (
+                  <p>El pago queda registrado en contabilidad — no afecta el arqueo de caja</p>
+                )}
+                {paymentSource === 'bank' && (
+                  <p>El pago queda registrado en la cuenta seleccionada</p>
                 )}
               </div>
             </div>
@@ -417,8 +451,8 @@ export default function InventoryMovementModal({ product, isOpen, onClose }: Inv
               </div>
               {isPurchase && purchaseCost && parseFloat(purchaseCost) > 0 && (
                 <div className="mt-2 pt-2 border-t border-green-200 text-xs text-green-700">
-                  Egreso: <strong>${parseFloat(purchaseCost).toFixed(2)}</strong> — {paymentMethod}
-                  {!registerExpense && <span className="text-gray-400 ml-1">(no se registra en caja)</span>}
+                  Egreso: <strong>${parseFloat(purchaseCost).toFixed(2)}</strong>
+                  {' — '}{paymentSource === 'cash' ? '💵 Caja actual' : paymentSource === 'bank' ? '🏦 Transferencia' : '💵 Efectivo (fuera)'}
                 </div>
               )}
               {newStock < 0 && (

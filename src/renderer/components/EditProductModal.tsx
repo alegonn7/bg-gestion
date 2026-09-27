@@ -41,6 +41,7 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
     price_cost_usd: '',
     price_sale_usd: '',
     stock_min: '',
+    expiration_date: '',
   })
 
   const [markupArs, setMarkupArs] = useState('')
@@ -62,6 +63,7 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
         price_cost_usd: product.price_cost_usd ? product.price_cost_usd.toString() : '',
         price_sale_usd: product.price_sale_usd ? product.price_sale_usd.toString() : '',
         stock_min: product.stock_min.toString(),
+        expiration_date: product.expiration_date || '',
       })
       setSelectedSupplier(product.product?.supplier_id || '')
       setAlicuotaIva(product.alicuota_iva ?? 5)
@@ -129,6 +131,7 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
         price_cost_usd: parseFloat(formData.price_cost_usd) || null,
         price_sale_usd: parseFloat(formData.price_sale_usd) || null,
         stock_min: parseInt(formData.stock_min) || 0,
+        expiration_date: formData.expiration_date || null,
         alicuota_iva: alicuotaIva,
         // Datos del producto maestro (nombre, descripción, categoría, proveedor)
         product: {
@@ -580,6 +583,22 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
               />
             </div>
+          </div>
+
+          {/* Vencimiento */}
+          <div>
+            <label htmlFor="expiration_date" className="block text-sm font-medium text-gray-700 mb-2">
+              Fecha de Vencimiento <span className="text-xs text-gray-400 font-normal ml-1">(opcional)</span>
+            </label>
+            <input
+              type="date"
+              id="expiration_date"
+              name="expiration_date"
+              value={formData.expiration_date}
+              onChange={handleChange}
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+            />
+            <p className="mt-1 text-xs text-gray-500">Dejalo vacío si el producto no vence.</p>
           </div>
 
           {/* Buttons */}

@@ -195,11 +195,12 @@ interface ReportsState {
   fetchDeadStock: (startDate?: Date, endDate?: Date, branchId?: string) => Promise<void>
   fetchCashExpenses: (startDate?: Date, endDate?: Date, branchId?: string) => Promise<void>
   fetchFiscalData: (startDate?: Date, endDate?: Date) => Promise<void>
+  reset: () => void
 }
 
-export const useReportsStore = create<ReportsState>((set) => ({
+const reportsInitialState = {
   isLoading: false,
-  error: null,
+  error: null as string | null,
 
   totalProducts: 0,
   totalStock: 0,
@@ -214,32 +215,36 @@ export const useReportsStore = create<ReportsState>((set) => ({
   totalProfit: 0,
   totalQuantitySold: 0,
 
-  topProductsByStock: [],
-  topProductsByValue: [],
-  stockAlerts: [],
-  branchStats: [],
-  movementsSummary: [],
-  categoryStats: [],
+  topProductsByStock: [] as ProductStats[],
+  topProductsByValue: [] as ProductStats[],
+  stockAlerts: [] as StockAlert[],
+  branchStats: [] as BranchStats[],
+  movementsSummary: [] as MovementSummary[],
+  categoryStats: [] as CategoryStats[],
 
-  topProductsBySales: [],
-  topProductsByRevenue: [],
-  topProductsByProfit: [],
-  revenueByPeriod: [],
-  revenueByBranch: [],
-  revenueByCategory: [],
-  revenueByPaymentMethod: [],
+  topProductsBySales: [] as SalesData[],
+  topProductsByRevenue: [] as SalesData[],
+  topProductsByProfit: [] as SalesData[],
+  revenueByPeriod: [] as PeriodRevenue[],
+  revenueByBranch: [] as BranchRevenue[],
+  revenueByCategory: [] as CategoryRevenue[],
+  revenueByPaymentMethod: [] as PaymentMethodRevenue[],
   avgTicket: 0,
   totalSalesCount: 0,
-  purchasesBySupplier: [],
-  deadStock: [],
-  cashExpenses: [],
+  purchasesBySupplier: [] as PurchaseBySupplier[],
+  deadStock: [] as DeadStockProduct[],
+  cashExpenses: [] as CashExpense[],
 
-  fiscalByPeriod: [],
-  fiscalByType: [],
+  fiscalByPeriod: [] as FiscalPeriodStat[],
+  fiscalByType: [] as FiscalByType[],
   totalFacturado: 0,
   totalNC: 0,
   totalND: 0,
   comprobanteCount: 0,
+}
+
+export const useReportsStore = create<ReportsState>((set) => ({
+  ...reportsInitialState,
 
   fetchReports: async () => {
     set({ isLoading: true, error: null })
@@ -308,7 +313,7 @@ export const useReportsStore = create<ReportsState>((set) => ({
       const totalStockValueCost = products?.reduce((sum, p) => sum + (p.stock_quantity * p.price_cost), 0) || 0
       const totalStockValueSale = products?.reduce((sum, p) => sum + (p.stock_quantity * p.price_sale), 0) || 0
       const totalPotentialProfit = totalStockValueSale - totalStockValueCost
-      const lowStockCount = products?.filter(p => p.stock_quantity > 0 && p.stock_quantity <= p.stock_min).length || 0
+      const lowStockCount = products?.filter(p => p.stock_quantity > 0 && p.stock_quantity < p.stock_min).length || 0
       const outOfStockCount = products?.filter(p => p.stock_quantity === 0).length || 0
 
       const topByStock = [...(products || [])]
@@ -344,7 +349,7 @@ export const useReportsStore = create<ReportsState>((set) => ({
         .slice(0, 10)
 
       const alerts = products
-        ?.filter(p => p.stock_quantity <= p.stock_min)
+        ?.filter(p => p.stock_quantity < p.stock_min)
         .sort((a, b) => (a.stock_quantity - a.stock_min) - (b.stock_quantity - b.stock_min))
         .slice(0, 20)
         .map(p => ({
@@ -386,7 +391,7 @@ export const useReportsStore = create<ReportsState>((set) => ({
         stats.potential_profit += (p.stock_quantity * p.price_sale) - (p.stock_quantity * p.price_cost)
 
         if (p.stock_quantity === 0) stats.out_of_stock_count++
-        else if (p.stock_quantity <= p.stock_min) stats.low_stock_count++
+        else if (p.stock_quantity < p.stock_min) stats.low_stock_count++
       })
 
       const branchStatsArray = Array.from(branchStatsMap.values())
@@ -563,6 +568,10 @@ export const useReportsStore = create<ReportsState>((set) => ({
           stock_after,
           created_at,
           branch_id,
+          sale_id,
+          sales (
+            status
+          ),
           products_branch!inner (
             id,
             barcode,
@@ -590,9 +599,15 @@ export const useReportsStore = create<ReportsState>((set) => ({
         .gte('created_at', start.toISOString())
         .lte('created_at', end.toISOString())
 
-      const { data: sales, error: salesError } = await query
+      const { data: rawSales, error: salesError } = await query
 
       if (salesError) throw salesError
+
+      // Filtrar ventas no anuladas (excluir status='voided')
+      const sales = rawSales?.filter(s => {
+        const saleStatus = (s.sales as any)?.status
+        return saleStatus !== 'voided'
+      }) || []
 
       const totalRevenue = sales?.reduce((sum, s) => sum + (s.quantity * s.price_at_movement), 0) || 0
       const totalCost = sales?.reduce((sum, s) => sum + (s.quantity * s.cost_at_movement), 0) || 0
@@ -908,7 +923,7 @@ export const useReportsStore = create<ReportsState>((set) => ({
           .gt('stock_quantity', 0),
         supabase
           .from('inventory_movements')
-          .select('product_branch_id')
+          .select('product_branch_id, sales (status)')
           .eq('movement_type', 'exit')
           .eq('transaction_type', 'sale')
           .in('branch_id', branchIds)
@@ -916,7 +931,12 @@ export const useReportsStore = create<ReportsState>((set) => ({
           .lte('created_at', end.toISOString())
       ])
 
-      const soldIds = new Set(soldMovements?.map(m => m.product_branch_id))
+      // Filtrar solo los movimientos de ventas NO anuladas
+      const soldIds = new Set(
+        (soldMovements || [])
+          .filter(m => (m.sales as any)?.status !== 'voided')
+          .map(m => m.product_branch_id)
+      )
 
       const deadStock = (products || [])
         .filter(p => !soldIds.has(p.id))
@@ -1048,5 +1068,7 @@ export const useReportsStore = create<ReportsState>((set) => ({
     } catch (error: any) {
       console.error('Error fetching fiscal data:', error)
     }
-  }
+  },
+
+  reset: () => set(reportsInitialState),
 }))

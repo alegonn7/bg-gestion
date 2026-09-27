@@ -7,6 +7,9 @@ export interface ExtraMovement {
   type: 'gasto' | 'ingreso'
   amount: number
   description: string
+  source: 'cash' | 'bank' | 'personal' | 'other'
+  category?: string | null
+  transfer_account_id?: string | null
   created_by: string
   created_by_name?: string
   created_at: string
@@ -43,9 +46,11 @@ export const useExtraMovementsStore = create<ExtraMovementsState>((set, get) => 
       set({ error: 'Usuario no autenticado.', isLoading: false })
       return
     }
+    // Si no viene source, default a 'cash' para compatibilidad
+    const source = movement.source || 'cash'
     const { data, error } = await supabase
       .from('extra_movements')
-      .insert({ ...movement, created_by: user.id })
+      .insert({ ...movement, created_by: user.id, source })
       .select()
       .single()
     if (error) set({ error: error.message, isLoading: false })

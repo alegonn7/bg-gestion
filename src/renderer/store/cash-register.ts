@@ -23,6 +23,7 @@ export interface CashRegister {
   sales_count: number | null
   notes_open: string | null
   notes_close: string | null
+  retiro_caja_fuerte: number | null
   status: 'open' | 'closed'
   opened_at: string
   closed_at: string | null
@@ -37,7 +38,7 @@ interface CashRegisterState {
   fetchRegisters: () => Promise<void>
   fetchCurrentRegister: () => Promise<void>
   openRegister: (openingAmount: number, notes?: string) => Promise<{ success: boolean; error?: string }>
-  closeRegister: (closingAmount: number, notes?: string) => Promise<{ success: boolean; error?: string }>
+  closeRegister: (closingAmount: number, notes?: string, retiroFuerte?: number) => Promise<{ success: boolean; error?: string }>
 }
 
 export const useCashRegisterStore = create<CashRegisterState>((set, get) => ({
@@ -94,6 +95,7 @@ export const useCashRegisterStore = create<CashRegisterState>((set, get) => ({
         sales_count: r.sales_count,
         notes_open: r.notes_open,
         notes_close: r.notes_close,
+        retiro_caja_fuerte: r.retiro_caja_fuerte ?? null,
         status: r.status,
         opened_at: r.opened_at,
         closed_at: r.closed_at,
@@ -156,6 +158,7 @@ export const useCashRegisterStore = create<CashRegisterState>((set, get) => ({
             sales_count: data.sales_count,
             notes_open: data.notes_open,
             notes_close: null,
+            retiro_caja_fuerte: null,
             status: 'open',
             opened_at: data.opened_at,
             closed_at: null,
@@ -208,7 +211,7 @@ export const useCashRegisterStore = create<CashRegisterState>((set, get) => ({
     }
   },
 
-  closeRegister: async (closingAmount: number, notes?: string) => {
+  closeRegister: async (closingAmount: number, notes?: string, retiroFuerte?: number) => {
     try {
       const { user, selectedBranch } = useAuthStore.getState()
       if (!user) return { success: false, error: 'No autenticado' }
@@ -220,13 +223,18 @@ export const useCashRegisterStore = create<CashRegisterState>((set, get) => ({
         ? selectedBranch?.id
         : user.branch_id
 
-      // Obtener ventas realizadas durante este turno de caja
+      // Obtener ventas realizadas durante este turno de caja -- excluye ventas online
+      // ('Online'): nunca pasaron por esta caja física (no tienen cash_amount/card_amount/
+      // transfer_amount, se cobran por Mercado Pago), así que no deben contarse acá ni en
+      // salesCount -- si no, el conteo de ventas queda mayor a la plata que efectivamente
+      // sumaron cashSales/cardSales/transferSales, algo que se veía contradictorio en la UI.
       const { data: salesData } = await supabase
         .from('sales')
         .select('total, payment_method, status, cash_amount, card_amount, transfer_amount')
         .eq('branch_id', branchId!)
         .gte('created_at', current.opened_at)
         .neq('status', 'voided')
+        .neq('payment_method', 'Online')
 
       const activeSales = (salesData || []).filter(s => s.status !== 'voided')
       const cashSales = activeSales.reduce((sum, s) => sum + (Number(s.cash_amount) || 0), 0)
@@ -241,8 +249,10 @@ export const useCashRegisterStore = create<CashRegisterState>((set, get) => ({
       try {
         const { useExtraMovementsStore } = await import('./extra-movements')
         const extraMovements = useExtraMovementsStore.getState().movements.filter(m => m.cash_register_id === current.id)
-        extraIncomes = extraMovements.filter(m => m.type === 'ingreso').reduce((sum, m) => sum + m.amount, 0)
-        extraExpenses = extraMovements.filter(m => m.type === 'gasto').reduce((sum, m) => sum + m.amount, 0)
+        // Solo contar ingresos que vienen de la caja física
+        extraIncomes = extraMovements.filter(m => m.type === 'ingreso' && (m.source === 'cash' || !m.source)).reduce((sum, m) => sum + m.amount, 0)
+        // Solo contar gastos que vienen de la caja física
+        extraExpenses = extraMovements.filter(m => m.type === 'gasto' && (m.source === 'cash' || !m.source)).reduce((sum, m) => sum + m.amount, 0)
       } catch (e) {
         // Si falla, no suma nada
       }
@@ -263,6 +273,7 @@ export const useCashRegisterStore = create<CashRegisterState>((set, get) => ({
           total_sales_amount: totalSalesAmount,
           sales_count: salesCount,
           notes_close: notes || null,
+          retiro_caja_fuerte: retiroFuerte || null,
           status: 'closed',
           closed_at: new Date().toISOString(),
         })
