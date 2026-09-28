@@ -82,11 +82,10 @@ function dibujarEncabezado(doc: jsPDF, emisor: EmisorRemito, { remito, sucursalD
   if (emisor.cuit) campo(doc, 'CUIT:', cuitConGuiones(emisor.cuit), 116, 51, 82)
   if (emisor.ingresosBrutos) campo(doc, 'Ingresos Brutos:', emisor.ingresosBrutos, 116, 56, 82)
   if (emisor.inicioActividades) campo(doc, 'Fecha de Inicio de Actividades:', fechaAR(emisor.inicioActividades), 116, 61, 82)
-  if (remito.tipo === 'X') {
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(7.5)
-    doc.text('DOCUMENTO NO VÁLIDO COMO FACTURA', 116, 46.5)
-  }
+  // Los remitos (X y R) llevan esta leyenda: no son factura
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(7.5)
+  doc.text('DOCUMENTO NO VÁLIDO COMO FACTURA', 116, 46.5)
 
   // Destinatario y entrega
   doc.rect(MARGEN, 68, ANCHO, 30)

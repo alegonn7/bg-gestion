@@ -21,6 +21,36 @@ interface Props {
 
 const NC_TIPO: Record<number, number> = { 1: 3, 6: 8, 11: 13 }
 const NOTAS_CREDITO = [3, 8, 13]
+const TASAS: Record<number, number> = { 3: 0, 4: 0.105, 5: 0.21, 6: 0.27, 8: 0.05, 9: 0.025 }
+const TASA_TEXTO: Record<number, string> = { 3: '0%', 4: '10,5%', 5: '21%', 6: '27%', 8: '5%', 9: '2,5%' }
+
+// Nota de crédito por un importe (descuento o ajuste posterior): se reparte entre las alícuotas
+// de IVA de la factura en la misma proporción, así el IVA acreditado corresponde al facturado
+function itemsPorImporte(factura: FiscalComprobante, importe: number, concepto: string): InvoiceItem[] {
+  const clase = factura.tipo_cbte <= 3 ? 'A' : factura.tipo_cbte <= 8 ? 'B' : 'C'
+  const proporcion = importe / (factura.importe_total || 1)
+  const alicuotas = factura.alicuotas?.length ? factura.alicuotas : null
+  if (clase === 'C' || !alicuotas) {
+    const tasa = clase === 'A' ? TASAS[5] : 0
+    return [{
+      codigo: 'AJUSTE',
+      descripcion: concepto,
+      cantidad: 1,
+      precioUnitario: clase === 'A' ? importe / (1 + tasa) : importe,
+      codigoAlicuotaIVA: 5,
+      importeIVA: clase === 'A' ? importe - importe / (1 + tasa) : 0,
+    }]
+  }
+  return alicuotas.map(a => ({
+    codigo: 'AJUSTE',
+    descripcion: alicuotas.length > 1 ? `${concepto} (IVA ${TASA_TEXTO[a.Id] ?? ''})` : concepto,
+    cantidad: 1,
+    // A: neto e IVA por separado · B: importe con IVA incluido
+    precioUnitario: clase === 'A' ? a.BaseImp * proporcion : (a.BaseImp + a.Importe) * proporcion,
+    codigoAlicuotaIVA: a.Id,
+    importeIVA: clase === 'A' ? a.Importe * proporcion : 0,
+  }))
+}
 
 const claveItem = (i: InvoiceItem) => `${i.codigo}|${i.descripcion}`
 
@@ -58,7 +88,28 @@ export default function FiscalCreditNoteModal({ comprobante, notas, saleItems, o
 
   const [cantidades, setCantidades] = useState<number[]>(() => itemsFactura.map(disponible))
 
-  const totalNota = itemsFactura.reduce((s, item, i) => s + importeDe(item, cantidades[i] || 0, esA), 0)
+  // 'productos' = devolución de mercadería · 'importe' = descuento o ajuste por un monto o porcentaje
+  const [modo, setModo] = useState<'productos' | 'importe'>('productos')
+  const [porcentaje, setPorcentaje] = useState('')
+  const [importeManual, setImporteManual] = useState('')
+  const numeroFactura = `${String(comprobante.punto_venta).padStart(5, '0')}-${String(comprobante.numero).padStart(8, '0')}`
+  const [concepto, setConcepto] = useState(`Bonificación s/ ${TIPO_COMPROBANTE_LABELS[comprobante.tipo_cbte]} ${numeroFactura}`)
+
+  const aNumero = (v: string) => Number(v.replace(',', '.')) || 0
+  const importeAjuste = Math.round(aNumero(importeManual) * 100) / 100
+  const cambiarPorcentaje = (valor: string) => {
+    setPorcentaje(valor)
+    setImporteManual(valor ? String(Math.round((comprobante.importe_total ?? 0) * aNumero(valor)) / 100) : '')
+  }
+  const cambiarImporte = (valor: string) => {
+    setImporteManual(valor)
+    const total = comprobante.importe_total || 0
+    setPorcentaje(valor && total ? String(Math.round((aNumero(valor) / total) * 10000) / 100) : '')
+  }
+
+  const totalNota = modo === 'importe'
+    ? importeAjuste
+    : itemsFactura.reduce((s, item, i) => s + importeDe(item, cantidades[i] || 0, esA), 0)
 
   const formatCurrency = (v: number) =>
     new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 2 }).format(v)
@@ -78,20 +129,26 @@ export default function FiscalCreditNoteModal({ comprobante, notas, saleItems, o
 
   const handleEmit = async () => {
     setError(null)
-    if (totalNota <= 0) return setError('Elegí al menos un producto para acreditar')
+    if (totalNota <= 0) {
+      return setError(modo === 'importe' ? 'Ingresá el importe o el porcentaje' : 'Elegí al menos un producto para acreditar')
+    }
     if (totalNota > saldo + 0.05) return setError(`La nota de crédito no puede superar lo que queda de la factura (${formatCurrency(saldo)})`)
+
+    if (modo === 'importe' && !concepto.trim()) return setError('Escribí el concepto de la nota de crédito')
 
     setEmitting(true)
     try {
-      // Cada ítem va con la cantidad elegida y la parte proporcional de su bonificación
-      const items = itemsFactura
-        .map((item, i) => ({ item, cantidad: cantidades[i] || 0 }))
-        .filter(({ cantidad }) => cantidad > 0)
-        .map(({ item, cantidad }) => ({
-          ...item,
-          cantidad,
-          importeBonificacion: (item.importeBonificacion ?? 0) * cantidad / (item.cantidad || 1),
-        }))
+      // Por productos: cada ítem va con la cantidad elegida y la parte proporcional de su bonificación
+      const items = modo === 'importe'
+        ? itemsPorImporte(comprobante, importeAjuste, concepto.trim().slice(0, 90))
+        : itemsFactura
+          .map((item, i) => ({ item, cantidad: cantidades[i] || 0 }))
+          .filter(({ cantidad }) => cantidad > 0)
+          .map(({ item, cantidad }) => ({
+            ...item,
+            cantidad,
+            importeBonificacion: (item.importeBonificacion ?? 0) * cantidad / (item.cantidad || 1),
+          }))
 
       const res = await emitCreditNote({
         originalComprobante: comprobante,
@@ -176,6 +233,65 @@ export default function FiscalCreditNoteModal({ comprobante, notas, saleItems, o
               </div>
 
               {/* Qué se acredita */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setModo('productos')}
+                  className={`p-3 rounded-lg border-2 text-left ${modo === 'productos' ? 'border-orange-500 bg-orange-50' : 'border-gray-200 hover:border-gray-300'}`}
+                >
+                  <p className="font-semibold text-sm">Devolución de productos</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Elegís qué productos y cuántos</p>
+                </button>
+                <button
+                  onClick={() => setModo('importe')}
+                  className={`p-3 rounded-lg border-2 text-left ${modo === 'importe' ? 'border-orange-500 bg-orange-50' : 'border-gray-200 hover:border-gray-300'}`}
+                >
+                  <p className="font-semibold text-sm">Descuento o ajuste</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Por un monto o un porcentaje</p>
+                </button>
+              </div>
+
+              {modo === 'importe' ? (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Porcentaje de la factura</label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          value={porcentaje}
+                          onChange={e => cambiarPorcentaje(e.target.value)}
+                          placeholder="30"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-right outline-none focus:ring-2 focus:ring-orange-400"
+                        />
+                        <span className="text-gray-500">%</span>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Importe</label>
+                      <input
+                        value={importeManual}
+                        onChange={e => cambiarImporte(e.target.value)}
+                        placeholder="0,00"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-right outline-none focus:ring-2 focus:ring-orange-400"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Concepto</label>
+                    <input
+                      value={concepto}
+                      onChange={e => setConcepto(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-orange-400"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    El importe se reparte entre las alícuotas de IVA de la factura en la misma proporción, así el IVA que se devuelve corresponde al facturado.
+                  </p>
+                  <div className="flex justify-between font-semibold text-gray-900 text-sm">
+                    <span>Total de la nota de crédito</span>
+                    <span>{formatCurrency(totalNota)}</span>
+                  </div>
+                </div>
+              ) : (
               <div>
                 <p className="text-sm font-medium text-gray-700 mb-2">¿Qué productos se acreditan?</p>
                 <div className="border border-gray-200 rounded-lg divide-y">
@@ -204,6 +320,7 @@ export default function FiscalCreditNoteModal({ comprobante, notas, saleItems, o
                   <span>{formatCurrency(totalNota)}</span>
                 </div>
               </div>
+              )}
 
               <div className="p-3 rounded-lg border-2 border-orange-400 bg-orange-50">
                 <p className="font-semibold text-sm">{ncTipo ? TIPO_COMPROBANTE_LABELS[ncTipo] : 'Tipo no soportado'}</p>

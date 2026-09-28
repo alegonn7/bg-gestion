@@ -89,7 +89,8 @@ export interface EmitDebitNoteParams {
   originalComprobante: FiscalComprobante
   saleId?: string
   concepto: string
-  importe: number
+  importe: number               // importe final, con IVA incluido
+  codigoAlicuotaIVA?: number    // 5 = 21% por defecto; no aplica a comprobantes C
 }
 
 export interface IniciarAltaParams {
@@ -177,7 +178,7 @@ export function saldoDeFactura(factura: FiscalComprobante, notas: FiscalComproba
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string
 
-async function callEdgeFunction(fnName: string, body: object) {
+export async function callEdgeFunction(fnName: string, body: object) {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('No hay sesión activa')
 
@@ -278,6 +279,10 @@ export const useFiscalStore = create<FiscalState>((set, get) => ({
     const tipoND = ND_TIPO[orig.tipo_cbte]
     if (!tipoND) throw new Error(`No se puede hacer ND para tipo ${orig.tipo_cbte}`)
 
+    // El importe se ingresa final (con IVA); en la A se separa neto e IVA
+    const alicuota = params.codigoAlicuotaIVA ?? 5
+    const esA = tipoND === 2
+
     // El punto de venta y la fecha los pone el servidor
     const result = await callEdgeFunction('fiscal-emit', {
       invoiceRequest: {
@@ -289,9 +294,9 @@ export const useFiscalStore = create<FiscalState>((set, get) => ({
           codigo: 'ND',
           descripcion: params.concepto.slice(0, 100),
           cantidad: 1,
-          precioUnitario: params.importe,
-          codigoAlicuotaIVA: 3,  // 0%
-          importeIVA: 0,
+          precioUnitario: esA ? precioSinIva(params.importe, alicuota) : params.importe,
+          codigoAlicuotaIVA: alicuota,
+          importeIVA: esA ? calcularIVA(params.importe, alicuota) : 0,
         }],
         comprobantesAsociados: [{
           tipoComprobante: orig.tipo_cbte,

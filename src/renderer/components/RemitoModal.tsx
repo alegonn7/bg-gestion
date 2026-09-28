@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Truck, X, Plus, Trash2, Loader2, CheckCircle, AlertTriangle, Download, Search } from 'lucide-react'
 import { useAuthStore } from '@/store/auth'
 import { useProductsStore } from '@/store/products'
-import { useRemitosStore, descargarRemitoPdf, type NuevoRemito } from '@/store/remitos'
+import { useRemitosStore, descargarRemitoPdf, type DisponibilidadR, type NuevoRemito } from '@/store/remitos'
 import { MOTIVOS_REMITO, numeroRemito, type ItemRemito, type MotivoRemito, type Remito } from '@/lib/remitos'
 
 interface Props {
@@ -16,8 +16,15 @@ const inputClass = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm o
 export default function RemitoModal({ inicial, onClose, onCreado }: Props) {
   const { branches, selectedBranch, branch } = useAuthStore()
   const { products } = useProductsStore()
-  const { crear } = useRemitosStore()
+  const { crear, disponibilidadR } = useRemitosStore()
   const sucursalActual = selectedBranch ?? branch
+
+  // Remito R: solo si hay un CAI vigente con números disponibles
+  const [tipo, setTipo] = useState<'X' | 'R'>('X')
+  const [remitoR, setRemitoR] = useState<DisponibilidadR | null>(null)
+  useEffect(() => {
+    disponibilidadR().then(setRemitoR).catch(() => setRemitoR(null))
+  }, [])
 
   const [motivo, setMotivo] = useState<MotivoRemito>(inicial?.motivo ?? 'venta')
   const [destinatarioNombre, setDestinatarioNombre] = useState(inicial?.destinatarioNombre ?? '')
@@ -71,6 +78,8 @@ export default function RemitoModal({ inicial, onClose, onCreado }: Props) {
     setEmitiendo(true)
     try {
       const remito = await crear({
+        tipo,
+        puntoVenta: tipo === 'R' ? remitoR?.puntoVenta : undefined,
         motivo,
         saleId: inicial?.saleId,
         destinatarioNombre,
@@ -101,7 +110,9 @@ export default function RemitoModal({ inicial, onClose, onCreado }: Props) {
             </div>
             <div>
               <h2 className="text-lg font-semibold">Nuevo remito</h2>
-              <p className="text-xs text-gray-500">Remito X · Documento no válido como factura</p>
+              <p className="text-xs text-gray-500">
+                {tipo === 'R' ? 'Remito R · con CAI de ARCA' : 'Remito X · Documento no válido como factura'}
+              </p>
             </div>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="w-5 h-5" /></button>
@@ -131,6 +142,33 @@ export default function RemitoModal({ inicial, onClose, onCreado }: Props) {
             </div>
           ) : (
             <>
+              {/* Tipo de remito */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setTipo('X')}
+                  className={`p-3 rounded-lg border-2 text-left ${tipo === 'X' ? 'border-emerald-500 bg-emerald-50' : 'border-gray-200 hover:border-gray-300'}`}
+                >
+                  <p className="font-semibold text-sm">Remito X</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Sin validez fiscal · entregas y control interno</p>
+                </button>
+                <button
+                  onClick={() => remitoR && setTipo('R')}
+                  disabled={!remitoR}
+                  className={`p-3 rounded-lg border-2 text-left disabled:opacity-50 ${tipo === 'R' ? 'border-emerald-500 bg-emerald-50' : 'border-gray-200 hover:border-gray-300'}`}
+                >
+                  <p className="font-semibold text-sm">Remito R</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {remitoR ? 'Con CAI · válido para trasladar mercadería' : 'Necesitás un CAI vigente (Remitos → Remito R)'}
+                  </p>
+                </button>
+              </div>
+              {tipo === 'R' && remitoR && (
+                <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+                  Sale como R {String(remitoR.puntoVenta).padStart(5, '0')}-{String(remitoR.siguiente).padStart(8, '0')} ·
+                  CAI {remitoR.cai} vence el {remitoR.vencimiento.split('-').reverse().join('/')} · quedan {remitoR.quedan} números
+                </p>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Motivo *</label>

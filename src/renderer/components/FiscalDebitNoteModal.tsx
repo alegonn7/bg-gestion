@@ -22,6 +22,9 @@ export default function FiscalDebitNoteModal({ comprobante, saleId, onClose }: P
 
   const ndTipo = ND_TIPO[comprobante.tipo_cbte]
   const { organization } = useAuthStore()
+  // Las notas A y B discriminan IVA; las C no
+  const discriminaIva = comprobante.tipo_cbte !== 11
+  const [alicuota, setAlicuota] = useState(5)
 
   const handleDescargar = async () => {
     if (!result || !config) return
@@ -52,6 +55,7 @@ export default function FiscalDebitNoteModal({ comprobante, saleId, onClose }: P
         saleId,
         concepto: concepto.trim(),
         importe: importeNum,
+        codigoAlicuotaIVA: discriminaIva ? alicuota : undefined,
       })
       setResult(res)
     } catch (err: any) {
@@ -150,19 +154,38 @@ export default function FiscalDebitNoteModal({ comprobante, saleId, onClose }: P
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-400"
                     />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Importe adicional *</label>
-                    <input
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      value={importe}
-                      onChange={e => setImporte(e.target.value)}
-                      placeholder="0.00"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-400"
-                    />
-                    <p className="text-xs text-gray-400 mt-1">Se emite exento de IVA. Si necesitás discriminar IVA contactá al soporte.</p>
+                  <div className={discriminaIva ? 'grid grid-cols-2 gap-3' : ''}>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Importe adicional *</label>
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        value={importe}
+                        onChange={e => setImporte(e.target.value)}
+                        placeholder="0.00"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-400"
+                      />
+                    </div>
+                    {discriminaIva && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">IVA</label>
+                        <select
+                          value={alicuota}
+                          onChange={e => setAlicuota(Number(e.target.value))}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-400"
+                        >
+                          <option value={5}>21%</option>
+                          <option value={4}>10,5%</option>
+                          <option value={6}>27%</option>
+                          <option value={3}>0% (exento)</option>
+                        </select>
+                      </div>
+                    )}
                   </div>
+                  <p className="text-xs text-gray-400 -mt-1">
+                    Importe final, con IVA incluido.{discriminaIva ? ' Un recargo, flete o interés lleva el IVA de la operación (21% en general).' : ''}
+                  </p>
                 </div>
               )}
 

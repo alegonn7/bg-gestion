@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
-import { Truck, Plus, Search, Download, XCircle, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
+import { Truck, Plus, Search, Download, XCircle, ChevronLeft, ChevronRight, Loader2, ShieldCheck } from 'lucide-react'
+import { useAuthStore } from '@/store/auth'
 import { useRemitosStore, descargarRemitoPdf, REMITOS_POR_PAGINA, type FiltrosRemitos } from '@/store/remitos'
 import { MOTIVOS_REMITO, numeroRemito, type MotivoRemito } from '@/lib/remitos'
 import RemitoModal from '@/components/RemitoModal'
+import RemitoCaiModal from '@/components/RemitoCaiModal'
 
 const FILTROS_INICIALES: FiltrosRemitos = { texto: '', motivo: '', desde: '', hasta: '', pagina: 1 }
 
@@ -13,7 +15,10 @@ export default function RemitosPage() {
   const [filtros, setFiltros] = useState<FiltrosRemitos>(FILTROS_INICIALES)
   const [texto, setTexto] = useState('')
   const [nuevo, setNuevo] = useState(false)
+  const [gestionarCai, setGestionarCai] = useState(false)
   const [confirmarAnular, setConfirmarAnular] = useState<string | null>(null)
+  const { user } = useAuthStore()
+  const esAdmin = user?.role === 'owner' || user?.role === 'admin'
 
   useEffect(() => { buscar(filtros) }, [filtros])
 
@@ -33,12 +38,22 @@ export default function RemitosPage() {
           <h1 className="text-2xl font-bold text-gray-900">Remitos</h1>
           <p className="text-sm text-gray-500 mt-1">Entregas y traslados de mercadería · documento no válido como factura</p>
         </div>
-        <button
-          onClick={() => setNuevo(true)}
-          className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg"
-        >
-          <Plus className="w-4 h-4" />Nuevo remito
-        </button>
+        <div className="flex gap-2">
+          {esAdmin && (
+            <button
+              onClick={() => setGestionarCai(true)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50 text-sm font-medium rounded-lg"
+            >
+              <ShieldCheck className="w-4 h-4" />Remito R · CAI
+            </button>
+          )}
+          <button
+            onClick={() => setNuevo(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg"
+          >
+            <Plus className="w-4 h-4" />Nuevo remito
+          </button>
+        </div>
       </div>
 
       {/* Filtros */}
@@ -160,6 +175,7 @@ export default function RemitosPage() {
       </div>
 
       {nuevo && <RemitoModal onClose={() => setNuevo(false)} onCreado={() => buscar(filtros)} />}
+      {gestionarCai && <RemitoCaiModal onClose={() => setGestionarCai(false)} />}
     </div>
   )
 }

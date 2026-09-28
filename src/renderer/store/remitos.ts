@@ -1,9 +1,20 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
-import type { ItemRemito, MotivoRemito, Remito } from '@/lib/remitos'
+import type { CaiRemito, ItemRemito, MotivoRemito, Remito } from '@/lib/remitos'
 import { descargarRemito } from '@/lib/remitoPdf'
 import { useAuthStore } from './auth'
-import { useFiscalStore } from './fiscal'
+import { callEdgeFunction, useFiscalStore } from './fiscal'
+
+// Remitos R que se pueden emitir ahora: punto de venta y CAI vigente, próximo número y cuántos quedan
+export interface DisponibilidadR {
+  puntoVenta: number
+  cai: string
+  vencimiento: string
+  siguiente: number
+  quedan: number
+}
+
+const hoy = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }).format(new Date())
 
 // Descarga el PDF con los datos del negocio: los fiscales si la facturación está configurada y,
 // si no, el nombre de la organización y el domicilio de la sucursal
@@ -23,6 +34,8 @@ export async function descargarRemitoPdf(remito: Remito) {
 }
 
 export interface NuevoRemito {
+  tipo?: 'X' | 'R'           // X por defecto
+  puntoVenta?: number        // solo R: el del CAI vigente
   motivo: MotivoRemito
   saleId?: string | null
   destinatarioNombre?: string
@@ -55,13 +68,23 @@ interface RemitosState {
   crear: (nuevo: NuevoRemito) => Promise<Remito>
   anular: (id: string) => Promise<void>
   remitosDeVentas: (saleIds: string[]) => Promise<Remito[]>
+
+  // CAI para remitos R
+  cais: CaiRemito[]
+  fetchCais: () => Promise<void>
+  solicitarCai: (params: { puntoVenta: number; cantidad: number; clave: string; usuario?: string }) => Promise<CaiRemito>
+  avanzarCai: (id: string) => Promise<CaiRemito>
+  cargarCai: (params: { puntoVenta: number; cai: string; vencimiento: string; desde: number; hasta: number }) => Promise<void>
+  borrarCai: (id: string) => Promise<void>
+  disponibilidadR: () => Promise<DisponibilidadR | null>
 }
 
-export const useRemitosStore = create<RemitosState>((set) => ({
+export const useRemitosStore = create<RemitosState>((set, get) => ({
   remitos: [],
   total: 0,
   isLoading: false,
   error: null,
+  cais: [],
 
   buscar: async (filtros) => {
     set({ isLoading: true, error: null })
@@ -107,7 +130,9 @@ export const useRemitosStore = create<RemitosState>((set) => ({
       .insert({
         organization_id: organization.id,
         branch_id: selectedBranch?.id ?? branch?.id ?? null,
-        tipo: 'X',
+        // El número (y en el R, el CAI) lo asigna la base al guardar
+        tipo: nuevo.tipo ?? 'X',
+        punto_venta: nuevo.tipo === 'R' ? nuevo.puntoVenta : 1,
         motivo: nuevo.motivo,
         sale_id: nuevo.saleId || null,
         destinatario_nombre: nuevo.destinatarioNombre?.trim() || null,
@@ -145,5 +170,58 @@ export const useRemitosStore = create<RemitosState>((set) => ({
       .order('numero', { ascending: true })
     if (error) throw error
     return (data || []) as Remito[]
+  },
+
+  fetchCais: async () => {
+    const { data, error } = await supabase.from('remitos_cai').select('*').order('created_at', { ascending: false })
+    if (error) throw error
+    set({ cais: (data || []) as CaiRemito[] })
+  },
+
+  solicitarCai: async (params) => {
+    const data = await callEdgeFunction('fiscal-setup', { action: 'cai_solicitar', ...params })
+    await get().fetchCais()
+    return data.cai as CaiRemito
+  },
+
+  avanzarCai: async (id) => {
+    const data = await callEdgeFunction('fiscal-setup', { action: 'cai_avanzar', id })
+    if (data.cai?.estado !== 'pendiente') await get().fetchCais()
+    return data.cai as CaiRemito
+  },
+
+  cargarCai: async (params) => {
+    await callEdgeFunction('fiscal-setup', { action: 'cai_cargar', ...params })
+    await get().fetchCais()
+  },
+
+  borrarCai: async (id) => {
+    await callEdgeFunction('fiscal-setup', { action: 'cai_borrar', id })
+    await get().fetchCais()
+  },
+
+  disponibilidadR: async () => {
+    await get().fetchCais()
+    const vigentes = get().cais.filter(c => c.estado === 'vigente' && c.cai && c.vencimiento && c.vencimiento >= hoy())
+    if (!vigentes.length) return null
+
+    // Se usa el punto de venta del CAI vigente más antiguo (el que se va a agotar primero)
+    const puntoVenta = [...vigentes].sort((a, b) => a.desde - b.desde)[0].punto_venta
+    const delPunto = vigentes.filter(c => c.punto_venta === puntoVenta).sort((a, b) => a.desde - b.desde)
+    const { data: ultimo } = await supabase
+      .from('remitos')
+      .select('numero')
+      .eq('tipo', 'R')
+      .eq('punto_venta', puntoVenta)
+      .order('numero', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    const proximo = (ultimo?.numero ?? 0) + 1
+    const actual = delPunto.find(c => c.hasta >= proximo)
+    if (!actual) return null
+
+    const siguiente = Math.max(proximo, actual.desde)
+    const quedan = delPunto.reduce((s, c) => s + Math.max(0, c.hasta - Math.max(c.desde, siguiente) + 1), 0)
+    return { puntoVenta, cai: actual.cai!, vencimiento: actual.vencimiento!, siguiente, quedan }
   },
 }))

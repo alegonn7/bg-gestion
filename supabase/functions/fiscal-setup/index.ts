@@ -226,6 +226,99 @@ Deno.serve(async (req) => {
       return jsonResponse({ ok: true, message: "Configuración guardada" })
     }
 
+    // ── Remitos R: CAI de ARCA ──────────────────────────────────────────────
+    // Pedir el CAI con la clave fiscal (automatización de Afip SDK). Es un trámite real en ARCA:
+    // no existe CAI de prueba.
+    if (action === "cai_solicitar") {
+      const puntoVenta = Number(body.puntoVenta)
+      const cantidad = Number(body.cantidad)
+      if (!body.clave) return errorResponse("Ingresá la clave fiscal")
+      if (!Number.isInteger(puntoVenta) || puntoVenta < 1 || puntoVenta > 99998) return errorResponse("Punto de venta inválido")
+      if (!Number.isInteger(cantidad) || cantidad < 1 || cantidad > 10000) return errorResponse("Cantidad inválida (entre 1 y 10.000)")
+
+      const { data: org } = await admin.from("organizations").select("cuit, razon_social").eq("id", orgId).single()
+      if (!org?.cuit) return errorResponse("Primero configurá la facturación ARCA (CUIT y razón social) para pedir el CAI")
+
+      const desde = await siguienteNumeroCai(admin, orgId, puntoVenta)
+      const automatizacion = await iniciarAutomatizacion(sdkPara("prod"), "cai-request", {
+        cuit: org.cuit,
+        username: soloDigitos(body.usuario) || org.cuit,
+        password: body.clave,
+        comprobantes: [{ puntoVenta, tipoComprobante: 91, cantidad }], // 91 = Remito R
+        resguardo: false,
+        autorizados: [{ tipoDocumento: 80, documento: org.cuit, denominacion: (org.razon_social || "").slice(0, 50) }],
+        validateOnly: false,
+      })
+      const { data: fila, error } = await admin.from("remitos_cai").insert({
+        organization_id: orgId,
+        punto_venta: puntoVenta,
+        desde,
+        hasta: desde + cantidad - 1,
+        origen: "automatico",
+        estado: "pendiente",
+        automatizacion_id: automatizacion.id,
+      }).select("*").single()
+      if (error) throw error
+      return jsonResponse({ ok: true, cai: fila })
+    }
+
+    // Seguir la solicitud del CAI: la app lo llama cada pocos segundos hasta que ARCA responde
+    if (action === "cai_avanzar") {
+      const { data: fila } = await admin.from("remitos_cai").select("*").eq("id", body.id).eq("organization_id", orgId).single()
+      if (!fila) return errorResponse("No se encontró la solicitud de CAI")
+      if (fila.estado !== "pendiente" || !fila.automatizacion_id) return jsonResponse({ ok: true, cai: fila })
+
+      const automatizacion = await consultarAutomatizacion(sdkPara("prod"), fila.automatizacion_id)
+      if (automatizacion.status !== "complete" && automatizacion.status !== "error") return jsonResponse({ ok: true, cai: fila })
+
+      const cai = soloDigitos(automatizacion.data?.cai)
+      const cambios = automatizacion.status === "error" || cai.length !== 14
+        ? { estado: "error", error: mensajeDeError(automatizacion.data) }
+        : { estado: "vigente", cai, vencimiento: fechaIso(String(automatizacion.data.vencimiento)), error: null }
+      const { data: actualizada, error } = await admin.from("remitos_cai").update(cambios).eq("id", fila.id).select("*").single()
+      if (error) throw error
+      return jsonResponse({ ok: true, cai: actualizada })
+    }
+
+    // Cargar a mano un CAI ya otorgado (por ejemplo, tramitado por el contador)
+    if (action === "cai_cargar") {
+      const cai = soloDigitos(body.cai)
+      const puntoVenta = Number(body.puntoVenta)
+      const desde = Number(body.desde)
+      const hasta = Number(body.hasta)
+      if (cai.length !== 14) return errorResponse("El CAI tiene 14 dígitos")
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(body.vencimiento || "")) return errorResponse("Ingresá la fecha de vencimiento del CAI")
+      if (!Number.isInteger(puntoVenta) || puntoVenta < 1) return errorResponse("Punto de venta inválido")
+      if (!Number.isInteger(desde) || !Number.isInteger(hasta) || desde < 1 || hasta < desde) {
+        return errorResponse("Revisá la numeración autorizada (desde y hasta)")
+      }
+      const { data: fila, error } = await admin.from("remitos_cai").insert({
+        organization_id: orgId,
+        punto_venta: puntoVenta,
+        cai,
+        vencimiento: body.vencimiento,
+        desde,
+        hasta,
+        origen: "manual",
+        estado: "vigente",
+      }).select("*").single()
+      if (error) throw error
+      return jsonResponse({ ok: true, cai: fila })
+    }
+
+    // Borrar un CAI (solo si ningún remito lo usó)
+    if (action === "cai_borrar") {
+      const { data: fila } = await admin.from("remitos_cai").select("id, cai").eq("id", body.id).eq("organization_id", orgId).single()
+      if (!fila) return errorResponse("No se encontró el CAI")
+      if (fila.cai) {
+        const { count } = await admin.from("remitos").select("id", { count: "exact", head: true })
+          .eq("organization_id", orgId).eq("cai", fila.cai)
+        if (count) return errorResponse("Hay remitos emitidos con este CAI: no se puede borrar")
+      }
+      await admin.from("remitos_cai").delete().eq("id", fila.id)
+      return jsonResponse({ ok: true })
+    }
+
     // ── Desconectar: borra el certificado y deshabilita la facturación ──────
     if (action === "delete_config") {
       await admin.from("fiscal_credentials").delete().eq("organization_id", orgId)
@@ -341,6 +434,27 @@ async function terminar(admin: any, alta: Alta, puntoVenta: number): Promise<Alt
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+// Primer número del próximo CAI: sigue al último rango pedido para ese punto de venta o, si no
+// hay, al último remito R emitido. ARCA numera los CAI de un punto de venta en forma correlativa.
+async function siguienteNumeroCai(admin: any, orgId: string, puntoVenta: number): Promise<number> {
+  const { data: ultimoCai } = await admin.from("remitos_cai")
+    .select("hasta")
+    .eq("organization_id", orgId).eq("punto_venta", puntoVenta).neq("estado", "error")
+    .order("hasta", { ascending: false }).limit(1).maybeSingle()
+  if (ultimoCai) return Number(ultimoCai.hasta) + 1
+  const { data: ultimoRemito } = await admin.from("remitos")
+    .select("numero")
+    .eq("organization_id", orgId).eq("tipo", "R").eq("punto_venta", puntoVenta)
+    .order("numero", { ascending: false }).limit(1).maybeSingle()
+  return ultimoRemito ? Number(ultimoRemito.numero) + 1 : 1
+}
+
+// "31/12/2026" → "2026-12-31" (si ya viene como YYYY-MM-DD, queda igual)
+function fechaIso(fecha: string): string {
+  const partes = fecha.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+  return partes ? `${partes[3]}-${partes[2]}-${partes[1]}` : fecha.slice(0, 10)
+}
 
 function listaDePuntos(data: any): any[] {
   if (Array.isArray(data)) return data
