@@ -72,8 +72,8 @@ interface RemitosState {
   // CAI para remitos R
   cais: CaiRemito[]
   fetchCais: () => Promise<void>
-  solicitarCai: (params: { puntoVenta: number; cantidad: number; clave: string; usuario?: string }) => Promise<CaiRemito>
-  avanzarCai: (id: string) => Promise<CaiRemito>
+  solicitarCai: (params: { cantidad: number; clave: string; usuario?: string }) => Promise<CaiRemito>
+  avanzarCai: (id: string, credenciales: { clave: string; usuario?: string }) => Promise<CaiRemito>
   cargarCai: (params: { puntoVenta: number; cai: string; vencimiento: string; desde: number; hasta: number }) => Promise<void>
   borrarCai: (id: string) => Promise<void>
   disponibilidadR: () => Promise<DisponibilidadR | null>
@@ -184,9 +184,10 @@ export const useRemitosStore = create<RemitosState>((set, get) => ({
     return data.cai as CaiRemito
   },
 
-  avanzarCai: async (id) => {
-    const data = await callEdgeFunction('fiscal-setup', { action: 'cai_avanzar', id })
-    if (data.cai?.estado !== 'pendiente') await get().fetchCais()
+  // La clave fiscal hace falta en cada paso (buscar/crear el punto de venta y pedir el CAI)
+  avanzarCai: async (id, credenciales) => {
+    const data = await callEdgeFunction('fiscal-setup', { action: 'cai_avanzar', id, ...credenciales })
+    set(state => ({ cais: state.cais.map(c => (c.id === id ? data.cai : c)) }))
     return data.cai as CaiRemito
   },
 
@@ -206,8 +207,13 @@ export const useRemitosStore = create<RemitosState>((set, get) => ({
     if (!vigentes.length) return null
 
     // Se usa el punto de venta del CAI vigente más antiguo (el que se va a agotar primero)
-    const puntoVenta = [...vigentes].sort((a, b) => a.desde - b.desde)[0].punto_venta
-    const delPunto = vigentes.filter(c => c.punto_venta === puntoVenta).sort((a, b) => a.desde - b.desde)
+    const vigentesConRango = vigentes
+      .filter(c => c.punto_venta && c.desde && c.hasta)
+      .map(c => ({ ...c, punto_venta: c.punto_venta!, desde: c.desde!, hasta: c.hasta! }))
+      .sort((a, b) => a.desde - b.desde)
+    if (!vigentesConRango.length) return null
+    const puntoVenta = vigentesConRango[0].punto_venta
+    const delPunto = vigentesConRango.filter(c => c.punto_venta === puntoVenta)
     const { data: ultimo } = await supabase
       .from('remitos')
       .select('numero')

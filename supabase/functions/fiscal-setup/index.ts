@@ -4,7 +4,7 @@
 // busca o crea su punto de venta. La clave fiscal se usa en cada paso y nunca se guarda.
 
 import { createClient } from "npm:@supabase/supabase-js@2"
-import { type AfipSdk, type Ambiente, consultarAutomatizacion, iniciarAutomatizacion } from "../_shared/afipsdk.ts"
+import { type AfipSdk, AfipSdkError, type Ambiente, consultarAutomatizacion, iniciarAutomatizacion } from "../_shared/afipsdk.ts"
 import { encryptSecret } from "../_shared/crypto.ts"
 
 const corsHeaders = {
@@ -145,7 +145,7 @@ Deno.serve(async (req) => {
         try {
           siguiente = await procesarPaso(admin, sdk, alta, automatizacion.data, body.clave || "")
         } catch (err) {
-          siguiente = { ...alta, estado: "error", error: (err as Error).message }
+          siguiente = { ...alta, estado: "error", error: mensajeParaCliente(err) }
         }
       }
       const { error } = await admin.from("fiscal_onboarding")
@@ -202,7 +202,7 @@ Deno.serve(async (req) => {
       const { error } = await admin.from("organizations").update({
         fiscal_enabled: true,
         cuit: CUIT_PRUEBA,
-        razon_social: "CUIT de prueba (Afip SDK)",
+        razon_social: "Empresa de prueba",
         condicion_iva: condicionIva,
         punto_venta: puntoVenta,
       }).eq("id", orgId)
@@ -227,54 +227,56 @@ Deno.serve(async (req) => {
     }
 
     // ── Remitos R: CAI de ARCA ──────────────────────────────────────────────
-    // Pedir el CAI con la clave fiscal (automatización de Afip SDK). Es un trámite real en ARCA:
-    // no existe CAI de prueba.
+    // Pedir el CAI: el cliente solo indica cuántos remitos quiere. El sistema usa el punto de
+    // venta de un CAI anterior o busca (y si no hay, crea) uno "Factuweb (Imprenta)", que ARCA
+    // exige para pedir CAI, y después pide el CAI. Cada paso usa la clave fiscal, que no se guarda.
+    // Es un trámite real en ARCA: no existe CAI de homologación.
     if (action === "cai_solicitar") {
-      const puntoVenta = Number(body.puntoVenta)
       const cantidad = Number(body.cantidad)
       if (!body.clave) return errorResponse("Ingresá la clave fiscal")
-      if (!Number.isInteger(puntoVenta) || puntoVenta < 1 || puntoVenta > 99998) return errorResponse("Punto de venta inválido")
       if (!Number.isInteger(cantidad) || cantidad < 1 || cantidad > 10000) return errorResponse("Cantidad inválida (entre 1 y 10.000)")
 
-      const { data: org } = await admin.from("organizations").select("cuit, razon_social").eq("id", orgId).single()
-      if (!org?.cuit) return errorResponse("Primero configurá la facturación ARCA (CUIT y razón social) para pedir el CAI")
+      const { data: org } = await admin.from("organizations").select("cuit, razon_social, condicion_iva").eq("id", orgId).single()
+      if (!org?.cuit) return errorResponse("Primero configurá la facturación electrónica para poder pedir el CAI")
 
-      const desde = await siguienteNumeroCai(admin, orgId, puntoVenta)
-      const automatizacion = await iniciarAutomatizacion(sdkPara("prod"), "cai-request", {
-        cuit: org.cuit,
-        username: soloDigitos(body.usuario) || org.cuit,
-        password: body.clave,
-        comprobantes: [{ puntoVenta, tipoComprobante: 91, cantidad }], // 91 = Remito R
-        resguardo: false,
-        autorizados: [{ tipoDocumento: 80, documento: org.cuit, denominacion: (org.razon_social || "").slice(0, 50) }],
-        validateOnly: false,
-      })
+      const { data: anterior } = await admin.from("remitos_cai")
+        .select("punto_venta")
+        .eq("organization_id", orgId).not("punto_venta", "is", null).neq("estado", "error")
+        .order("created_at", { ascending: false }).limit(1).maybeSingle()
+
+      const pedido: PedidoCai = { organization_id: orgId, punto_venta: anterior?.punto_venta ?? null, cantidad }
+      const primerPaso = pedido.punto_venta ? "cai" : "puntos_venta"
+      const inicio = await iniciarPasoCai(admin, sdkPara("prod"), org, pedido, primerPaso, body)
       const { data: fila, error } = await admin.from("remitos_cai").insert({
-        organization_id: orgId,
-        punto_venta: puntoVenta,
-        desde,
-        hasta: desde + cantidad - 1,
+        ...pedido,
+        ...inicio,
         origen: "automatico",
         estado: "pendiente",
-        automatizacion_id: automatizacion.id,
       }).select("*").single()
       if (error) throw error
       return jsonResponse({ ok: true, cai: fila })
     }
 
-    // Seguir la solicitud del CAI: la app lo llama cada pocos segundos hasta que ARCA responde
+    // Seguir el pedido del CAI: la app lo llama cada pocos segundos (con la clave) hasta terminar
     if (action === "cai_avanzar") {
       const { data: fila } = await admin.from("remitos_cai").select("*").eq("id", body.id).eq("organization_id", orgId).single()
-      if (!fila) return errorResponse("No se encontró la solicitud de CAI")
+      if (!fila) return errorResponse("No se encontró el pedido de CAI")
       if (fila.estado !== "pendiente" || !fila.automatizacion_id) return jsonResponse({ ok: true, cai: fila })
 
-      const automatizacion = await consultarAutomatizacion(sdkPara("prod"), fila.automatizacion_id)
+      const sdk = sdkPara("prod")
+      const automatizacion = await consultarAutomatizacion(sdk, fila.automatizacion_id)
       if (automatizacion.status !== "complete" && automatizacion.status !== "error") return jsonResponse({ ok: true, cai: fila })
 
-      const cai = soloDigitos(automatizacion.data?.cai)
-      const cambios = automatizacion.status === "error" || cai.length !== 14
-        ? { estado: "error", error: mensajeDeError(automatizacion.data) }
-        : { estado: "vigente", cai, vencimiento: fechaIso(String(automatizacion.data.vencimiento)), error: null }
+      let cambios: Record<string, unknown>
+      if (automatizacion.status === "error") {
+        cambios = { estado: "error", paso: null, error: mensajeDeError(automatizacion.data) }
+      } else {
+        try {
+          cambios = await procesarPasoCai(admin, sdk, orgId, fila, automatizacion.data, body)
+        } catch (err) {
+          cambios = { estado: "error", paso: null, error: mensajeParaCliente(err) }
+        }
+      }
       const { data: actualizada, error } = await admin.from("remitos_cai").update(cambios).eq("id", fila.id).select("*").single()
       if (error) throw error
       return jsonResponse({ ok: true, cai: actualizada })
@@ -330,8 +332,7 @@ Deno.serve(async (req) => {
     return errorResponse("Acción desconocida")
 
   } catch (err: any) {
-    console.error("fiscal-setup error:", err?.message)
-    return errorResponse(err?.message || "Error interno", 500)
+    return errorResponse(mensajeParaCliente(err), 500)
   }
 })
 
@@ -340,7 +341,10 @@ Deno.serve(async (req) => {
 // Procesa el resultado de la automatización del paso actual y arranca la del siguiente
 async function procesarPaso(admin: any, sdk: AfipSdk, alta: Alta, data: any, clave: string): Promise<Alta> {
   if (alta.paso === "certificado") {
-    if (!data?.cert || !data?.key) throw new Error("Afip SDK no devolvió el certificado")
+    if (!data?.cert || !data?.key) {
+      console.error("create-cert sin cert/key:", JSON.stringify(data))
+      throw new Error("ARCA no devolvió el certificado. Probá de nuevo.")
+    }
     const llave = Deno.env.get("FISCAL_CERTS_ENCRYPTION_KEY")!
     const { error } = await admin.from("fiscal_credentials").upsert({
       organization_id: alta.organization_id,
@@ -464,9 +468,105 @@ function listaDePuntos(data: any): any[] {
   return []
 }
 
+// ─── Pedido de CAI para remitos R ────────────────────────────────────────────
+
+interface PedidoCai {
+  organization_id: string
+  punto_venta: number | null
+  cantidad: number
+}
+
+type PasoCai = "puntos_venta" | "punto_venta" | "cai"
+
+// Arranca la automatización de un paso del pedido de CAI. Necesita la clave fiscal.
+async function iniciarPasoCai(
+  admin: any,
+  sdk: AfipSdk,
+  org: { cuit: string; razon_social: string | null; condicion_iva: string | null },
+  pedido: PedidoCai,
+  paso: PasoCai,
+  credenciales: { clave?: string; usuario?: string },
+): Promise<Record<string, unknown>> {
+  if (!credenciales.clave) throw new Error("Falta la clave fiscal para continuar")
+  const login = { cuit: org.cuit, username: soloDigitos(credenciales.usuario) || org.cuit, password: credenciales.clave }
+
+  if (paso === "puntos_venta") {
+    const automatizacion = await iniciarAutomatizacion(sdk, "list-sales-points", login)
+    return { paso, automatizacion_id: automatizacion.id }
+  }
+  if (paso === "punto_venta") {
+    // II = Factuweb (Imprenta) - Responsable Inscripto · IM = Factuweb (Imprenta) - Monotributo
+    const automatizacion = await iniciarAutomatizacion(sdk, "create-sales-point", {
+      ...login,
+      numero: pedido.punto_venta,
+      sistema: org.condicion_iva === "Monotributo" ? "IM" : "II",
+      nombreFantasia: "Remitos",
+    })
+    return { paso, automatizacion_id: automatizacion.id }
+  }
+
+  const desde = await siguienteNumeroCai(admin, pedido.organization_id, pedido.punto_venta!)
+  const automatizacion = await iniciarAutomatizacion(sdk, "cai-request", {
+    ...login,
+    comprobantes: [{ puntoVenta: pedido.punto_venta, tipoComprobante: 91, cantidad: pedido.cantidad }], // 91 = Remito R
+    resguardo: false,
+    autorizados: [{ tipoDocumento: 80, documento: org.cuit, denominacion: (org.razon_social || "").slice(0, 50) }],
+    validateOnly: false,
+  })
+  return { paso, automatizacion_id: automatizacion.id, desde, hasta: desde + pedido.cantidad - 1 }
+}
+
+// Procesa el resultado del paso actual y arranca el siguiente (o deja el CAI vigente)
+async function procesarPasoCai(admin: any, sdk: AfipSdk, orgId: string, fila: any, data: any, credenciales: { clave?: string; usuario?: string }) {
+  const { data: org } = await admin.from("organizations").select("cuit, razon_social, condicion_iva").eq("id", orgId).single()
+  const pedido: PedidoCai = { organization_id: orgId, punto_venta: fila.punto_venta, cantidad: fila.cantidad }
+
+  if (fila.paso === "puntos_venta") {
+    // Punto de venta de comprobantes impresos ya existente; si no hay, se crea el siguiente número libre
+    const puntos = listaDePuntos(data)
+    const imprenta = puntos.find(p => !p.deactivated && !p.blocked && /imprenta/i.test(String(p.system)))
+    if (imprenta) {
+      pedido.punto_venta = Number(imprenta.number)
+      return { punto_venta: pedido.punto_venta, ...(await iniciarPasoCai(admin, sdk, org, pedido, "cai", credenciales)) }
+    }
+    pedido.punto_venta = Math.max(0, ...puntos.map(p => Number(p.number) || 0)) + 1
+    return { punto_venta: pedido.punto_venta, ...(await iniciarPasoCai(admin, sdk, org, pedido, "punto_venta", credenciales)) }
+  }
+
+  if (fila.paso === "punto_venta") {
+    return await iniciarPasoCai(admin, sdk, org, pedido, "cai", credenciales)
+  }
+
+  const cai = soloDigitos(data?.cai)
+  if (cai.length !== 14) {
+    console.error("cai-request sin CAI:", JSON.stringify(data))
+    return { estado: "error", paso: null, error: "ARCA no otorgó el CAI. Probá de nuevo más tarde." }
+  }
+  return { estado: "vigente", paso: null, cai, vencimiento: fechaIso(String(data.vencimiento)), error: null }
+}
+
+// ─── Mensajes para el cliente ────────────────────────────────────────────────
+// Los detalles técnicos van al log de la función; al cliente se le muestra algo claro.
+
+function mensajeParaCliente(err: unknown): string {
+  if (err instanceof AfipSdkError) {
+    console.error("Afip SDK:", err.status, err.message, JSON.stringify(err.body))
+    return "No pudimos comunicarnos con ARCA. Probá de nuevo en unos minutos."
+  }
+  const mensaje = (err as Error)?.message
+  console.error("fiscal-setup error:", mensaje)
+  return mensaje || "Ocurrió un error. Probá de nuevo."
+}
+
+// Error de una automatización en la página de ARCA
 function mensajeDeError(data: any): string {
-  const msg = data?.message || data?.error || (typeof data === "string" ? data : "")
-  return msg ? String(msg) : "ARCA no pudo completar el paso. Revisá el CUIT y la clave fiscal."
+  const detalle = String(data?.message || data?.error || (typeof data === "string" ? data : ""))
+  console.error("Automatización con error:", detalle || JSON.stringify(data))
+  if (/contraseñ|password|clave|credencial|login|incorrect|invalid/i.test(detalle)) return "El CUIT o la clave fiscal no son correctos."
+  if (/nivel|level/i.test(detalle)) return "Tu clave fiscal tiene que ser nivel 3 o superior."
+  // Los mensajes de ARCA en castellano se muestran tal cual
+  if (/[áéíóúñ]/i.test(detalle) && !/error:|exception|stack/i.test(detalle)) return detalle
+  return "ARCA no pudo completar este paso. Revisá el CUIT y la clave fiscal e intentá de nuevo."
 }
 
 function resumen(alta: Alta) {

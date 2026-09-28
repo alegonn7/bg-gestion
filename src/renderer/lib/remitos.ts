@@ -43,13 +43,15 @@ export interface Remito {
 // CAI de ARCA para remitos R: autoriza un rango de números de un punto de venta hasta su vencimiento
 export interface CaiRemito {
   id: string
-  punto_venta: number
-  cai: string | null            // null mientras ARCA procesa la solicitud
+  punto_venta: number | null    // null mientras se busca o crea el punto de venta
+  cai: string | null            // null mientras ARCA procesa el pedido
   vencimiento: string | null    // YYYY-MM-DD
-  desde: number
-  hasta: number
+  desde: number | null
+  hasta: number | null
+  cantidad: number | null
   origen: 'automatico' | 'manual'
   estado: 'pendiente' | 'vigente' | 'error'
+  paso: 'puntos_venta' | 'punto_venta' | 'cai' | null
   error: string | null
   created_at: string
 }

@@ -3,7 +3,7 @@
 // organización, a través de Afip SDK.
 
 import { createClient } from "npm:@supabase/supabase-js@2"
-import { type AfipSdk, type Ambiente, obtenerTicketAcceso } from "../_shared/afipsdk.ts"
+import { type AfipSdk, AfipSdkError, type Ambiente, obtenerTicketAcceso } from "../_shared/afipsdk.ts"
 import { decryptSecret } from "../_shared/crypto.ts"
 import { type AuthWsfe, calcularImportes, emitirComprobante, type InvoiceRequest, RechazoArca, receptorDe } from "../_shared/wsfe.ts"
 
@@ -177,8 +177,13 @@ Deno.serve(async (req) => {
     })
 
   } catch (err: any) {
+    // Al cliente se le muestra un mensaje claro; el detalle técnico queda en el log
+    if (err instanceof AfipSdkError) {
+      console.error("fiscal-emit Afip SDK:", err.status, err.message, JSON.stringify(err.body))
+      return errorResponse("No pudimos comunicarnos con ARCA. Probá de nuevo en unos minutos.", 502)
+    }
     console.error("fiscal-emit error:", err?.message)
-    return errorResponse(err?.message || "Error interno", err instanceof RechazoArca ? 400 : 500)
+    return errorResponse(err?.message || "Ocurrió un error. Probá de nuevo.", err instanceof RechazoArca ? 400 : 500)
   }
 })
 

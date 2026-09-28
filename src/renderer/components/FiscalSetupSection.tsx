@@ -211,7 +211,10 @@ export default function FiscalSetupSection() {
               clave={clave}
               busy={busy}
               onClave={setClave}
-              onReintentar={(puntoVenta) => run(() => reintentarAlta(clave, puntoVenta))}
+              onReintentar={(claveNueva) => {
+                setClave(claveNueva)
+                run(() => reintentarAlta(claveNueva))
+              }}
               onCancelar={() => run(cancelarAlta)}
             />
           )}
@@ -242,7 +245,7 @@ function AltaForm({ initial, esPrueba, busy, onSubmit, onUsarCuitPrueba }: {
   esPrueba: boolean
   busy: boolean
   onSubmit: (params: {
-    cuit: string; usuario?: string; clave: string; razonSocial: string; condicionIva: string; puntoVenta: number | null
+    cuit: string; usuario?: string; clave: string; razonSocial: string; condicionIva: string
   }) => void
   onUsarCuitPrueba: (condicionIva: string) => void
 }) {
@@ -252,7 +255,6 @@ function AltaForm({ initial, esPrueba, busy, onSubmit, onUsarCuitPrueba }: {
   const [esSociedad, setEsSociedad] = useState(false)
   const [usuario, setUsuario] = useState('')
   const [clave, setClave] = useState('')
-  const [puntoVenta, setPuntoVenta] = useState('')
   const [acepto, setAcepto] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -270,7 +272,6 @@ function AltaForm({ initial, esPrueba, busy, onSubmit, onUsarCuitPrueba }: {
       clave,
       razonSocial: razonSocial.trim(),
       condicionIva,
-      puntoVenta: Number(puntoVenta) || null,
     })
   }
 
@@ -290,20 +291,13 @@ function AltaForm({ initial, esPrueba, busy, onSubmit, onUsarCuitPrueba }: {
           <label className="block text-sm font-medium text-gray-700 mb-1">Razón Social *</label>
           <input type="text" value={razonSocial} onChange={e => setRazonSocial(e.target.value)} placeholder="Mi Negocio" className={inputClass} />
         </div>
-        <div>
+        <div className="col-span-2">
           <label className="block text-sm font-medium text-gray-700 mb-1">Condición frente al IVA *</label>
           <select value={condicionIva} onChange={e => setCondicionIva(e.target.value)} className={inputClass}>
             {CONDICIONES_IVA.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
           </select>
         </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Punto de venta (opcional)</label>
-          <input type="number" min={1} value={puntoVenta} onChange={e => setPuntoVenta(e.target.value)} placeholder="Automático" className={inputClass} />
-        </div>
       </div>
-      <p className="text-xs text-gray-400 -mt-2">
-        Si dejás el punto de venta vacío, usamos uno de facturación electrónica que ya tengas o creamos uno nuevo.
-      </p>
 
       <label className="flex items-center gap-2 text-sm text-gray-700">
         <input type="checkbox" checked={esSociedad} onChange={e => setEsSociedad(e.target.checked)} />
@@ -325,8 +319,7 @@ function AltaForm({ initial, esPrueba, busy, onSubmit, onUsarCuitPrueba }: {
         <input type="checkbox" className="mt-0.5" checked={acepto} onChange={e => setAcepto(e.target.checked)} />
         <span>
           <ShieldCheck className="w-4 h-4 inline -mt-0.5 mr-1 text-indigo-600" />
-          Autorizo a BG Gestión a usar mi clave fiscal, a través de Afip SDK, solo para configurar la facturación en ARCA.
-          La clave no se guarda.
+          Autorizo a BG Gestión a usar mi clave fiscal solo para configurar la facturación en ARCA. La clave no se guarda.
         </span>
       </label>
 
@@ -374,14 +367,12 @@ function ProgresoAlta({ alta, esPrueba, clave, busy, onClave, onReintentar, onCa
   clave: string
   busy: boolean
   onClave: (clave: string) => void
-  onReintentar: (puntoVenta: number | null) => void
+  onReintentar: (clave: string) => void
   onCancelar: () => void
 }) {
   const [claveNueva, setClaveNueva] = useState('')
-  const [puntoVenta, setPuntoVenta] = useState(alta.punto_venta ? String(alta.punto_venta) : '')
   const actual = ORDEN_PASO[alta.paso]
   const conError = alta.estado === 'error'
-  const errorEnPuntoVenta = alta.paso === 'puntos_venta' || alta.paso === 'punto_venta'
 
   return (
     <div className="space-y-4">
@@ -422,21 +413,13 @@ function ProgresoAlta({ alta, esPrueba, clave, busy, onClave, onReintentar, onCa
             <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
             <span>{alta.error || 'ARCA no pudo completar este paso.'}</span>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Clave fiscal</label>
-              <input type="password" value={claveNueva} onChange={e => setClaveNueva(e.target.value)} autoComplete="off" className={inputClass} />
-            </div>
-            {errorEnPuntoVenta && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Punto de venta</label>
-                <input type="number" min={1} value={puntoVenta} onChange={e => setPuntoVenta(e.target.value)} placeholder="Automático" className={inputClass} />
-              </div>
-            )}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Clave fiscal</label>
+            <input type="password" value={claveNueva} onChange={e => setClaveNueva(e.target.value)} autoComplete="off" className={inputClass} />
           </div>
           <div className="flex gap-3">
             <button
-              onClick={() => { onClave(claveNueva); onReintentar(Number(puntoVenta) || null) }}
+              onClick={() => onReintentar(claveNueva)}
               disabled={busy || !claveNueva}
               className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm rounded-lg disabled:opacity-50"
             >

@@ -122,7 +122,7 @@ interface FiscalState {
   fetchConfig: () => Promise<void>
   iniciarAlta: (params: IniciarAltaParams) => Promise<void>
   avanzarAlta: (clave: string) => Promise<void>
-  reintentarAlta: (clave: string, puntoVenta?: number | null) => Promise<void>
+  reintentarAlta: (clave: string) => Promise<void>
   cancelarAlta: () => Promise<void>
   usarCuitPrueba: (condicionIva: string) => Promise<void>
   saveConfig: (params: SaveConfigParams) => Promise<void>
@@ -180,25 +180,32 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string
 
 export async function callEdgeFunction(fnName: string, body: object) {
   const { data: { session } } = await supabase.auth.getSession()
-  if (!session) throw new Error('No hay sesión activa')
+  if (!session) throw new Error('Tu sesión venció. Volvé a iniciar sesión.')
 
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/${fnName}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${session.access_token}`,
-      'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY as string,
-    },
-    body: JSON.stringify(body),
-  })
+  let res: Response
+  try {
+    res = await fetch(`${SUPABASE_URL}/functions/v1/${fnName}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+        'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY as string,
+      },
+      body: JSON.stringify(body),
+    })
+  } catch {
+    throw new Error('No hay conexión. Revisá tu internet y probá de nuevo.')
+  }
 
+  // Mensajes para el usuario: el detalle técnico queda en la consola
   let data: any
   try {
     data = await res.json()
   } catch {
-    throw new Error(`Error HTTP ${res.status}`)
+    console.error(`${fnName}: respuesta inválida (HTTP ${res.status})`)
+    throw new Error('No se pudo completar la operación. Probá de nuevo en unos minutos.')
   }
-  if (!res.ok || !data.ok) throw new Error(data.error || data.message || `Error HTTP ${res.status}`)
+  if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo completar la operación. Probá de nuevo en unos minutos.')
   return data
 }
 
@@ -233,8 +240,8 @@ export const useFiscalStore = create<FiscalState>((set, get) => ({
     if (data.alta?.estado === 'listo') await get().fetchConfig()
   },
 
-  reintentarAlta: async (clave, puntoVenta) => {
-    const data = await callEdgeFunction('fiscal-setup', { action: 'alta_reintentar', clave, puntoVenta })
+  reintentarAlta: async (clave) => {
+    const data = await callEdgeFunction('fiscal-setup', { action: 'alta_reintentar', clave })
     set({ alta: data.alta })
   },
 
