@@ -55,7 +55,7 @@ const NOMBRE_COMPROBANTE: Record<number, string> = {
   6: 'FACTURA', 7: 'NOTA DE DÉBITO', 8: 'NOTA DE CRÉDITO',
   11: 'FACTURA', 12: 'NOTA DE DÉBITO', 13: 'NOTA DE CRÉDITO',
 }
-const CONDICION_EMISOR: Record<string, string> = {
+export const CONDICION_EMISOR: Record<string, string> = {
   RI: 'IVA Responsable Inscripto',
   Monotributo: 'Responsable Monotributo',
   Exento: 'IVA Sujeto Exento',
@@ -68,7 +68,7 @@ const CONDICION_RECEPTOR: Record<number, string> = {
   7: 'Sujeto No Categorizado',
   13: 'Monotributista Social',
 }
-const DOCUMENTO: Record<number, string> = { 80: 'CUIT', 86: 'CUIL', 96: 'DNI' }
+export const DOCUMENTO: Record<number, string> = { 80: 'CUIT', 86: 'CUIL', 96: 'DNI' }
 const TASA: Record<number, string> = { 3: '0%', 4: '10,5%', 5: '21%', 6: '27%', 8: '5%', 9: '2,5%' }
 // Orden en que ARCA lista el IVA por alícuota en la Factura A
 const ORDEN_ALICUOTAS = [6, 5, 4, 8, 9, 3]
@@ -81,8 +81,8 @@ const nombreCorto = (tipo: number) => `${NOMBRE_COMPROBANTE[tipo] ?? 'COMPROBANT
 
 const importe = (n: number) =>
   new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)
-const fechaAR = (iso?: string | null) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '')
-const cuitConGuiones = (cuit: string) =>
+export const fechaAR = (iso?: string | null) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '')
+export const cuitConGuiones = (cuit: string) =>
   cuit.length === 11 ? `${cuit.slice(0, 2)}-${cuit.slice(2, 10)}-${cuit.slice(10)}` : cuit
 const numeroComprobante = (puntoVenta: number, numero: number) =>
   `${String(puntoVenta).padStart(5, '0')}-${String(numero).padStart(8, '0')}`
@@ -94,7 +94,7 @@ const ANCHO = 190
 const FIN_DETALLE = 218     // hasta acá entran filas de detalle; abajo van totales y CAE
 
 // Etiqueta en negrita seguida del valor, recortado si no entra en el ancho disponible
-function campo(doc: jsPDF, etiqueta: string, valor: string, x: number, y: number, anchoMax = 90) {
+export function campo(doc: jsPDF, etiqueta: string, valor: string, x: number, y: number, anchoMax = 90) {
   doc.setFont('helvetica', 'bold')
   doc.text(etiqueta, x, y)
   const ancho = doc.getTextWidth(`${etiqueta} `)
@@ -380,7 +380,7 @@ export async function crearComprobantePdf(emisor: EmisorPdf, cbte: ComprobantePd
 
 // ─── Desde la app ────────────────────────────────────────────────────────────
 
-function cargarImagen(url: string): Promise<HTMLImageElement | null> {
+export function cargarImagen(url: string): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
     const img = new Image()
     img.crossOrigin = 'anonymous'

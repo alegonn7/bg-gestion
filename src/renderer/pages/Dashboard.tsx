@@ -2,7 +2,7 @@ import SuppliersPage from './Suppliers'
 import { useAuthStore } from '@/store/auth'
 import { useReportsStore } from '@/store/reports'
 import { useSalesStore } from '@/store/sales'
-import { Package, LayoutDashboard, Building2, Users, Settings, LogOut, BarChart3, BookOpen, CreditCard, Receipt, ChevronLeft, ChevronRight, AlertTriangle, TrendingUp, DollarSign, ShoppingCart, ArrowUp, ArrowDown, Wallet, ScanLine, FileText, Sparkles, Calculator, WifiOff } from 'lucide-react'
+import { Package, LayoutDashboard, Building2, Users, Settings, LogOut, BarChart3, BookOpen, CreditCard, Receipt, ChevronLeft, ChevronRight, AlertTriangle, TrendingUp, DollarSign, ShoppingCart, ArrowUp, ArrowDown, Wallet, ScanLine, FileText, Sparkles, Calculator, WifiOff, Truck } from 'lucide-react'
 import { useState, useEffect, useMemo } from 'react'
 import Products from './Products'
 import MasterCatalog from './MasterCatalog'
@@ -17,6 +17,7 @@ import ScannerPage from './ScannerPage'
 import FiscalPage from './FiscalPage'
 import ExtrasPage from './Extras'
 import AccountingPage from './Accounting'
+import RemitosPage from './Remitos'
 import OfflineBanner from '@/components/OfflineBanner'
 import { useNetworkStore } from '@/store/network'
 import { useProductsStore } from '@/store/products'
@@ -25,7 +26,7 @@ import { useSuppliersStore } from '@/store/suppliers'
 import { useDollarStore } from '@/store/dollar'
 import logoImg from '@/assets/logo.png'
 
-type Page = 'dashboard' | 'products' | 'master-catalog' | 'branches' | 'users' | 'reports' | 'pos' | 'sales-history' | 'settings' | 'cash-register' | 'scanner' | 'suppliers' | 'fiscal' | 'extras' | 'accounting'
+type Page = 'dashboard' | 'products' | 'master-catalog' | 'branches' | 'users' | 'reports' | 'pos' | 'sales-history' | 'settings' | 'cash-register' | 'scanner' | 'suppliers' | 'fiscal' | 'extras' | 'accounting' | 'remitos'
 
 /** Secciones que funcionan con la caché local, sin internet */
 const OFFLINE_PAGES: Page[] = ['products', 'scanner']
@@ -62,6 +63,7 @@ export default function Dashboard() {
     { id: 'dashboard' as Page, label: 'Dashboard', icon: LayoutDashboard },
     { id: 'pos' as Page, label: 'Punto de Venta', icon: CreditCard, roles: ['owner', 'admin', 'manager', 'employee'] },
     { id: 'sales-history' as Page, label: 'Historial de Ventas', icon: Receipt, roles: ['owner', 'admin', 'manager', 'employee'] },
+    { id: 'remitos' as Page, label: 'Remitos', icon: Truck, roles: ['owner', 'admin', 'manager', 'employee'] },
     { id: 'cash-register' as Page, label: 'Arqueo de Caja', icon: Wallet, roles: ['owner', 'admin', 'manager'] },
     { id: 'scanner' as Page, label: 'Escáner', icon: ScanLine, roles: ['owner', 'admin', 'manager', 'employee'] },
     { id: 'products' as Page, label: 'Productos', icon: Package, stockBadge: true },
@@ -107,6 +109,8 @@ export default function Dashboard() {
         return <FiscalPage />
       case 'accounting':
         return <AccountingPage />
+      case 'remitos':
+        return <RemitosPage />
       case 'extras':
         return <ExtrasPage />
       case 'settings':

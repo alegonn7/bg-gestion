@@ -1,15 +1,18 @@
 
 import { useEffect, useState } from 'react'
-import { Download, Filter, Building2, DollarSign, FileText, XCircle, AlertTriangle } from 'lucide-react'
+import { Download, Filter, Building2, DollarSign, FileText, XCircle, AlertTriangle, Truck } from 'lucide-react'
 import { useSalesStore } from '@/store/sales'
 import { fetchTransferAccountById } from '@/lib/fetch-transfer-account'
 import { useBranchesStore } from '@/store/branches'
 import { useAuthStore } from '@/store/auth'
 import jsPDF from 'jspdf'
 import { useUsersStore } from '@/store/users'
-import { useFiscalStore, condicionDeVenta, TIPO_COMPROBANTE_LABELS } from '@/store/fiscal'
+import { useFiscalStore, condicionDeVenta, saldoDeFactura, TIPO_COMPROBANTE_LABELS, type FiscalComprobante } from '@/store/fiscal'
+import { useRemitosStore, descargarRemitoPdf } from '@/store/remitos'
+import { numeroRemito, type Remito } from '@/lib/remitos'
 import { descargarComprobante } from '@/lib/facturaPdf'
 import FiscalInvoiceModal from '@/components/FiscalInvoiceModal'
+import RemitoModal from '@/components/RemitoModal'
 import FiscalCreditNoteModal from '@/components/FiscalCreditNoteModal'
 import FiscalDebitNoteModal from '@/components/FiscalDebitNoteModal'
 
@@ -48,8 +51,10 @@ export default function SalesHistory() {
   const [invoicingSale, setInvoicingSale] = useState<any | null>(null)
   const [creditNoteSale, setCreditNoteSale] = useState<any | null>(null)
   const [debitNoteSale, setDebitNoteSale] = useState<any | null>(null)
+  const [remitoSale, setRemitoSale] = useState<any | null>(null)
+  const [remitosPorVenta, setRemitosPorVenta] = useState<Record<string, Remito[]>>({})
 
-  const { config: fiscalConfig, fetchConfig: fetchFiscalConfig, comprobantes, fetchComprobantes, getFacturaDeVenta, tieneNotaDeCredito } = useFiscalStore()
+  const { config: fiscalConfig, fetchConfig: fetchFiscalConfig, fetchComprobantesDeVentas, getFacturaDeVenta, getNotasDeFactura } = useFiscalStore()
 
   const isOwnerOrAdmin = user?.role === 'owner' || user?.role === 'admin'
   const canVoidSale = user?.role === 'owner' || user?.role === 'manager'
@@ -65,10 +70,7 @@ export default function SalesHistory() {
       fetchBranches()
       fetchUsers()
     }
-    if (fiscalConfig?.fiscal_enabled) {
-      fetchComprobantes(200)
-    }
-  }, [selectedBranch?.id, fiscalConfig?.fiscal_enabled])
+  }, [selectedBranch?.id])
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('es-AR', {
@@ -322,6 +324,32 @@ export default function SalesHistory() {
     setCurrentPage(1)
   }, [localStartDate, localEndDate, searchQuery, selectedBranchId, selectedUserId])
 
+  // Comprobantes fiscales y remitos de las ventas de esta página
+  const idsPagina = paginatedSales.map(s => s.id).join(',')
+  const cargarRemitos = (ids: string[]) =>
+    useRemitosStore.getState().remitosDeVentas(ids)
+      .then(lista => setRemitosPorVenta(lista.reduce<Record<string, Remito[]>>((porVenta, r) => {
+        if (r.sale_id) (porVenta[r.sale_id] ??= []).push(r)
+        return porVenta
+      }, {})))
+      .catch(err => console.error('Error cargando remitos:', err))
+
+  useEffect(() => {
+    const ids = idsPagina ? idsPagina.split(',') : []
+    if (fiscalConfig?.fiscal_enabled) fetchComprobantesDeVentas(ids)
+    cargarRemitos(ids)
+  }, [idsPagina, fiscalConfig?.fiscal_enabled])
+
+  const descargarFiscal = (cbte: FiscalComprobante, sale: any, asociado?: FiscalComprobante) => {
+    if (!fiscalConfig) return
+    descargarComprobante(cbte, fiscalConfig, {
+      nombreFantasia: organization?.name,
+      logoUrl: organization?.logo_url,
+      condicionVenta: condicionDeVenta(sale.payment_method),
+      asociado: asociado ?? null,
+    })
+  }
+
   return (
     <div className="h-full flex flex-col bg-gray-50">
       {/* Header */}
@@ -516,6 +544,13 @@ export default function SalesHistory() {
           <div className="space-y-4">
             {paginatedSales.map((sale) => {
               const isVoided = sale.status === 'voided';
+              // Documentos de la venta: factura vigente, sus notas y los remitos
+              const factura = fiscalConfig?.fiscal_enabled ? getFacturaDeVenta(sale.id) : undefined
+              const notas = factura ? getNotasDeFactura(factura.id) : []
+              // Saldo ≈ 0: la factura quedó anulada con notas de crédito y la venta se puede refacturar
+              const saldo = factura ? saldoDeFactura(factura, notas) : 0
+              const facturaVigente = !!factura && saldo > 0.05
+              const remitos = remitosPorVenta[sale.id] ?? []
               return (
                 <div key={sale.id} className={`bg-white rounded-lg shadow-sm border overflow-hidden ${isVoided ? 'border-red-200 opacity-70' : 'border-gray-200'}`}>
                   {/* Sale Header */}
@@ -571,56 +606,44 @@ export default function SalesHistory() {
                           )}
                         </>
                       )}
-                      {fiscalConfig?.fiscal_enabled && (() => {
-                        // Una venta se factura una sola vez; se puede volver a facturar si la
-                        // factura anterior quedó anulada con nota de crédito
-                        const factura = getFacturaDeVenta(sale.id)
-                        const anulada = factura ? tieneNotaDeCredito(factura.id) : false
-                        return (<>
-                          {!isVoided && (!factura || anulada) && (
-                            <button
-                              onClick={() => setInvoicingSale(sale)}
-                              className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700"
-                            >
-                              <FileText className="h-4 w-4" />
-                              Factura
-                            </button>
-                          )}
-                          {factura && (
-                            <button
-                              onClick={() => descargarComprobante(factura, fiscalConfig, {
-                                nombreFantasia: organization?.name,
-                                logoUrl: organization?.logo_url,
-                                condicionVenta: condicionDeVenta(sale.payment_method),
-                              })}
-                              title={`Descargar ${TIPO_COMPROBANTE_LABELS[factura.tipo_cbte]} ${String(factura.punto_venta).padStart(5, '0')}-${String(factura.numero).padStart(8, '0')}`}
-                              className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 text-sm rounded-lg hover:bg-indigo-100"
-                            >
-                              <Download className="h-4 w-4" />
-                              {TIPO_COMPROBANTE_LABELS[factura.tipo_cbte]}
-                              {factura.ambiente === 'dev' && <span className="text-xs text-amber-600">(prueba)</span>}
-                            </button>
-                          )}
-                          {factura && isVoided && !anulada && (
-                            <button
-                              onClick={() => setCreditNoteSale({ sale, comprobante: factura })}
-                              className="flex items-center gap-2 px-3 py-1.5 bg-orange-600 text-white text-sm rounded-lg hover:bg-orange-700"
-                            >
-                              <FileText className="h-4 w-4" />
-                              NC
-                            </button>
-                          )}
-                          {factura && !isVoided && !anulada && (
-                            <button
-                              onClick={() => setDebitNoteSale({ sale, comprobante: factura })}
-                              className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
-                            >
-                              <FileText className="h-4 w-4" />
-                              ND
-                            </button>
-                          )}
-                        </>)
-                      })()}
+                      {fiscalConfig?.fiscal_enabled && !isVoided && !facturaVigente && (
+                        <button
+                          onClick={() => setInvoicingSale(sale)}
+                          className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700"
+                        >
+                          <FileText className="h-4 w-4" />
+                          Factura
+                        </button>
+                      )}
+                      {facturaVigente && (
+                        <button
+                          onClick={() => setCreditNoteSale({ sale, comprobante: factura })}
+                          title="Devolución total o parcial de lo facturado"
+                          className="flex items-center gap-2 px-3 py-1.5 bg-orange-600 text-white text-sm rounded-lg hover:bg-orange-700"
+                        >
+                          <FileText className="h-4 w-4" />
+                          Nota de crédito
+                        </button>
+                      )}
+                      {facturaVigente && !isVoided && (
+                        <button
+                          onClick={() => setDebitNoteSale({ sale, comprobante: factura })}
+                          title="Cobrar un importe adicional sobre la factura"
+                          className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
+                        >
+                          <FileText className="h-4 w-4" />
+                          Nota de débito
+                        </button>
+                      )}
+                      {!isVoided && (
+                        <button
+                          onClick={() => setRemitoSale(sale)}
+                          className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700"
+                        >
+                          <Truck className="h-4 w-4" />
+                          Remito
+                        </button>
+                      )}
                       <button
                         onClick={() => generatePDF(sale)}
                         className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
@@ -630,6 +653,38 @@ export default function SalesHistory() {
                       </button>
                     </div>
                   </div>
+                  {/* Documentos de la venta: factura, notas y remitos (click = PDF) */}
+                  {(factura || remitos.length > 0) && (
+                    <div className="px-4 pt-3 flex flex-wrap gap-2">
+                      {factura && [factura, ...notas].map(c => (
+                        <button
+                          key={c.id}
+                          onClick={() => descargarFiscal(c, sale, c.id === factura.id ? undefined : factura)}
+                          title="Descargar PDF"
+                          className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-full border ${
+                            [3, 8, 13].includes(c.tipo_cbte) ? 'bg-orange-50 text-orange-700 border-orange-200'
+                              : [2, 7, 12].includes(c.tipo_cbte) ? 'bg-blue-50 text-blue-700 border-blue-200'
+                              : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                          }`}
+                        >
+                          <Download className="h-3 w-3" />
+                          {TIPO_COMPROBANTE_LABELS[c.tipo_cbte]} {String(c.punto_venta).padStart(5, '0')}-{String(c.numero).padStart(8, '0')}
+                          {c.ambiente === 'dev' && <span className="text-amber-600">(prueba)</span>}
+                        </button>
+                      ))}
+                      {remitos.map(r => (
+                        <button
+                          key={r.id}
+                          onClick={() => descargarRemitoPdf(r)}
+                          title="Descargar PDF"
+                          className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200 ${r.estado === 'anulado' ? 'line-through opacity-60' : ''}`}
+                        >
+                          <Truck className="h-3 w-3" />
+                          Remito {numeroRemito(r)}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   {/* Sale Items */}
                   <div className="p-4">
                     <div className="space-y-2 mb-4">
@@ -710,8 +765,20 @@ export default function SalesHistory() {
       {creditNoteSale && (
         <FiscalCreditNoteModal
           comprobante={creditNoteSale.comprobante}
+          notas={getNotasDeFactura(creditNoteSale.comprobante.id)}
           saleItems={creditNoteSale.sale.items}
           onClose={() => setCreditNoteSale(null)}
+        />
+      )}
+      {remitoSale && (
+        <RemitoModal
+          inicial={{
+            motivo: 'venta',
+            saleId: remitoSale.id,
+            items: remitoSale.items.map((i: any) => ({ codigo: i.barcode || '', descripcion: i.product_name, cantidad: i.quantity })),
+          }}
+          onClose={() => setRemitoSale(null)}
+          onCreado={() => cargarRemitos(idsPagina ? idsPagina.split(',') : [])}
         />
       )}
       {debitNoteSale && (

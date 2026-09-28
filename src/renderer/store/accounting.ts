@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from './auth'
+import { useFiscalStore, type Ambiente } from './fiscal'
 
 export const EXPENSE_CATEGORIES = [
   { value: 'alquiler', label: 'Alquiler' },
@@ -148,6 +149,7 @@ interface AccountingState {
   totalLibroNeto: number
   totalLibroIVA: number
   totalLibroImporte: number
+  libroAmbiente: Ambiente
 
   purchases: PurchaseEntry[]
   totalPurchasesAmount: number
@@ -187,6 +189,7 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
   totalLibroNeto: 0,
   totalLibroIVA: 0,
   totalLibroImporte: 0,
+  libroAmbiente: 'prod',
 
   setDateRange: (start, end) => set({ startDate: start, endDate: end }),
 
@@ -419,12 +422,17 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
       const startDate = start || get().startDate
       const endDate = end || get().endDate
 
+      // En modo prueba el libro muestra los comprobantes de prueba; con facturación real, solo los reales
+      const fiscal = useFiscalStore.getState()
+      if (!fiscal.config) await fiscal.fetchConfig()
+      const ambiente: Ambiente = useFiscalStore.getState().config?.ambiente ?? 'prod'
+
       const { data, error } = await supabase
         .from('fiscal_comprobantes')
         .select('id, fecha_emision, tipo_cbte, punto_venta, numero, cuit_receptor, razon_social_receptor, importe_neto, importe_iva, importe_total, cae, resultado')
         .eq('organization_id', organization.id)
         .in('resultado', ['A', 'O']) // 'O' = aprobado con observaciones: también es válido
-        .eq('ambiente', 'prod') // los comprobantes de prueba no van al libro IVA
+        .eq('ambiente', ambiente)
         .gte('fecha_emision', startDate.toISOString().split('T')[0])
         .lte('fecha_emision', endDate.toISOString().split('T')[0])
         .order('fecha_emision', { ascending: true })
@@ -457,6 +465,7 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
         totalLibroNeto: libroIVA.reduce((s, e) => s + e.importe_neto, 0),
         totalLibroIVA: libroIVA.reduce((s, e) => s + e.importe_iva, 0),
         totalLibroImporte: libroIVA.reduce((s, e) => s + e.importe_total, 0),
+        libroAmbiente: ambiente,
         isLoadingLibro: false,
       })
     } catch (error: any) {

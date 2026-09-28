@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from './auth'
-import { TIPO_COMPROBANTE_LABELS } from './fiscal'
+import { TIPO_COMPROBANTE_LABELS, useFiscalStore } from './fiscal'
 
 export interface ProductStats {
   product_id: string
@@ -1016,11 +1016,16 @@ export const useReportsStore = create<ReportsState>((set) => ({
       const end = endDate || new Date()
       const start = startDate || new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000)
 
+      // En modo prueba se ven los comprobantes de prueba; con facturación real, solo los reales
+      const fiscal = useFiscalStore.getState()
+      if (!fiscal.config) await fiscal.fetchConfig()
+      const ambiente = useFiscalStore.getState().config?.ambiente ?? 'prod'
+
       const { data, error } = await supabase
         .from('fiscal_comprobantes')
         .select('tipo_cbte, fecha_emision, importe_total, resultado')
         .in('resultado', ['A', 'O']) // 'O' = aprobado con observaciones: también es válido
-        .eq('ambiente', 'prod') // los comprobantes de prueba no cuentan
+        .eq('ambiente', ambiente)
         .gte('fecha_emision', start.toISOString().split('T')[0])
         .lte('fecha_emision', end.toISOString().split('T')[0])
         .order('fecha_emision', { ascending: true })

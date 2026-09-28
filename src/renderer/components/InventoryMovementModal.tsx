@@ -5,6 +5,9 @@ import { useAuthStore } from '@/store/auth'
 import { useProductsStore, Product } from '@/store/products'
 import { useCashRegisterStore } from '@/store/cash-register'
 import { useTransferAccounts } from '@/store/transfer-accounts'
+import type { NuevoRemito } from '@/store/remitos'
+import type { MotivoRemito } from '@/lib/remitos'
+import RemitoModal from './RemitoModal'
 
 interface InventoryMovementModalProps {
   product: Product | null
@@ -36,6 +39,14 @@ const MOVEMENT_OPTIONS = {
 
 type PaymentSource = 'cash' | 'personal' | 'bank'
 
+// Salidas de mercadería que viajan con remito
+const REMITO_POR_MOVIMIENTO: Record<string, MotivoRemito> = {
+  venta: 'venta',
+  transfer_out: 'traslado',
+  devolucion_out: 'devolucion',
+  muestra: 'sin_cargo',
+}
+
 export default function InventoryMovementModal({ product, isOpen, onClose }: InventoryMovementModalProps) {
   const { user, branch, organization } = useAuthStore()
   const { updateProduct } = useProductsStore()
@@ -56,6 +67,11 @@ export default function InventoryMovementModal({ product, isOpen, onClose }: Inv
   const [transferAccountId, setTransferAccountId] = useState('')
 
   const isPurchase = selectedOption === 'compra'
+
+  // Remito del movimiento: se abre al registrar una salida que lo lleva
+  const motivoRemito = REMITO_POR_MOVIMIENTO[selectedOption]
+  const [generarRemito, setGenerarRemito] = useState(true)
+  const [remitoInicial, setRemitoInicial] = useState<Partial<NuevoRemito> | null>(null)
 
   useEffect(() => {
     fetchAccounts()
@@ -175,6 +191,15 @@ export default function InventoryMovementModal({ product, isOpen, onClose }: Inv
         }
       }
 
+      // Si la salida lleva remito, se abre con el producto y la cantidad ya cargados
+      if (motivoRemito && generarRemito) {
+        setRemitoInicial({
+          motivo: motivoRemito,
+          items: [{ codigo: product.barcode || '', descripcion: product.product?.name || '', cantidad: qty }],
+          observaciones: notes.trim() || undefined,
+        })
+      }
+
       // Resetear y cerrar
       setQuantity('')
       setSelectedOption('')
@@ -183,7 +208,7 @@ export default function InventoryMovementModal({ product, isOpen, onClose }: Inv
       setPurchaseCost('')
       setPaymentSource('cash')
       setTransferAccountId('')
-        onClose()
+      if (!(motivoRemito && generarRemito)) onClose()
 
     } catch (err: any) {
       console.error('Error registering movement:', err)
@@ -195,6 +220,10 @@ export default function InventoryMovementModal({ product, isOpen, onClose }: Inv
 
   const productName = product.product?.name
   const currentOptions = MOVEMENT_OPTIONS[movementType]
+
+  if (remitoInicial) {
+    return <RemitoModal inicial={remitoInicial} onClose={() => { setRemitoInicial(null); onClose() }} />
+  }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -424,6 +453,13 @@ export default function InventoryMovementModal({ product, isOpen, onClose }: Inv
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none resize-none"
             />
           </div>
+
+          {motivoRemito && (
+            <label className="flex items-center gap-2 text-sm text-gray-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+              <input type="checkbox" checked={generarRemito} onChange={e => setGenerarRemito(e.target.checked)} />
+              Generar remito para acompañar la mercadería
+            </label>
+          )}
 
           {/* Resumen stock */}
           {quantity && parseInt(quantity) > 0 && (

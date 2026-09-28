@@ -5,7 +5,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2"
 import { type AfipSdk, type Ambiente, obtenerTicketAcceso } from "../_shared/afipsdk.ts"
 import { decryptSecret } from "../_shared/crypto.ts"
-import { type AuthWsfe, emitirComprobante, type InvoiceRequest, RechazoArca, receptorDe } from "../_shared/wsfe.ts"
+import { type AuthWsfe, calcularImportes, emitirComprobante, type InvoiceRequest, RechazoArca, receptorDe } from "../_shared/wsfe.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -61,25 +61,47 @@ Deno.serve(async (req) => {
 
     const ambiente: Ambiente = cred.ambiente
 
-    // Una venta se factura una sola vez, salvo que la factura anterior tenga nota de crédito
+    // Saldo de una factura: su total, más las notas de débito, menos las notas de crédito
+    const saldoDe = async (facturaId: string, total: number) => {
+      const { data: notas } = await admin.from("fiscal_comprobantes")
+        .select("tipo_cbte, importe_total")
+        .eq("original_comprobante_id", facturaId)
+        .in("resultado", ["A", "O"])
+      return (notas ?? []).reduce(
+        (saldo, n) => saldo + (NOTAS_CREDITO.includes(n.tipo_cbte) ? -1 : 1) * Number(n.importe_total ?? 0),
+        total,
+      )
+    }
+
+    // Una venta se factura una sola vez, salvo que la factura anterior quedó anulada por completo
     if (saleId && FACTURAS.includes(invoiceRequest.tipoComprobante)) {
       const { data: previas } = await admin.from("fiscal_comprobantes")
-        .select("id, punto_venta, numero")
+        .select("id, punto_venta, numero, importe_total")
         .eq("organization_id", org.id)
         .eq("ambiente", ambiente)
         .eq("sale_id", saleId)
         .in("tipo_cbte", FACTURAS)
         .in("resultado", ["A", "O"])
       for (const previa of previas ?? []) {
-        const { count } = await admin.from("fiscal_comprobantes")
-          .select("id", { count: "exact", head: true })
-          .eq("original_comprobante_id", previa.id)
-          .in("tipo_cbte", NOTAS_CREDITO)
-          .in("resultado", ["A", "O"])
-        if (!count) {
+        if (await saldoDe(previa.id, Number(previa.importe_total ?? 0)) > 0.05) {
           const numero = `${String(previa.punto_venta).padStart(5, "0")}-${String(previa.numero).padStart(8, "0")}`
-          return errorResponse(`Esta venta ya tiene la factura ${numero}. Para volver a facturarla, primero emití la nota de crédito.`)
+          return errorResponse(`Esta venta ya tiene la factura ${numero}. Para volver a facturarla, primero anulala con una nota de crédito.`)
         }
+      }
+    }
+
+    // Una nota de crédito no puede acreditar más de lo que queda de la factura
+    if (originalComprobanteId && NOTAS_CREDITO.includes(invoiceRequest.tipoComprobante)) {
+      const { data: original } = await admin.from("fiscal_comprobantes")
+        .select("id, importe_total")
+        .eq("id", originalComprobanteId)
+        .eq("organization_id", org.id)
+        .single()
+      if (!original) return errorResponse("No se encontró la factura a acreditar")
+      const saldo = await saldoDe(original.id, Number(original.importe_total ?? 0))
+      const totalNota = calcularImportes(invoiceRequest.tipoComprobante, invoiceRequest.items).total
+      if (totalNota > saldo + 0.05) {
+        return errorResponse(`La nota de crédito ($${totalNota.toFixed(2)}) supera lo que queda de la factura ($${saldo.toFixed(2)})`)
       }
     }
 

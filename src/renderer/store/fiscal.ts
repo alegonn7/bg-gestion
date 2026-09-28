@@ -145,8 +145,34 @@ interface FiscalState {
     resultado: string
   }>
   fetchComprobantes: (limit?: number) => Promise<void>
+  // Comprobantes de las ventas que se están mostrando en el Historial de Ventas
+  comprobantesVentas: FiscalComprobante[]
+  ventasConsultadas: string[]
+  fetchComprobantesDeVentas: (saleIds: string[]) => Promise<void>
   getFacturaDeVenta: (saleId: string) => FiscalComprobante | undefined
-  tieneNotaDeCredito: (facturaId: string) => boolean
+  getNotasDeFactura: (facturaId: string) => FiscalComprobante[]
+  buscarComprobantes: (filtros: FiltrosComprobantes) => Promise<{ comprobantes: FiscalComprobante[]; total: number }>
+}
+
+export interface FiltrosComprobantes {
+  texto: string                 // código de venta, DNI/CUIT, nombre del cliente o número
+  tipo: '' | 'facturas' | 'nc' | 'nd'
+  desde: string                 // YYYY-MM-DD
+  hasta: string
+  pagina: number
+}
+
+export const COMPROBANTES_POR_PAGINA = 20
+
+const TIPOS_FILTRO = { facturas: FACTURAS, nc: NOTAS_CREDITO, nd: [2, 7, 12] }
+
+// Lo que queda de una factura: su total, más las notas de débito, menos las notas de crédito
+export function saldoDeFactura(factura: FiscalComprobante, notas: FiscalComprobante[]): number {
+  return notas.reduce((saldo, n) => {
+    if (NOTAS_CREDITO.includes(n.tipo_cbte)) return saldo - (n.importe_total ?? 0)
+    if (TIPOS_FILTRO.nd.includes(n.tipo_cbte)) return saldo + (n.importe_total ?? 0)
+    return saldo
+  }, factura.importe_total ?? 0)
 }
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string
@@ -180,6 +206,8 @@ export const useFiscalStore = create<FiscalState>((set, get) => ({
   alta: null,
   ambienteNuevo: 'dev',
   comprobantes: [],
+  comprobantesVentas: [],
+  ventasConsultadas: [],
   isLoading: false,
   error: null,
 
@@ -276,7 +304,7 @@ export const useFiscalStore = create<FiscalState>((set, get) => ({
       originalComprobanteId: orig.id,
     })
 
-    await get().fetchComprobantes(200)
+    await Promise.all([get().fetchComprobantes(200), get().fetchComprobantesDeVentas(get().ventasConsultadas)])
     return result
   },
 
@@ -297,7 +325,7 @@ export const useFiscalStore = create<FiscalState>((set, get) => ({
     })
 
     // Así la venta deja de ofrecer "Factura" y aparece para descargar
-    await get().fetchComprobantes(200)
+    await Promise.all([get().fetchComprobantes(200), get().fetchComprobantesDeVentas(get().ventasConsultadas)])
     return result
   },
 
@@ -331,7 +359,7 @@ export const useFiscalStore = create<FiscalState>((set, get) => ({
     })
 
     // Refrescar comprobantes
-    await get().fetchComprobantes(200)
+    await Promise.all([get().fetchComprobantes(200), get().fetchComprobantesDeVentas(get().ventasConsultadas)])
     return result
   },
 
@@ -350,13 +378,64 @@ export const useFiscalStore = create<FiscalState>((set, get) => ({
     }
   },
 
-  // La factura vigente de la venta (la más reciente; la lista viene ordenada de nueva a vieja)
-  getFacturaDeVenta: (saleId) => {
-    return get().comprobantes.find(c => c.sale_id === saleId && FACTURAS.includes(c.tipo_cbte) && aprobado(c))
+  fetchComprobantesDeVentas: async (saleIds) => {
+    set({ ventasConsultadas: saleIds })
+    if (!saleIds.length) {
+      set({ comprobantesVentas: [] })
+      return
+    }
+    const { data, error } = await supabase
+      .from('fiscal_comprobantes')
+      .select('*')
+      .in('sale_id', saleIds)
+      .order('created_at', { ascending: false })
+    if (error) {
+      console.error('Error fetching comprobantes de ventas:', error)
+      return
+    }
+    set({ comprobantesVentas: data || [] })
   },
 
-  tieneNotaDeCredito: (facturaId) => {
-    return get().comprobantes.some(c => c.original_comprobante_id === facturaId && NOTAS_CREDITO.includes(c.tipo_cbte) && aprobado(c))
+  // La factura vigente de la venta (la más reciente; la lista viene ordenada de nueva a vieja)
+  getFacturaDeVenta: (saleId) => {
+    return get().comprobantesVentas.find(c => c.sale_id === saleId && FACTURAS.includes(c.tipo_cbte) && aprobado(c))
+  },
+
+  // Notas de crédito y débito asociadas a una factura, de la más vieja a la más nueva
+  getNotasDeFactura: (facturaId) => {
+    return get().comprobantesVentas
+      .filter(c => c.original_comprobante_id === facturaId && aprobado(c))
+      .reverse()
+  },
+
+  buscarComprobantes: async (filtros) => {
+    const desde = (filtros.pagina - 1) * COMPROBANTES_POR_PAGINA
+    let query = supabase
+      .from('fiscal_comprobantes')
+      .select('*', { count: 'exact' })
+      .order('fecha_emision', { ascending: false })
+      .order('created_at', { ascending: false })
+      .range(desde, desde + COMPROBANTES_POR_PAGINA - 1)
+
+    if (filtros.tipo) query = query.in('tipo_cbte', TIPOS_FILTRO[filtros.tipo])
+    if (filtros.desde) query = query.gte('fecha_emision', filtros.desde)
+    if (filtros.hasta) query = query.lte('fecha_emision', filtros.hasta)
+
+    // Busca en el código de venta, el documento y el nombre del cliente, y el número del comprobante
+    const texto = filtros.texto.trim().replace(/[,()%*]/g, ' ').trim()
+    if (texto) {
+      const digitos = texto.replace(/\D/g, '')
+      query = query.or([
+        `sale_ref.ilike.${texto.toLowerCase()}%`,
+        `razon_social_receptor.ilike.%${texto}%`,
+        ...(digitos ? [`doc_nro.ilike.%${digitos}%`, `cuit_receptor.ilike.%${digitos}%`] : []),
+        ...(digitos && digitos.length <= 8 ? [`numero.eq.${Number(digitos)}`] : []),
+      ].join(','))
+    }
+
+    const { data, error, count } = await query
+    if (error) throw error
+    return { comprobantes: (data || []) as FiscalComprobante[], total: count ?? 0 }
   },
 }))
 

@@ -11,8 +11,20 @@ import {
 } from 'recharts'
 import { useAccountingStore, EXPENSE_CATEGORIES, INCOME_CATEGORIES, type BankBalance, type RawSale, type RawExtraMovement } from '@/store/accounting'
 import { useAuthStore } from '@/store/auth'
+import { useFiscalStore } from '@/store/fiscal'
 import { useTransferAccounts } from '@/store/transfer-accounts'
 import * as Papa from 'papaparse'
+
+// Si la facturación está activa se lee de la configuración fiscal: la organización cargada al
+// iniciar sesión no se entera si se activó después
+function useFacturacionActiva() {
+  const { config, fetchConfig } = useFiscalStore()
+  const { organization } = useAuthStore()
+  useEffect(() => {
+    if (!config) fetchConfig()
+  }, [])
+  return config ? config.fiscal_enabled : !!organization?.fiscal_enabled
+}
 
 type Tab = 'resumen' | 'pl' | 'flujo' | 'gastos' | 'cuentas' | 'compras' | 'libro'
 
@@ -1045,11 +1057,11 @@ function FlujoTab() {
 // ─── Tab: Libro IVA ───────────────────────────────────────────────────────────
 function LibroIVATab() {
   const {
-    libroIVA, totalLibroNeto, totalLibroIVA, totalLibroImporte,
+    libroIVA, totalLibroNeto, totalLibroIVA, totalLibroImporte, libroAmbiente,
     isLoadingLibro, fetchLibroIVA, startDate, endDate
   } = useAccountingStore()
 
-  const { organization } = useAuthStore()
+  const fiscalActivo = useFacturacionActiva()
   const [page, setPage] = useState(1)
 
   const libroTotalPages = Math.max(1, Math.ceil(libroIVA.length / PAGE_SIZE))
@@ -1082,12 +1094,12 @@ function LibroIVATab() {
     URL.revokeObjectURL(url)
   }
 
-  if (!organization?.fiscal_enabled) {
+  if (!fiscalActivo) {
     return (
       <div className="text-center py-16">
         <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
         <p className="text-gray-500 font-medium">Facturación electrónica no habilitada</p>
-        <p className="text-xs text-gray-400 mt-1">El Libro IVA requiere tener AFIP configurado en Configuración.</p>
+        <p className="text-xs text-gray-400 mt-1">El Libro IVA requiere tener la facturación ARCA configurada.</p>
       </div>
     )
   }
@@ -1096,17 +1108,27 @@ function LibroIVATab() {
     return <div className="flex items-center justify-center py-16"><RefreshCw className="w-6 h-6 text-blue-500 animate-spin" /></div>
   }
 
+  const avisoPrueba = libroAmbiente === 'dev' && (
+    <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+      <strong>Modo prueba:</strong> se muestran los comprobantes de prueba. Cuando factures de verdad, acá van solo los reales.
+    </p>
+  )
+
   if (libroIVA.length === 0) {
     return (
-      <div className="text-center py-16">
-        <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-        <p className="text-gray-500">No hay comprobantes fiscales en el período</p>
+      <div className="space-y-4">
+        {avisoPrueba}
+        <div className="text-center py-16">
+          <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+          <p className="text-gray-500">No hay comprobantes fiscales en el período</p>
+        </div>
       </div>
     )
   }
 
   return (
     <div className="space-y-4">
+      {avisoPrueba}
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-4">
         <div className="bg-white rounded-xl border border-gray-200 p-4">
@@ -1396,7 +1418,7 @@ function ComprasTab() {
 export default function AccountingPage() {
   const [activeTab, setActiveTab] = useState<Tab>('resumen')
   const { isLoading, error, plData, startDate, endDate, fetchAccountingData, setDateRange } = useAccountingStore()
-  const { organization } = useAuthStore()
+  const fiscalActivo = useFacturacionActiva()
 
   useEffect(() => {
     fetchAccountingData(startDate, endDate)
@@ -1414,7 +1436,7 @@ export default function AccountingPage() {
     { id: 'gastos', label: 'Gastos y Pagos', icon: BookOpen },
     { id: 'cuentas', label: 'Cuentas', icon: Building2 },
     { id: 'compras', label: 'Compras', icon: ShoppingCart },
-    ...(organization?.fiscal_enabled ? [{ id: 'libro' as Tab, label: 'Libro IVA', icon: FileText }] : []),
+    ...(fiscalActivo ? [{ id: 'libro' as Tab, label: 'Libro IVA', icon: FileText }] : []),
   ]
 
   return (
