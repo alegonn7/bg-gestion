@@ -30,9 +30,11 @@ dist-electron
 *.sqlite
 *.sqlite3
 
-# Build artifacts (los íconos sí se suben: GitHub los necesita para armar la versión de Mac)
+# Build artifacts (los íconos y el fondo del instalador de Mac sí se suben: GitHub los necesita
+# para armar la versión de Mac)
 /build/*
 !/build/icons/
+!/build/dmg/
 out
 
 # Certificados y claves privadas (nunca subir: el repo es público)

@@ -1,5 +1,16 @@
-Versión 1.0.2
+Versión 1.2.0
 
-- ¡Actualización de prueba 1.0.2!
-- Cambios visuales menores.
-- El sistema de auto-actualización está funcionando correctamente.
+Novedades
+- Facturación electrónica ARCA: el dueño conecta el negocio desde Configuración con su CUIT y su clave fiscal. Después, cualquiera hace facturas A, B o C, notas de crédito y notas de débito desde el Historial de Ventas.
+- Remitos: nueva sección para hacer remitos X y remitos R (con CAI de ARCA), con su PDF para firmar.
+- Libro IVA Digital: en Contabilidad → Libro IVA descargás los archivos del mes para ARCA (responsables inscriptos).
+- Mi Cuenta: todos pueden cambiar su contraseña, y el dueño su nombre.
+- El dueño puede ponerle una contraseña nueva a un empleado que se la olvidó.
+
+Mejoras
+- Crear y eliminar usuarios funciona desde la aplicación.
+- Un usuario desactivado ya no puede entrar.
+- Se pide confirmación antes de borrar proveedores, hojas de etiquetas y el logo.
+- El descuento no puede ser mayor que el total.
+- La ganancia de los productos se calcula igual en todas las pantallas.
+- Nueva guía de uso.
