@@ -100,7 +100,7 @@ function dePem(pem: string, tipo: string): Uint8Array | null {
 
 // ARCA pide "solo letras y números" en el nombre del certificado; la razón social va sin acentos
 function textoSimple(texto: string, maximo: number): string {
-  return texto.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9 .,&-]/g, "").replace(/\s+/g, " ").trim().slice(0, maximo)
+  return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9 .,&-]/g, "").replace(/\s+/g, " ").trim().slice(0, maximo)
 }
 
 export interface PedidoDeCertificado {
