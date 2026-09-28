@@ -4,7 +4,14 @@ import { useState } from 'react'
 import { ArrowRight, CheckCircle2, Clock, ListChecks } from 'lucide-react'
 import { Boton, BotonAbrirArca, Instrucciones, Nota, PasoTutorial, Servicio, type EstadoPaso } from './TutorialArca'
 
+// Sistema del punto de venta para comprobantes impresos (el mismo que usa el pedido automático)
+const SISTEMA_CAI: Record<string, string> = {
+  Monotributo: 'Factuweb (Imprenta) - Monotributo',
+  RI: 'Factuweb (Imprenta) - Responsable Inscripto',
+}
+
 export default function CaiManualArca({ condicionIva, onCargar }: { condicionIva: string | null; onCargar: () => void }) {
+  const sistema = SISTEMA_CAI[condicionIva ?? '']
   const [hechos, setHechos] = useState<number[]>([])
   const [abierto, setAbierto] = useState<number | null>(0)
 
@@ -63,16 +70,22 @@ export default function CaiManualArca({ condicionIva, onCargar }: { condicionIva
             <ul className="mt-1.5 space-y-1 list-disc pl-4 marker:text-gray-400">
               <li><strong>Número:</strong> el que sigue a los que ya tenés. Anotalo.</li>
               <li>
-                <strong>Sistema:</strong> el que empieza con{' '}
-                <span className="px-1.5 py-px rounded bg-emerald-50 border border-emerald-200 text-emerald-900 font-medium">Factuweb (Imprenta)</span>
-                {condicionIva === 'Monotributo' && ' (el de monotributo)'}
+                <strong>Sistema:</strong>{' '}
+                {sistema ? (
+                  <span className="px-1.5 py-px rounded bg-emerald-50 border border-emerald-200 text-emerald-900 font-medium">{sistema}</span>
+                ) : (
+                  <>el que empieza con <span className="px-1.5 py-px rounded bg-emerald-50 border border-emerald-200 text-emerald-900 font-medium">Factuweb (Imprenta)</span></>
+                )}
               </li>
               <li><strong>Domicilio:</strong> el del negocio.</li>
             </ul>
           </>,
           <>Tocá <Boton>Aceptar</Boton> y confirmá con <Boton>Sí</Boton></>,
         ]} />
-        <Nota>Si ya pediste un CAI antes, usá el mismo punto de venta y salteá este paso.</Nota>
+        <Nota>
+          Si ya tenés un punto de venta con el sistema <strong>Factuweb (Imprenta)</strong> (por ejemplo, porque ya pediste
+          un CAI antes), usá ese y salteá este paso.
+        </Nota>
         {botonListo(0, 'Listo, ya lo tengo', 'Ya tenía uno')}
       </PasoTutorial>
 
@@ -86,7 +99,7 @@ export default function CaiManualArca({ condicionIva, onCargar }: { condicionIva
             Completá:
             <ul className="mt-1.5 space-y-1 list-disc pl-4 marker:text-gray-400">
               <li><strong>Punto de venta:</strong> el del paso 1.</li>
-              <li><strong>Tipo de comprobante:</strong> Remito R.</li>
+              <li><strong>Tipo de comprobante:</strong> Remito R (código 91).</li>
               <li><strong>Cantidad:</strong> cuántos remitos querés (por ejemplo, 100).</li>
             </ul>
           </>,

@@ -297,7 +297,9 @@ export const useFiscalStore = create<FiscalState>((set, get) => ({
   avanzarAlta: async (clave) => {
     const data = await callEdgeFunction('fiscal-setup', { action: 'alta_avanzar', clave })
     set({ alta: data.alta })
-    if (data.alta?.estado === 'listo') await get().fetchConfig()
+    // Al terminar, o si se cortó (por ejemplo, porque no quedan automatizaciones y hay que seguir
+    // a mano), se relee la configuración
+    if (data.alta?.estado === 'listo' || data.alta?.estado === 'error') await get().fetchConfig()
   },
 
   reintentarAlta: async (clave) => {

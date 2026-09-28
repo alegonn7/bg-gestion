@@ -197,6 +197,20 @@ export function mismosBytes(a: Uint8Array, b: Uint8Array): boolean {
   return a.length === b.length && a.every((byte, i) => byte === b[i])
 }
 
+// Misma clave pública en el certificado y en el pedido: se compara la clave en sí (el BIT STRING),
+// sin depender de cómo cada uno escribió el algoritmo
+export function mismaClavePublica(a: Uint8Array, b: Uint8Array): boolean {
+  const clave = (spki: Uint8Array) => {
+    const [, bits] = hijos(spki, leer(spki, 0))
+    return bits?.tag === 0x03 ? spki.slice(bits.inicio, bits.fin) : spki
+  }
+  try {
+    return mismosBytes(clave(a), clave(b))
+  } catch {
+    return mismosBytes(a, b)
+  }
+}
+
 function textos(bytes: Uint8Array, nodo: Nodo): string[] {
   if ([0x0c, 0x13, 0x14, 0x16].includes(nodo.tag)) return [new TextDecoder().decode(bytes.slice(nodo.inicio, nodo.fin))]
   if (nodo.tag === SEQUENCE || nodo.tag === SET) return hijos(bytes, nodo).flatMap((hijo) => textos(bytes, hijo))

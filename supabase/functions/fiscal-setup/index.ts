@@ -14,7 +14,7 @@ import {
   iniciarAutomatizacion,
   obtenerTicketAcceso,
 } from "../_shared/afipsdk.ts"
-import { clavePublicaDelPedido, crearPedidoDeCertificado, leerCertificado, mismosBytes } from "../_shared/certificado.ts"
+import { clavePublicaDelPedido, crearPedidoDeCertificado, leerCertificado, mismaClavePublica } from "../_shared/certificado.ts"
 import { decryptSecret, encryptSecret } from "../_shared/crypto.ts"
 import { usuarioDeLaSesion } from "../_shared/sesion.ts"
 import { puntosDeVenta } from "../_shared/wsfe.ts"
@@ -262,6 +262,9 @@ Deno.serve(async (req) => {
       if (!razonSocial) return errorResponse("Ingresá la razón social")
       if (await leerAmbienteNuevo() !== "prod") return errorResponse("En modo prueba usá \"Probar sin clave fiscal\"")
       const condicionIva = ["Monotributo", "RI", "Exento"].includes(body.condicionIva) ? body.condicionIva : "Monotributo"
+      // Con la facturación conectada no se pisa el certificado que está funcionando
+      const { data: conexion } = await admin.from("fiscal_credentials").select("activo").eq("organization_id", orgId).maybeSingle()
+      if (conexion?.activo) return errorResponse("La facturación ya está conectada. Para conectarla de nuevo, primero desconectala.")
 
       const { error: orgError } = await admin.from("organizations")
         .update({ fiscal_enabled: false, cuit, razon_social: razonSocial, condicion_iva: condicionIva })
@@ -331,7 +334,7 @@ Deno.serve(async (req) => {
       } catch {
         return errorDelAltaManual(2, "Ese archivo no es un certificado. Subí el que descargaste de ARCA al final del trámite 2 (con \"Ver\" y después \"Descargar\").")
       }
-      if (!mismosBytes(certificado.clavePublica, clavePublicaDelPedido(alta.csr))) {
+      if (!mismaClavePublica(certificado.clavePublica, clavePublicaDelPedido(alta.csr))) {
         return errorDelAltaManual(2, `Ese certificado no es el que se creó con el archivo de BG Gestión. En ARCA, descargá el certificado del alias "${alta.cert_alias}".`)
       }
       if (certificado.vence.getTime() < Date.now()) {
@@ -353,7 +356,7 @@ Deno.serve(async (req) => {
         if (!(err instanceof AfipSdkError)) throw err
         console.error(`Alta manual [${orgId}]: ARCA no dio el ticket de acceso:`, err.status, err.message, JSON.stringify(err.body))
         if (/not ?authorized|no autorizad|no est[aá] autorizad/i.test(err.message)) {
-          return errorDelAltaManual(3, `ARCA todavía no autorizó el certificado para facturar. Revisá el trámite 3: la relación con "Facturación Electrónica" tiene que tener el certificado "${alta.cert_alias}".`)
+          return errorDelAltaManual(3, `ARCA todavía no autorizó el certificado para facturar. Revisá el trámite 3: la relación con "Facturación Electrónica" tiene que tener el certificado "${alta.cert_alias}". Si lo acabás de hacer, esperá unos minutos y probá de nuevo.`)
         }
         if (/cert/i.test(err.message)) {
           return errorDelAltaManual(2, "ARCA no reconoce el certificado. Subí el que descargaste en el trámite 2.")
@@ -814,7 +817,9 @@ function sinAutomatizaciones() {
 async function errorDelPaso(admin: any, err: unknown): Promise<string> {
   if (!esLimiteDeAutomatizaciones(err)) return mensajeParaCliente(err)
   await marcarSinAutomatizaciones(admin)
-  return `No se pudo terminar automáticamente. ${ACTUALIZAR_PARA_PASO_A_PASO}`
+  // Queda guardado en el alta o en el pedido de CAI: lo ven tanto la versión nueva (que además
+  // muestra el paso a paso) como las anteriores
+  return "No se pudo terminar automáticamente: hacelo a mano en la página de ARCA con el paso a paso de la app (si no lo ves, actualizá BG Gestión)."
 }
 
 // Error del alta manual: `tramite` le indica a la app qué paso revisar

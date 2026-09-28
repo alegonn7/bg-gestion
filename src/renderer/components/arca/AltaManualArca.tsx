@@ -1,7 +1,7 @@
 // Alta de la facturación hecha a mano por el cliente en la página de ARCA, con un paso a paso.
 // Se muestra cuando la app no puede hacer el alta sola. La app genera el archivo que se sube a
 // ARCA (pedido de certificado) y al final verifica todo: certificado, autorización y punto de venta.
-import { useEffect, useState, type DragEvent } from 'react'
+import { useEffect, useRef, useState, type DragEvent } from 'react'
 import { AlertTriangle, CheckCircle2, Clock, Download, FileCheck, KeyRound, Laptop, ListChecks, Loader2, RotateCcw, Upload } from 'lucide-react'
 import { ErrorDelServidor, type AltaFiscal, type AltaManualParams } from '@/store/fiscal'
 import {
@@ -25,20 +25,30 @@ function primerPendiente(hechos: number[]): number {
   return PASOS - 1
 }
 
-// Guarda el pedido de certificado; devuelve dónde quedó ('' si no se sabe, null si se canceló)
+const claveDeHechos = (alias: string) => `bg-alta-manual:${alias}`
+
+// Guarda el pedido de certificado; devuelve dónde quedó ('' si no se sabe, null si se canceló).
+// Si el "Guardar como" de la app no está disponible o falla, se descarga como en el navegador
 async function guardarPedido(csr: string): Promise<string | null> {
   if (window.electron?.guardarArchivo) {
-    const resultado = await window.electron.guardarArchivo(NOMBRE_ARCHIVO, btoa(csr))
-    if (resultado.canceled) return null
-    if (!resultado.success) throw new Error('No se pudo guardar el archivo. Probá de nuevo.')
-    return resultado.path ?? ''
+    try {
+      const resultado = await window.electron.guardarArchivo(NOMBRE_ARCHIVO, btoa(csr))
+      if (resultado.canceled) return null
+      if (resultado.success) return resultado.path ?? ''
+      console.error('No se pudo guardar el pedido de certificado:', resultado.error)
+    } catch (err) {
+      console.error('No se pudo guardar el pedido de certificado:', err)
+    }
   }
-  const url = URL.createObjectURL(new Blob([csr], { type: 'application/pkcs10' }))
+  const url = URL.createObjectURL(new Blob([csr], { type: 'application/octet-stream' }))
   const enlace = document.createElement('a')
   enlace.href = url
   enlace.download = NOMBRE_ARCHIVO
+  enlace.style.display = 'none'
+  document.body.appendChild(enlace)
   enlace.click()
-  URL.revokeObjectURL(url)
+  enlace.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
   return ''
 }
 
@@ -52,14 +62,19 @@ interface Props {
 
 export default function AltaManualArca({ inicial, alta, onPedir, onVerificar, onCancelar }: Props) {
   const alias = alta?.estado === 'manual' ? alta.cert_alias || '' : ''
-  const claveHechos = `bg-alta-manual:${alias}`
+  const claveHechos = claveDeHechos(alias)
 
   // Paso 1: datos del negocio y archivo para ARCA
   const [cuit, setCuit] = useState(inicial?.cuit || '')
   const [razonSocial, setRazonSocial] = useState(inicial?.razon_social || '')
   const [condicionIva, setCondicionIva] = useState(inicial?.condicion_iva || 'Monotributo')
   const [editando, setEditando] = useState(false)
+  // Dónde quedó el archivo: null si todavía no se guardó en esta sesión, '' si no se sabe la carpeta
   const [rutaArchivo, setRutaArchivo] = useState<string | null>(null)
+  // Mientras se prepara y guarda el archivo, y con el certificado que se acaba de crear, el paso
+  // abierto lo decide prepararArchivo (el paso 1 queda abierto si no se guardó o si algo falló)
+  const descargando = useRef(false)
+  const aliasPropio = useRef<string | null>(null)
   const [preparando, setPreparando] = useState(false)
   const [errorArchivo, setErrorArchivo] = useState<string | null>(null)
 
@@ -76,7 +91,9 @@ export default function AltaManualArca({ inicial, alta, onPedir, onVerificar, on
   useEffect(() => {
     const guardados = alias ? leerHechos(claveHechos) : []
     setHechos(guardados)
-    setAbierto(primerPendiente(alias ? [0, ...guardados] : []))
+    if (!descargando.current && !(alias && alias === aliasPropio.current)) {
+      setAbierto(primerPendiente(alias ? [0, ...guardados] : []))
+    }
     setEditando(false)
   }, [alias])
 
@@ -102,13 +119,20 @@ export default function AltaManualArca({ inicial, alta, onPedir, onVerificar, on
     if (cuitLimpio.length !== 11) return setErrorArchivo('El CUIT tiene que tener 11 dígitos')
     if (!razonSocial.trim()) return setErrorArchivo('Ingresá la razón social')
     setPreparando(true)
+    descargando.current = true
     try {
-      const { csr } = await onPedir({ cuit: cuitLimpio, razonSocial: razonSocial.trim(), condicionIva, nuevo })
-      const ruta = await guardarPedido(csr)
-      if (ruta !== null) setRutaArchivo(ruta)
+      const pedido = await onPedir({ cuit: cuitLimpio, razonSocial: razonSocial.trim(), condicionIva, nuevo })
+      aliasPropio.current = pedido.alias
+      const ruta = await guardarPedido(pedido.csr)
+      // Si cerró el "Guardar como" sin guardar, se queda en este paso para descargarlo de nuevo
+      if (ruta === null) return setAbierto(0)
+      setRutaArchivo(ruta)
+      setAbierto(primerPendiente([0, ...leerHechos(claveDeHechos(pedido.alias))]))
     } catch (err: any) {
       setErrorArchivo(err.message)
+      setAbierto(0)
     } finally {
+      descargando.current = false
       setPreparando(false)
     }
   }
@@ -195,19 +219,40 @@ export default function AltaManualArca({ inicial, alta, onPedir, onVerificar, on
         lugar="app" estado={estadoDe(0)} abierto={abierto === 0} acento="indigo" onAbrir={() => alternar(0)}>
         {alias && !editando ? (
           <div className="space-y-3">
-            <div className="flex items-start gap-2 rounded-lg bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-800">
-              <FileCheck className="w-4 h-4 flex-shrink-0 mt-0.5" />
-              <span>
-                Archivo listo: <strong>{NOMBRE_ARCHIVO}</strong>
-                {rutaArchivo && <span className="block text-xs text-green-700 break-all mt-0.5">Guardado en {rutaArchivo}</span>}
-              </span>
-            </div>
+            {rutaArchivo !== null ? (
+              <div className="flex items-start gap-2 rounded-lg bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-800">
+                <FileCheck className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <span>
+                  Archivo guardado: <strong>{NOMBRE_ARCHIVO}</strong>
+                  <span className="block text-xs text-green-700 break-all mt-0.5">
+                    {rutaArchivo ? `Está en ${rutaArchivo}` : 'Quedó en la carpeta que elegiste (normalmente, Descargas).'}
+                  </span>
+                </span>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-700">
+                Tu archivo para ARCA ya está preparado. Si todavía no lo guardaste, o no lo encontrás, descargalo:
+              </p>
+            )}
             <p className="text-sm text-gray-700">
-              Tu certificado se va a llamar <Copiable texto={alias} />. Lo vas a escribir en el trámite 2.
+              Nombre de tu certificado (lo vas a escribir en el trámite 2): <Copiable texto={alias} />
             </p>
+            {errorArchivo && (
+              <p className="flex items-center gap-1.5 text-sm text-red-600"><AlertTriangle className="w-4 h-4 flex-shrink-0" />{errorArchivo}</p>
+            )}
             <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => prepararArchivo(false)} disabled={preparando} className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-sm disabled:opacity-50">
-                {preparando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}Descargar de nuevo
+              <button
+                type="button"
+                onClick={() => prepararArchivo(false)}
+                disabled={preparando}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm disabled:opacity-50 ${
+                  rutaArchivo !== null
+                    ? 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200'
+                    : 'bg-indigo-600 hover:bg-indigo-700 text-white font-medium'
+                }`}
+              >
+                {preparando ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                {rutaArchivo !== null ? 'Descargar de nuevo' : 'Descargar el archivo para ARCA'}
               </button>
               <button type="button" onClick={() => setEditando(true)} className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-gray-500 hover:bg-gray-100 text-sm">
                 <RotateCcw className="w-4 h-4" />Empezar de nuevo con otros datos

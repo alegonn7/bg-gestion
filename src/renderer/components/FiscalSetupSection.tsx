@@ -64,7 +64,7 @@ export default function FiscalSetupSection() {
   useEffect(() => {
     if (!enCurso || !clave) return
     const id = setInterval(() => {
-      avanzarAlta(clave).catch(err => setError(err.message))
+      avanzarAlta(clave).catch(err => (esSinAutomatizaciones(err) ? fetchConfig() : setError(err.message)))
     }, INTERVALO_ALTA_MS)
     return () => clearInterval(id)
   }, [enCurso, clave])
@@ -87,9 +87,11 @@ export default function FiscalSetupSection() {
     try {
       await fn()
     } catch (err: any) {
-      // Sin conexión automática: se pasa al paso a paso, que ya explica qué hacer
-      if (esSinAutomatizaciones(err)) await fetchConfig()
-      else setError(err.message)
+      // Sin conexión automática: se pasa al paso a paso, que ya explica qué hacer (solo existe
+      // para facturas reales; en modo prueba queda el CUIT de prueba)
+      if (!esSinAutomatizaciones(err)) setError(err.message)
+      else if (ambienteNuevo === 'prod') await fetchConfig()
+      else setError('En modo prueba no quedan conexiones automáticas por ahora. Usá "Probar sin clave fiscal".')
     } finally {
       setBusy(false)
     }

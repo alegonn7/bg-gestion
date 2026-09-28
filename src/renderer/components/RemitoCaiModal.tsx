@@ -68,7 +68,13 @@ export default function RemitoCaiModal({ onClose }: Props) {
     if (!pendientes || !claveEnCurso) return
     const credenciales = { clave: claveEnCurso, usuario: esSociedad ? usuario.replace(/\D/g, '') : undefined }
     const id = setInterval(() => {
-      for (const caiId of pendientes.split(',')) avanzarCai(caiId, credenciales).catch(err => setError(err.message))
+      for (const caiId of pendientes.split(',')) {
+        avanzarCai(caiId, credenciales)
+          // Si el pedido se cortó (por ejemplo, porque no quedan automatizaciones), se relee la
+          // configuración: sin automatizaciones aparece el paso a paso para pedirlo en ARCA
+          .then(cai => { if (cai.estado === 'error') fetchConfig() })
+          .catch(err => (esSinAutomatizaciones(err) ? fetchConfig() : setError(err.message)))
+      }
     }, 5000)
     return () => clearInterval(id)
   }, [pendientes, claveEnCurso])
