@@ -1,6 +1,6 @@
 {
   "name": "bg-gestion",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "BG Gestión - Sistema de Gestión de Inventario",
   "main": "src/main/main.js",
   "author": "Binary Goats",

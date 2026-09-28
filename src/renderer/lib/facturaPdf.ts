@@ -280,7 +280,9 @@ function dibujarTotales(doc: jsPDF, cbte: ComprobantePdf) {
 }
 
 async function dibujarPie(doc: jsPDF, emisor: EmisorPdf, cbte: ComprobantePdf) {
-  // Código QR de ARCA (RG 4291): URL con los datos del comprobante en JSON codificado en base64
+  // Código QR de ARCA (RG 4291): URL con los datos del comprobante en JSON codificado en base64.
+  // El receptor va siempre: sin él, la consulta de ARCA dice que los datos están incompletos
+  // (consumidor final sin identificar: tipo 99, número 0)
   const identificado = cbte.docTipo && cbte.docTipo !== 99 && cbte.docNro
   const datos = {
     ver: 1,
@@ -292,7 +294,8 @@ async function dibujarPie(doc: jsPDF, emisor: EmisorPdf, cbte: ComprobantePdf) {
     importe: Number(cbte.total.toFixed(2)),
     moneda: 'PES',
     ctz: 1,
-    ...(identificado ? { tipoDocRec: cbte.docTipo, nroDocRec: Number(cbte.docNro) } : {}),
+    tipoDocRec: identificado ? cbte.docTipo : 99,
+    nroDocRec: identificado ? Number(String(cbte.docNro).replace(/\D/g, '')) : 0,
     tipoCodAut: 'E',
     codAut: Number(cbte.cae),
   }
