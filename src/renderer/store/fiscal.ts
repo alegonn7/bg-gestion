@@ -18,7 +18,8 @@ export interface FiscalConfig {
   conectado: boolean
 }
 
-export type PasoAlta = 'certificado' | 'autorizacion' | 'puntos_venta' | 'punto_venta' | 'listo'
+// 'habilitar' solo en producción: activa en ARCA el servicio para crear certificados
+export type PasoAlta = 'habilitar' | 'certificado' | 'autorizacion' | 'puntos_venta' | 'punto_venta' | 'listo'
 
 // Alta en ARCA con Afip SDK: se avanza paso a paso con la clave fiscal del cliente
 export interface AltaFiscal {

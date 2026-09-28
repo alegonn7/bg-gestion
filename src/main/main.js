@@ -528,6 +528,29 @@ ipcMain.handle('get-last-shown-version', async () => {
 // ============================================================
 // IPC HANDLERS - EXPORTAR PDF
 // ============================================================
+// Guarda varios archivos juntos en una carpeta nueva dentro de la que elija el usuario
+// (por ejemplo, los dos archivos del Libro IVA Digital de un mes)
+ipcMain.handle('guardar-archivos', async (event, { carpeta, archivos }) => {
+  try {
+    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+      title: 'Elegí dónde guardar los archivos',
+      buttonLabel: 'Guardar acá',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (canceled || !filePaths || !filePaths[0]) return { success: false, canceled: true };
+
+    const destino = path.join(filePaths[0], path.basename(String(carpeta || 'Archivos')));
+    fs.mkdirSync(destino, { recursive: true });
+    for (const archivo of archivos || []) {
+      fs.writeFileSync(path.join(destino, path.basename(String(archivo.nombre))), Buffer.from(archivo.base64, 'base64'));
+    }
+    return { success: true, path: destino };
+  } catch (error) {
+    console.error('Error guardar-archivos:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 ipcMain.handle('export-pdf', async (event, { html, filename }) => {
   try {
     const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {

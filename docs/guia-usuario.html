@@ -464,7 +464,7 @@
 
   <div class="warn no-break">
     <span class="box-icon">🧪</span>
-    <div><strong>Modo prueba.</strong> Si ves la etiqueta amarilla “Modo prueba”, todo lo que emitís es de práctica y no tiene validez fiscal. Sirve para aprender sin riesgo. En ese modo también está el botón “Probar sin clave fiscal”, para practicar sin cargar tus datos.</div>
+    <div><strong>Modo prueba.</strong> Si en algún momento ves la etiqueta amarilla “Modo prueba”, lo que se emite ahí es de práctica y no tiene validez fiscal.</div>
   </div>
 
   <h2>¿Qué factura me toca?</h2>
@@ -480,7 +480,7 @@
   <div class="steps">
     <div class="step"><div class="step-num">1</div><div class="step-body"><strong>Historial de Ventas → la venta → “Factura”</strong></div></div>
     <div class="step"><div class="step-num">2</div><div class="step-body"><strong>Elegí el tipo de factura</strong></div></div>
-    <div class="step"><div class="step-num">3</div><div class="step-body"><strong>Datos del comprador</strong>En las facturas B y C son opcionales: cargalos si el cliente quiere la factura a su nombre (DNI o CUIT y nombre). En la factura A tenés que poner el CUIT del comprador y su condición frente al IVA; conviene poner también su razón social.</div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-body"><strong>Datos del comprador</strong>En las facturas B y C son opcionales: cargalos si el cliente quiere la factura a su nombre (DNI o CUIT y nombre). En la factura A tenés que poner el CUIT del comprador, su nombre o razón social y su condición frente al IVA.</div></div>
     <div class="step"><div class="step-num">4</div><div class="step-body"><strong>“Emitir factura”</strong>En unos segundos ARCA la aprueba y ves el número y el CAE.</div></div>
     <div class="step"><div class="step-num">5</div><div class="step-body"><strong>“Descargar PDF”</strong>Para imprimirla o mandarla por WhatsApp o por mail.</div></div>
   </div>
@@ -515,7 +515,7 @@
   </div>
 
   <h2>¿Cómo impactan en tus números?</h2>
-  <p>La factura registra la venta ante ARCA. La nota de crédito resta y la nota de débito suma. En Contabilidad → Libro IVA ves todo junto, listo para pasarle a tu contador (capítulo 12).</p>
+  <p>La factura registra la venta ante ARCA. La nota de crédito resta y la nota de débito suma. En Contabilidad → Libro IVA ves todo junto, listo para pasarle a tu contador, y si sos responsable inscripto bajás ahí mismo los archivos del Libro IVA Digital para ARCA (capítulo 12).</p>
 
   <h2>Buscar comprobantes</h2>
   <p>En el menú, <strong>Facturación ARCA</strong> lista todo lo emitido. Podés buscar por código de venta, DNI/CUIT, nombre del cliente o número, y filtrar por tipo (facturas, notas de crédito, notas de débito) y por fechas. El botón <strong>PDF</strong> descarga cada comprobante y la columna <strong>“Emitió”</strong> muestra quién lo hizo.</p>
@@ -786,13 +786,23 @@
     <div class="card"><div class="c-icon">📒</div><div class="c-title">Gastos y Pagos</div><div class="c-desc">El libro diario: ventas, gastos e ingresos en orden, con filtros.</div></div>
     <div class="card"><div class="c-icon">🏦</div><div class="c-title">Cuentas</div><div class="c-desc">Saldo y movimientos del efectivo, la tarjeta y cada cuenta bancaria.</div></div>
     <div class="card"><div class="c-icon">🛍️</div><div class="c-title">Compras</div><div class="c-desc">Las compras a proveedores, exportables.</div></div>
-    <div class="card"><div class="c-icon">🧮</div><div class="c-title">Libro IVA</div><div class="c-desc">Si facturás: tus facturas y notas del período con neto e IVA. Las notas de crédito restan. Exportable para tu contador.</div></div>
+    <div class="card"><div class="c-icon">🧮</div><div class="c-title">Libro IVA</div><div class="c-desc">Si facturás: tus facturas y notas del período con neto e IVA (las notas de crédito restan), y los archivos del Libro IVA Digital para ARCA.</div></div>
   </div>
 
   <div class="tip no-break">
     <span class="box-icon">💡</span>
     <div><strong>¿“Gastos y Pagos” aparece vacío?</strong> Muestra solo la sucursal elegida en el menú y el período de arriba. Revisá esos dos: si en esa sucursal no hubo ventas ni gastos en esas fechas, no hay nada para mostrar.</div>
   </div>
+
+  <h2>Libro IVA Digital de ARCA <span class="small">(responsables inscriptos)</span></h2>
+  <p>Todos los meses, los responsables inscriptos presentan en ARCA el Libro IVA Digital con sus ventas y sus compras. La app te arma los archivos de las ventas:</p>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-body"><strong>Contabilidad → Libro IVA</strong></div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-body"><strong>Elegí el mes y tocá “Descargar archivos”</strong>Viene elegido el mes pasado, que es el que se presenta.</div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-body"><strong>Elegí dónde guardarlos</strong>Se crea una carpeta, por ejemplo “Libro IVA Digital - Ventas 2026-09”, con los 2 archivos que pide ARCA.</div></div>
+    <div class="step"><div class="step-num">4</div><div class="step-body"><strong>Pasáselos a tu contador</strong>O importalos vos en ARCA → Portal IVA → Libro IVA Digital → Ventas → Importar.</div></div>
+  </div>
+  <p class="small">Las compras las carga tu contador en el mismo libro. Los monotributistas no presentan Libro IVA Digital, así que no ven esta opción.</p>
 
   <h2>Anotar un gasto o un ingreso</h2>
   <p>En <strong>Gastos y Pagos → “+ Nueva entrada”</strong> anotás todo lo que no es una venta: sueldos, alquiler, servicios, impuestos.</p>
@@ -1049,19 +1059,17 @@
     <tr><td><strong>CAI</strong></td><td>El código de ARCA que habilita una cantidad de remitos R.</td></tr>
     <tr><td><strong>Punto de venta</strong></td><td>El número que identifica desde dónde facturás (son los primeros 5 números de la factura). Lo prepara la app sola.</td></tr>
     <tr><td><strong>Alícuota de IVA</strong></td><td>El porcentaje de IVA de un producto: 21%, 10,5%, etc.</td></tr>
+    <tr><td><strong>Libro IVA Digital</strong></td><td>La presentación mensual en ARCA de las ventas y compras con IVA. La hacen los responsables inscriptos.</td></tr>
     <tr><td><strong>Consumidor final</strong></td><td>El cliente que compra para usar, no para revender.</td></tr>
     <tr><td><strong>Monotributista / Responsable Inscripto</strong></td><td>Las dos formas más comunes de estar inscripto en ARCA. Definen qué factura hacés (capítulo 5).</td></tr>
     <tr><td><strong>Nota de crédito / de débito</strong></td><td>Comprobantes que restan o suman sobre una factura ya hecha.</td></tr>
     <tr><td><strong>Remito</strong></td><td>El papel que acompaña la mercadería y firma quien la recibe.</td></tr>
   </table>
 
-  <br>
-  <div class="note no-break">
+  <div class="note no-break" style="margin-top:22px;">
     <span class="box-icon">📞</span>
-    <div><strong>¿Necesitás más ayuda?</strong><br>Si algo no está en esta guía, consultá al dueño de tu negocio o al soporte de BG Gestión.</div>
+    <div><strong>¿Necesitás más ayuda?</strong><br>Si algo no está en esta guía, consultá al dueño de tu negocio o al soporte de BG Gestión.<br><span class="small">BG Gestión · Guía de usuario · 2026</span></div>
   </div>
-
-  <p style="text-align:center; color:#9ca3af; font-size:9pt; margin-top:18px;">BG Gestión · Guía de usuario · 2026<br>Documento para uso del cliente.</p>
 </div>
 
 </body>

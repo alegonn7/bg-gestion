@@ -80,6 +80,8 @@ export default function FiscalInvoiceModal({ sale, onClose }: Props) {
       if (tipoDoc === 80 && nro.length !== 11) return setError('El CUIT del comprador tiene que tener 11 dígitos')
       if (tipoDoc === 96 && (nro.length < 7 || nro.length > 8)) return setError('El DNI tiene que tener 7 u 8 dígitos')
     }
+    // La factura A tiene que decir a nombre de quién está (y el Libro IVA Digital lo pide)
+    if (isFactA && !nombreReceptor.trim()) return setError('Ingresá el nombre o la razón social del comprador')
 
     setEmitting(true)
     setError(null)
@@ -246,7 +248,7 @@ export default function FiscalInvoiceModal({ sale, onClose }: Props) {
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-600 mb-1">Nombre o razón social</label>
+                    <label className="block text-xs text-gray-600 mb-1">Nombre o razón social{isFactA && ' *'}</label>
                     <input type="text" value={nombreReceptor} onChange={e => setNombreReceptor(e.target.value)} placeholder="Empresa S.A. / Juan Pérez" className={inputClass} />
                   </div>
                   <div>

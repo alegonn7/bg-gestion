@@ -2,6 +2,14 @@ import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from './auth'
 import { useFiscalStore, type Ambiente } from './fiscal'
+import { generarLibroIvaVentas, type ComprobanteLibro } from '@/lib/libroIvaDigital'
+
+// Los archivos viajan al proceso principal en base64; de a pedazos para no desbordar la pila
+function aBase64(bytes: Uint8Array): string {
+  let binario = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) binario += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  return btoa(binario)
+}
 
 export const EXPENSE_CATEGORIES = [
   { value: 'alquiler', label: 'Alquiler' },
@@ -157,6 +165,8 @@ interface AccountingState {
 
   fetchAccountingData: (start?: Date, end?: Date) => Promise<void>
   fetchLibroIVA: (start?: Date, end?: Date) => Promise<void>
+  /** Archivos de ventas del Libro IVA Digital de ARCA para un mes ('YYYY-MM') */
+  descargarLibroIvaDigital: (periodo: string) => Promise<{ cantidad: number; omitidos: number; carpeta?: string; cancelado?: boolean }>
   fetchPurchases: (start?: Date, end?: Date) => Promise<void>
   setDateRange: (start: Date, end: Date) => void
   createOperation: (data: {
@@ -472,6 +482,60 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
       console.error('Error fetching libro IVA:', error)
       set({ isLoadingLibro: false })
     }
+  },
+
+  descargarLibroIvaDigital: async (periodo) => {
+    const { organization } = useAuthStore.getState()
+    if (!organization) throw new Error('Tu sesión venció. Volvé a iniciar sesión.')
+
+    // Mismo criterio que la tabla: en modo prueba, los comprobantes de prueba
+    const fiscal = useFiscalStore.getState()
+    if (!fiscal.config) await fiscal.fetchConfig()
+    const ambiente: Ambiente = useFiscalStore.getState().config?.ambiente ?? 'prod'
+
+    const [anio, mes] = periodo.split('-').map(Number)
+    const ultimoDia = new Date(anio, mes, 0).getDate()
+    const { data, error } = await supabase
+      .from('fiscal_comprobantes')
+      .select('fecha_emision, tipo_cbte, punto_venta, numero, doc_tipo, doc_nro, cuit_receptor, razon_social_receptor, importe_total, alicuotas')
+      .eq('organization_id', organization.id)
+      .in('resultado', ['A', 'O'])
+      .eq('ambiente', ambiente)
+      .gte('fecha_emision', `${periodo}-01`)
+      .lte('fecha_emision', `${periodo}-${String(ultimoDia).padStart(2, '0')}`)
+    if (error) {
+      console.error('Error leyendo comprobantes para el Libro IVA Digital:', error)
+      throw new Error('No se pudieron leer las facturas del mes. Probá de nuevo.')
+    }
+
+    const libro = generarLibroIvaVentas((data || []) as ComprobanteLibro[])
+    const resultado = { cantidad: libro.cantidad, omitidos: libro.omitidos }
+    if (libro.cantidad === 0) return resultado
+
+    // ARCA pide dos archivos: uno con los comprobantes y otro con sus alícuotas
+    const archivos = [
+      { nombre: 'LIBRO_IVA_DIGITAL_VENTAS_CBTE.txt', bytes: libro.comprobantes },
+      { nombre: 'LIBRO_IVA_DIGITAL_VENTAS_ALICUOTAS.txt', bytes: libro.alicuotas },
+    ]
+    const carpeta = `Libro IVA Digital - Ventas ${periodo}`
+
+    if (window.electron?.guardarArchivos) {
+      const res = await window.electron.guardarArchivos(carpeta, archivos.map(a => ({ nombre: a.nombre, base64: aBase64(a.bytes) })))
+      if (res.canceled) return { ...resultado, cancelado: true }
+      if (!res.success) throw new Error('No se pudieron guardar los archivos. Probá en otra carpeta.')
+      return { ...resultado, carpeta: res.path }
+    }
+
+    // Fuera de la aplicación de escritorio: dos descargas comunes
+    for (const a of archivos) {
+      const url = URL.createObjectURL(new Blob([a.bytes], { type: 'text/plain' }))
+      const link = document.createElement('a')
+      link.href = url
+      link.download = a.nombre
+      link.click()
+      URL.revokeObjectURL(url)
+    }
+    return resultado
   },
 
   fetchPurchases: async (start, end) => {

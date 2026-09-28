@@ -70,6 +70,10 @@ interface Window {
     setLastShownVersion: (version: string) => Promise<{ success: boolean }>;
     getChangelogText: () => Promise<string>;
     exportPdf: (html: string, filename?: string) => Promise<{ success: boolean; canceled?: boolean; path?: string; error?: string }>;
+    guardarArchivos?: (
+      carpeta: string,
+      archivos: { nombre: string; base64: string }[],
+    ) => Promise<{ success: boolean; canceled?: boolean; path?: string; error?: string }>;
     platform: string;
   };
 }

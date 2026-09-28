@@ -1054,6 +1054,96 @@ function FlujoTab() {
   )
 }
 
+// ─── Libro IVA Digital de ARCA ────────────────────────────────────────────────
+// Archivos de ventas del mes para importar en ARCA. Lo presentan los responsables inscriptos.
+
+// El libro de un mes se presenta en el mes siguiente: por defecto, el mes pasado
+function mesAnterior(): string {
+  const hoy = new Date()
+  const anterior = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1)
+  return `${anterior.getFullYear()}-${String(anterior.getMonth() + 1).padStart(2, '0')}`
+}
+
+function LibroIvaDigitalCard() {
+  const { descargarLibroIvaDigital } = useAccountingStore()
+  const config = useFiscalStore(s => s.config)
+  const [periodo, setPeriodo] = useState(mesAnterior())
+  const [descargando, setDescargando] = useState(false)
+  const [mensaje, setMensaje] = useState<{ tipo: 'ok' | 'error' | 'info'; texto: string } | null>(null)
+
+  if (config?.condicion_iva !== 'RI') {
+    return (
+      <p className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+        El Libro IVA Digital de ARCA lo presentan los responsables inscriptos: como monotributista no tenés que presentarlo.
+      </p>
+    )
+  }
+
+  const descargar = async () => {
+    setDescargando(true)
+    setMensaje(null)
+    try {
+      const res = await descargarLibroIvaDigital(periodo)
+      if (res.cancelado) return
+      // Comprobantes sin detalle de IVA (por ejemplo, facturas C): no van al libro
+      const aparte = res.omitidos > 0
+        ? ` ${res.omitidos} comprobante${res.omitidos === 1 ? '' : 's'} sin IVA discriminado no se incluyó${res.omitidos === 1 ? '' : 'eron'}: consultalo con tu contador.`
+        : ''
+      if (res.cantidad === 0) {
+        setMensaje({ tipo: 'info', texto: `No hay facturas para el libro en ese mes. En ARCA se presenta sin movimientos.${aparte}` })
+      } else {
+        const donde = res.carpeta ? ` en la carpeta ${res.carpeta}` : ''
+        setMensaje({ tipo: 'ok', texto: `Listo: guardamos los 2 archivos con ${res.cantidad} comprobante${res.cantidad === 1 ? '' : 's'}${donde}.${aparte}` })
+      }
+    } catch (err: any) {
+      setMensaje({ tipo: 'error', texto: err.message })
+    } finally {
+      setDescargando(false)
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-indigo-200 p-4 space-y-3">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="max-w-xl">
+          <p className="text-sm font-semibold text-gray-900">Libro IVA Digital de ARCA</p>
+          <p className="text-xs text-gray-500 mt-1">
+            Cada mes se presenta en ARCA el libro con tus ventas. Descargá los archivos del mes y pasáselos a tu
+            contador, o importalos vos en ARCA → Portal IVA → Libro IVA Digital → Ventas → Importar.
+          </p>
+        </div>
+        <div className="flex items-end gap-2">
+          <label className="text-xs text-gray-500">
+            Mes
+            <input
+              type="month"
+              value={periodo}
+              onChange={e => { setPeriodo(e.target.value); setMensaje(null) }}
+              className="block px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white"
+            />
+          </label>
+          <button
+            onClick={descargar}
+            disabled={descargando || !periodo}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg disabled:opacity-50"
+          >
+            {descargando ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            Descargar archivos
+          </button>
+        </div>
+      </div>
+      {mensaje && (
+        <p className={`text-xs ${mensaje.tipo === 'error' ? 'text-red-600' : mensaje.tipo === 'ok' ? 'text-green-700' : 'text-gray-600'}`}>
+          {mensaje.texto}
+        </p>
+      )}
+      <p className="text-xs text-gray-400">
+        Son las ventas facturadas desde BG Gestión. Las compras las carga tu contador en el mismo libro.
+      </p>
+    </div>
+  )
+}
+
 // ─── Tab: Libro IVA ───────────────────────────────────────────────────────────
 function LibroIVATab() {
   const {
@@ -1118,6 +1208,7 @@ function LibroIVATab() {
     return (
       <div className="space-y-4">
         {avisoPrueba}
+        <LibroIvaDigitalCard />
         <div className="text-center py-16">
           <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
           <p className="text-gray-500">No hay comprobantes fiscales en el período</p>
@@ -1129,6 +1220,7 @@ function LibroIVATab() {
   return (
     <div className="space-y-4">
       {avisoPrueba}
+      <LibroIvaDigitalCard />
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-4">
         <div className="bg-white rounded-xl border border-gray-200 p-4">

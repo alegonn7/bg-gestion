@@ -19,7 +19,9 @@ const corsHeaders = {
 // CUIT de prueba de Afip SDK: factura en homologación sin certificado propio
 const CUIT_PRUEBA = "20409378472"
 
-type Paso = "certificado" | "autorizacion" | "puntos_venta" | "punto_venta" | "listo"
+// En producción el alta arranca habilitando "Administración de Certificados Digitales" en la clave
+// fiscal del cliente: sin ese servicio ARCA no deja crear el certificado
+type Paso = "habilitar" | "certificado" | "autorizacion" | "puntos_venta" | "punto_venta" | "listo"
 
 interface Alta {
   organization_id: string
@@ -110,23 +112,19 @@ Deno.serve(async (req) => {
       if (orgError) throw orgError
 
       const ambienteNuevo = await leerAmbienteNuevo()
-      const alias = `bg${Date.now().toString(36)}`
-      const automatizacion = await iniciarAutomatizacion(sdkPara(ambienteNuevo), `create-cert-${ambienteNuevo}`, {
-        cuit, username: usuario, password: clave, alias,
-      })
-
-      const alta: Alta = {
+      const inicial: Alta = {
         organization_id: orgId,
         cuit,
         usuario,
         ambiente: ambienteNuevo,
         paso: "certificado",
         estado: "en_curso",
-        automatizacion_id: automatizacion.id,
-        cert_alias: alias,
+        automatizacion_id: null,
+        cert_alias: `bg${Date.now().toString(36)}`,
         punto_venta: Number(body.puntoVenta) || null,
         error: null,
       }
+      const alta = await iniciarPaso(sdkPara(ambienteNuevo), inicial, ambienteNuevo === "prod" ? "habilitar" : "certificado", clave, admin)
       const { error } = await admin.from("fiscal_onboarding").upsert({ ...alta, updated_at: new Date().toISOString() })
       if (error) throw error
       return jsonResponse({ ok: true, alta: resumen(alta) })
@@ -145,7 +143,15 @@ Deno.serve(async (req) => {
       }
 
       let siguiente: Alta
-      if (automatizacion.status === "error") {
+      if (automatizacion.status === "error" && alta.paso === "habilitar" && !esErrorDeClave(automatizacion.data)) {
+        // Casi siempre es porque el servicio ya estaba habilitado: se sigue con el certificado
+        console.log("Habilitar certificados:", JSON.stringify(automatizacion.data))
+        try {
+          siguiente = await iniciarPaso(sdk, alta, "certificado", body.clave || "", admin)
+        } catch (err) {
+          siguiente = { ...alta, estado: "error", error: mensajeParaCliente(err) }
+        }
+      } else if (automatizacion.status === "error") {
         siguiente = { ...alta, estado: "error", error: mensajeDeError(automatizacion.data) }
       } else {
         try {
@@ -348,6 +354,10 @@ Deno.serve(async (req) => {
 
 // Procesa el resultado de la automatización del paso actual y arranca la del siguiente
 async function procesarPaso(admin: any, sdk: AfipSdk, alta: Alta, data: any, clave: string): Promise<Alta> {
+  if (alta.paso === "habilitar") {
+    return iniciarPaso(sdk, alta, "certificado", clave, admin)
+  }
+
   if (alta.paso === "certificado") {
     if (!data?.cert || !data?.key) {
       console.error("create-cert sin cert/key:", JSON.stringify(data))
@@ -410,7 +420,12 @@ async function iniciarPaso(sdk: AfipSdk, alta: Alta, paso: Paso, clave: string, 
   const login = { cuit: alta.cuit, username: alta.usuario, password: clave }
 
   let automatizacion
-  if (paso === "certificado") {
+  if (paso === "habilitar") {
+    // Habilita "Administración de Certificados Digitales" para quien entra a ARCA
+    automatizacion = await iniciarAutomatizacion(sdk, "enable-cert-prod-admin", {
+      ...login, service: "web://arfe_certificado", delegate_to: alta.usuario,
+    })
+  } else if (paso === "certificado") {
     automatizacion = await iniciarAutomatizacion(sdk, `create-cert-${alta.ambiente}`, { ...login, alias: alta.cert_alias })
   } else if (paso === "autorizacion") {
     automatizacion = await iniciarAutomatizacion(sdk, `auth-web-service-${alta.ambiente}`, {
@@ -566,12 +581,28 @@ function mensajeParaCliente(err: unknown): string {
   return mensaje || "Ocurrió un error. Probá de nuevo."
 }
 
+function detalleDeError(data: any): string {
+  return String(data?.message || data?.error || (typeof data === "string" ? data : ""))
+}
+
+const ERROR_DE_CLAVE = /contraseñ|password|clave|credencial|login|incorrect|invalid/i
+const ERROR_DE_NIVEL = /nivel|level/i
+
+// El ingreso a ARCA falló (CUIT o clave mal escritos, o clave de nivel bajo): no se sigue, porque
+// cada intento fallido cuenta para el bloqueo de la clave fiscal. Es más estricto que ERROR_DE_CLAVE
+// para no confundirlo con otros avisos que mencionan la clave, como "el servicio ya está habilitado"
+function esErrorDeClave(data: any): boolean {
+  const detalle = detalleDeError(data)
+  return /(contraseñ|clave|usuario|cuit)[^.]{0,40}(incorrect|inválid|invalid|erróne|errone)|(incorrect|invalid)[^.]{0,20}(password|credential)|nivel/i
+    .test(detalle)
+}
+
 // Error de una automatización en la página de ARCA
 function mensajeDeError(data: any): string {
-  const detalle = String(data?.message || data?.error || (typeof data === "string" ? data : ""))
+  const detalle = detalleDeError(data)
   console.error("Automatización con error:", detalle || JSON.stringify(data))
-  if (/contraseñ|password|clave|credencial|login|incorrect|invalid/i.test(detalle)) return "El CUIT o la clave fiscal no son correctos."
-  if (/nivel|level/i.test(detalle)) return "Tu clave fiscal tiene que ser nivel 3 o superior."
+  if (ERROR_DE_CLAVE.test(detalle)) return "El CUIT o la clave fiscal no son correctos."
+  if (ERROR_DE_NIVEL.test(detalle)) return "Tu clave fiscal tiene que ser nivel 3 o superior."
   // Los mensajes de ARCA en castellano se muestran tal cual
   if (/[áéíóúñ]/i.test(detalle) && !/error:|exception|stack/i.test(detalle)) return detalle
   return "ARCA no pudo completar este paso. Revisá el CUIT y la clave fiscal e intentá de nuevo."

@@ -42,4 +42,7 @@ contextBridge.exposeInMainWorld('electron', {
 
   // PDF export
   exportPdf: (html, filename) => ipcRenderer.invoke('export-pdf', { html, filename }),
+
+  // Varios archivos juntos en una carpeta que elige el usuario
+  guardarArchivos: (carpeta, archivos) => ipcRenderer.invoke('guardar-archivos', { carpeta, archivos }),
 });

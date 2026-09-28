@@ -26,7 +26,7 @@ const PASOS_ALTA = [
   { orden: 2, label: 'Preparar tu punto de venta', soloProduccion: true },
 ]
 const ORDEN_PASO: Record<AltaFiscal['paso'], number> = {
-  certificado: 0, autorizacion: 1, puntos_venta: 2, punto_venta: 2, listo: 3,
+  habilitar: 0, certificado: 0, autorizacion: 1, puntos_venta: 2, punto_venta: 2, listo: 3,
 }
 const INTERVALO_ALTA_MS = 4000
 
