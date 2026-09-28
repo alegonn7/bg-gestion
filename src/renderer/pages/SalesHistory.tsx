@@ -7,7 +7,8 @@ import { useBranchesStore } from '@/store/branches'
 import { useAuthStore } from '@/store/auth'
 import jsPDF from 'jspdf'
 import { useUsersStore } from '@/store/users'
-import { useFiscalStore } from '@/store/fiscal'
+import { useFiscalStore, condicionDeVenta, TIPO_COMPROBANTE_LABELS } from '@/store/fiscal'
+import { descargarComprobante } from '@/lib/facturaPdf'
 import FiscalInvoiceModal from '@/components/FiscalInvoiceModal'
 import FiscalCreditNoteModal from '@/components/FiscalCreditNoteModal'
 import FiscalDebitNoteModal from '@/components/FiscalDebitNoteModal'
@@ -48,7 +49,7 @@ export default function SalesHistory() {
   const [creditNoteSale, setCreditNoteSale] = useState<any | null>(null)
   const [debitNoteSale, setDebitNoteSale] = useState<any | null>(null)
 
-  const { config: fiscalConfig, fetchConfig: fetchFiscalConfig, comprobantes, fetchComprobantes, getComprobanteBySaleId } = useFiscalStore()
+  const { config: fiscalConfig, fetchConfig: fetchFiscalConfig, comprobantes, fetchComprobantes, getFacturaDeVenta, tieneNotaDeCredito } = useFiscalStore()
 
   const isOwnerOrAdmin = user?.role === 'owner' || user?.role === 'admin'
   const canVoidSale = user?.role === 'owner' || user?.role === 'manager'
@@ -570,31 +571,48 @@ export default function SalesHistory() {
                           )}
                         </>
                       )}
-                      {fiscalConfig?.fiscal_enabled && !isVoided && (
-                        <button
-                          onClick={() => setInvoicingSale(sale)}
-                          className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700"
-                        >
-                          <FileText className="h-4 w-4" />
-                          Factura
-                        </button>
-                      )}
                       {fiscalConfig?.fiscal_enabled && (() => {
-                        const cbte = getComprobanteBySaleId(sale.id)
-                        if (!cbte) return null
+                        // Una venta se factura una sola vez; se puede volver a facturar si la
+                        // factura anterior quedó anulada con nota de crédito
+                        const factura = getFacturaDeVenta(sale.id)
+                        const anulada = factura ? tieneNotaDeCredito(factura.id) : false
                         return (<>
-                          {isVoided && (
+                          {!isVoided && (!factura || anulada) && (
                             <button
-                              onClick={() => setCreditNoteSale({ sale, comprobante: cbte })}
+                              onClick={() => setInvoicingSale(sale)}
+                              className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700"
+                            >
+                              <FileText className="h-4 w-4" />
+                              Factura
+                            </button>
+                          )}
+                          {factura && (
+                            <button
+                              onClick={() => descargarComprobante(factura, fiscalConfig, {
+                                nombreFantasia: organization?.name,
+                                logoUrl: organization?.logo_url,
+                                condicionVenta: condicionDeVenta(sale.payment_method),
+                              })}
+                              title={`Descargar ${TIPO_COMPROBANTE_LABELS[factura.tipo_cbte]} ${String(factura.punto_venta).padStart(5, '0')}-${String(factura.numero).padStart(8, '0')}`}
+                              className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 text-indigo-700 border border-indigo-200 text-sm rounded-lg hover:bg-indigo-100"
+                            >
+                              <Download className="h-4 w-4" />
+                              {TIPO_COMPROBANTE_LABELS[factura.tipo_cbte]}
+                              {factura.ambiente === 'dev' && <span className="text-xs text-amber-600">(prueba)</span>}
+                            </button>
+                          )}
+                          {factura && isVoided && !anulada && (
+                            <button
+                              onClick={() => setCreditNoteSale({ sale, comprobante: factura })}
                               className="flex items-center gap-2 px-3 py-1.5 bg-orange-600 text-white text-sm rounded-lg hover:bg-orange-700"
                             >
                               <FileText className="h-4 w-4" />
                               NC
                             </button>
                           )}
-                          {!isVoided && (
+                          {factura && !isVoided && !anulada && (
                             <button
-                              onClick={() => setDebitNoteSale({ sale, comprobante: cbte })}
+                              onClick={() => setDebitNoteSale({ sale, comprobante: factura })}
                               className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
                             >
                               <FileText className="h-4 w-4" />

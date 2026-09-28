@@ -423,7 +423,7 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
         .from('fiscal_comprobantes')
         .select('id, fecha_emision, tipo_cbte, punto_venta, numero, cuit_receptor, razon_social_receptor, importe_neto, importe_iva, importe_total, cae, resultado')
         .eq('organization_id', organization.id)
-        .eq('resultado', 'A')
+        .in('resultado', ['A', 'O']) // 'O' = aprobado con observaciones: también es válido
         .eq('ambiente', 'prod') // los comprobantes de prueba no van al libro IVA
         .gte('fecha_emision', startDate.toISOString().split('T')[0])
         .lte('fecha_emision', endDate.toISOString().split('T')[0])
@@ -432,20 +432,25 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
 
       if (error) throw error
 
-      const libroIVA: LibroIVAEntry[] = (data || []).map((c: any) => ({
-        id: c.id,
-        fecha: c.fecha_emision,
-        tipo_cbte: c.tipo_cbte,
-        tipo_label: TIPO_CBTE_LABELS[c.tipo_cbte] || `Tipo ${c.tipo_cbte}`,
-        punto_venta: c.punto_venta,
-        numero: c.numero,
-        cuit_receptor: c.cuit_receptor,
-        razon_social: c.razon_social_receptor,
-        importe_neto: c.importe_neto || 0,
-        importe_iva: c.importe_iva || 0,
-        importe_total: c.importe_total || 0,
-        cae: c.cae,
-      }))
+      // Las notas de crédito restan: devuelven venta e IVA ya facturados
+      const NOTAS_CREDITO = [3, 8, 13]
+      const libroIVA: LibroIVAEntry[] = (data || []).map((c: any) => {
+        const signo = NOTAS_CREDITO.includes(c.tipo_cbte) ? -1 : 1
+        return {
+          id: c.id,
+          fecha: c.fecha_emision,
+          tipo_cbte: c.tipo_cbte,
+          tipo_label: TIPO_CBTE_LABELS[c.tipo_cbte] || `Tipo ${c.tipo_cbte}`,
+          punto_venta: c.punto_venta,
+          numero: c.numero,
+          cuit_receptor: c.cuit_receptor,
+          razon_social: c.razon_social_receptor,
+          importe_neto: signo * (c.importe_neto || 0),
+          importe_iva: signo * (c.importe_iva || 0),
+          importe_total: signo * (c.importe_total || 0),
+          cae: c.cae,
+        }
+      })
 
       set({
         libroIVA,

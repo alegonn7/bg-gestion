@@ -69,7 +69,7 @@ Deno.serve(async (req) => {
     if (action === "get_config") {
       const [{ data: org }, { data: cred }, { data: alta }] = await Promise.all([
         admin.from("organizations")
-          .select("fiscal_enabled, cuit, razon_social, condicion_iva, punto_venta, actividad_afip")
+          .select("fiscal_enabled, cuit, razon_social, condicion_iva, punto_venta, actividad_afip, domicilio_comercial, ingresos_brutos, inicio_actividades")
           .eq("id", orgId).single(),
         admin.from("fiscal_credentials").select("ambiente, activo").eq("organization_id", orgId).maybeSingle(),
         admin.from("fiscal_onboarding").select("paso, estado, error, punto_venta").eq("organization_id", orgId).maybeSingle(),
@@ -197,25 +197,30 @@ Deno.serve(async (req) => {
       })
       if (credError) throw credError
       await admin.from("fiscal_onboarding").delete().eq("organization_id", orgId)
+      // En homologación el CUIT de prueba puede facturar como inscripto (A/B) o monotributista (C)
+      const condicionIva = ["RI", "Monotributo", "Exento"].includes(body.condicionIva) ? body.condicionIva : "RI"
       const { error } = await admin.from("organizations").update({
         fiscal_enabled: true,
         cuit: CUIT_PRUEBA,
         razon_social: "CUIT de prueba (Afip SDK)",
-        condicion_iva: "RI",
+        condicion_iva: condicionIva,
         punto_venta: puntoVenta,
       }).eq("id", orgId)
       if (error) throw error
       return jsonResponse({ ok: true })
     }
 
-    // ── Editar datos (razón social, condición IVA, actividad) ────────────────
+    // ── Editar datos del negocio (los que salen impresos en la factura) ──────
     if (action === "save_config") {
-      const { razonSocial, condicionIva, actividadAfip } = body
+      const { razonSocial, condicionIva, actividadAfip, domicilioComercial, ingresosBrutos, inicioActividades } = body
       if (!razonSocial?.trim()) return errorResponse("Ingresá la razón social")
       const { error } = await admin.from("organizations").update({
         razon_social: razonSocial.trim(),
         condicion_iva: condicionIva || "Monotributo",
         actividad_afip: actividadAfip || null,
+        domicilio_comercial: domicilioComercial?.trim() || null,
+        ingresos_brutos: ingresosBrutos?.trim() || null,
+        inicio_actividades: inicioActividades || null,
       }).eq("id", orgId)
       if (error) throw error
       return jsonResponse({ ok: true, message: "Configuración guardada" })

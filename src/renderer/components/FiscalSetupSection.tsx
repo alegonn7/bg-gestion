@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { FileText, CheckCircle, AlertTriangle, Loader2, ChevronDown, ChevronUp, Trash2, Edit2, Circle, XCircle, FlaskConical, ShieldCheck } from 'lucide-react'
-import { useFiscalStore, type AltaFiscal } from '@/store/fiscal'
+import { useFiscalStore, type AltaFiscal, type FiscalConfig, type SaveConfigParams } from '@/store/fiscal'
 
 const CONDICIONES_IVA = [
   { value: 'Monotributo', label: 'Monotributista' },
@@ -142,7 +142,16 @@ export default function FiscalSetupSection() {
                 <div><p className="text-gray-500 text-xs mb-1">Razón Social</p><p className="font-medium">{config?.razon_social}</p></div>
                 <div><p className="text-gray-500 text-xs mb-1">Condición IVA</p><p className="font-medium">{CONDICIONES_IVA.find(c => c.value === config?.condicion_iva)?.label ?? config?.condicion_iva}</p></div>
                 <div><p className="text-gray-500 text-xs mb-1">Punto de Venta</p><p className="font-medium">{String(config?.punto_venta).padStart(4, '0')}</p></div>
+                <div><p className="text-gray-500 text-xs mb-1">Domicilio comercial</p><p className="font-medium">{config?.domicilio_comercial || '—'}</p></div>
+                <div><p className="text-gray-500 text-xs mb-1">Ingresos Brutos</p><p className="font-medium">{config?.ingresos_brutos || '—'}</p></div>
+                <div><p className="text-gray-500 text-xs mb-1">Inicio de actividades</p><p className="font-medium">{config?.inicio_actividades?.split('-').reverse().join('/') || '—'}</p></div>
               </div>
+
+              {(!config?.domicilio_comercial || !config?.ingresos_brutos || !config?.inicio_actividades) && (
+                <p className="text-sm text-blue-800 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                  Completá el domicilio comercial, Ingresos Brutos y el inicio de actividades en <strong>Editar datos</strong>: salen impresos en las facturas.
+                </p>
+              )}
 
               {config?.ambiente === 'dev' && ambienteNuevo === 'prod' && (
                 <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
@@ -217,7 +226,7 @@ export default function FiscalSetupSection() {
                 setClave(params.clave)
                 await iniciarAlta(params)
               })}
-              onUsarCuitPrueba={() => run(usarCuitPrueba)}
+              onUsarCuitPrueba={(condicionIva) => run(() => usarCuitPrueba(condicionIva))}
             />
           )}
         </div>
@@ -235,7 +244,7 @@ function AltaForm({ initial, esPrueba, busy, onSubmit, onUsarCuitPrueba }: {
   onSubmit: (params: {
     cuit: string; usuario?: string; clave: string; razonSocial: string; condicionIva: string; puntoVenta: number | null
   }) => void
-  onUsarCuitPrueba: () => void
+  onUsarCuitPrueba: (condicionIva: string) => void
 }) {
   const [cuit, setCuit] = useState(initial?.cuit || '')
   const [razonSocial, setRazonSocial] = useState(initial?.razon_social || '')
@@ -338,7 +347,7 @@ function AltaForm({ initial, esPrueba, busy, onSubmit, onUsarCuitPrueba }: {
         </button>
         {esPrueba && (
           <button
-            onClick={onUsarCuitPrueba}
+            onClick={() => onUsarCuitPrueba(condicionIva)}
             disabled={busy}
             className="flex items-center gap-2 px-4 py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-800 text-sm rounded-lg border border-amber-200 disabled:opacity-50"
           >
@@ -347,6 +356,12 @@ function AltaForm({ initial, esPrueba, busy, onSubmit, onUsarCuitPrueba }: {
           </button>
         )}
       </div>
+      {esPrueba && (
+        <p className="text-xs text-gray-500">
+          "Probar sin clave fiscal" usa un CUIT de prueba de ARCA con la condición de IVA que elijas arriba
+          ({CONDICIONES_IVA.find(c => c.value === condicionIva)?.label}). Después la podés cambiar en Editar datos.
+        </p>
+      )}
     </div>
   )
 }
@@ -441,13 +456,16 @@ function ProgresoAlta({ alta, esPrueba, clave, busy, onClave, onReintentar, onCa
 // ─── Edición de datos del negocio ────────────────────────────────────────────
 
 function EditarDatosForm({ initial, busy, onSave, onCancel }: {
-  initial: { razon_social: string | null; condicion_iva: string | null; actividad_afip: number | null }
+  initial: FiscalConfig
   busy: boolean
-  onSave: (params: { razonSocial: string; condicionIva: string; actividadAfip: number | null }) => void
+  onSave: (params: SaveConfigParams) => void
   onCancel: () => void
 }) {
   const [razonSocial, setRazonSocial] = useState(initial.razon_social || '')
   const [condicionIva, setCondicionIva] = useState(initial.condicion_iva || 'Monotributo')
+  const [domicilioComercial, setDomicilioComercial] = useState(initial.domicilio_comercial || '')
+  const [ingresosBrutos, setIngresosBrutos] = useState(initial.ingresos_brutos || '')
+  const [inicioActividades, setInicioActividades] = useState(initial.inicio_actividades || '')
   const [actividadAfip, setActividadAfip] = useState<number | null>(initial.actividad_afip)
   const [actividadCustom, setActividadCustom] = useState(
     initial.actividad_afip != null && !ACTIVIDADES_COMUNES.some(a => a.code === initial.actividad_afip)
@@ -465,6 +483,18 @@ function EditarDatosForm({ initial, busy, onSave, onCancel }: {
           <select value={condicionIva} onChange={e => setCondicionIva(e.target.value)} className={inputClass}>
             {CONDICIONES_IVA.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
           </select>
+        </div>
+        <div className="col-span-2">
+          <label className="block text-sm font-medium text-gray-700 mb-1">Domicilio comercial</label>
+          <input type="text" value={domicilioComercial} onChange={e => setDomicilioComercial(e.target.value)} placeholder="Av. San Martín 123 - Rosario, Santa Fe" className={inputClass} />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Ingresos Brutos</label>
+          <input type="text" value={ingresosBrutos} onChange={e => setIngresosBrutos(e.target.value)} placeholder="N° de inscripción o Exento" className={inputClass} />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Inicio de actividades</label>
+          <input type="date" value={inicioActividades} onChange={e => setInicioActividades(e.target.value)} className={inputClass} />
         </div>
         <div className="col-span-2">
           <label className="block text-sm font-medium text-gray-700 mb-1">Actividad ARCA (opcional)</label>
@@ -495,7 +525,10 @@ function EditarDatosForm({ initial, busy, onSave, onCancel }: {
 
       <div className="flex gap-3">
         <button
-          onClick={() => onSave({ razonSocial, condicionIva, actividadAfip })}
+          onClick={() => onSave({
+            razonSocial, condicionIva, actividadAfip, domicilioComercial, ingresosBrutos,
+            inicioActividades: inicioActividades || null,
+          })}
           disabled={busy || !razonSocial.trim()}
           className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg disabled:opacity-50"
         >

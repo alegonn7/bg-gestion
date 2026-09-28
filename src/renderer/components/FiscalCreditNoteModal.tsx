@@ -1,13 +1,14 @@
 import { useState } from 'react'
-import { FileText, Loader2, CheckCircle, AlertTriangle, X, RotateCcw } from 'lucide-react'
+import { FileText, Loader2, CheckCircle, AlertTriangle, X, RotateCcw, Download } from 'lucide-react'
 import {
   useFiscalStore,
-  calcularIVA,
-  precioSinIva,
+  itemsDeVenta,
   TIPO_COMPROBANTE_LABELS,
   type FiscalComprobante,
 } from '@/store/fiscal'
 import type { SaleItem } from '@/store/sales'
+import { useAuthStore } from '@/store/auth'
+import { descargarComprobante } from '@/lib/facturaPdf'
 
 interface Props {
   comprobante: FiscalComprobante
@@ -19,36 +20,38 @@ const NC_TIPO: Record<number, number> = { 1: 3, 6: 8, 11: 13 }
 
 export default function FiscalCreditNoteModal({ comprobante, saleItems, onClose }: Props) {
   const { config, emitCreditNote } = useFiscalStore()
+  const { organization } = useAuthStore()
   const [emitting, setEmitting] = useState(false)
   const [result, setResult] = useState<{ cae: string; caeVence: string; numero: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const ncTipo = NC_TIPO[comprobante.tipo_cbte]
-  const isFactA = comprobante.tipo_cbte === 1
 
   const formatCurrency = (v: number) =>
     new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(v)
+
+  const handleDescargar = async () => {
+    if (!result || !config) return
+    const nota = useFiscalStore.getState().comprobantes.find(c =>
+      c.tipo_cbte === ncTipo && c.numero === result.numero && c.ambiente === config.ambiente
+    )
+    if (!nota) return setError('No se encontró la nota emitida. Descargala desde Facturación ARCA.')
+    await descargarComprobante(nota, config, {
+      nombreFantasia: organization?.name,
+      logoUrl: organization?.logo_url,
+      asociado: comprobante,
+    })
+  }
 
   const handleEmit = async () => {
     setEmitting(true)
     setError(null)
 
     try {
-      // Reconstruir items igual que en la factura original
-      const items = saleItems.map(item => {
-        const alicuota = item.alicuota_iva ?? 5
-        const precioTotal = item.price
-        const iva = calcularIVA(precioTotal, alicuota)
-
-        return {
-          codigo: item.product_id || 'SIN-COD',
-          descripcion: item.product_name.slice(0, 100),
-          cantidad: item.quantity,
-          precioUnitario: isFactA ? precioSinIva(precioTotal, alicuota) : precioTotal,
-          codigoAlicuotaIVA: alicuota,
-          importeIVA: isFactA ? iva : 0,
-        }
-      })
+      // La nota de crédito anula la factura completa: lleva los mismos ítems que se facturaron
+      const items = comprobante.items?.length
+        ? comprobante.items
+        : itemsDeVenta(saleItems, comprobante.importe_total ?? 0, comprobante.tipo_cbte)
 
       const res = await emitCreditNote({
         originalComprobante: comprobante,
@@ -96,12 +99,22 @@ export default function FiscalCreditNoteModal({ comprobante, saleItems, onClose 
                 <p><span className="font-medium">CAE:</span> {result.cae}</p>
                 <p><span className="font-medium">Vence:</span> {result.caeVence}</p>
               </div>
-              <button
-                onClick={onClose}
-                className="mt-2 w-full px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700"
-              >
-                Cerrar
-              </button>
+              {error && <p className="text-sm text-red-600">{error}</p>}
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={handleDescargar}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-lg text-sm hover:bg-orange-700"
+                >
+                  <Download className="w-4 h-4" />
+                  Descargar PDF
+                </button>
+                <button
+                  onClick={onClose}
+                  className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700"
+                >
+                  Cerrar
+                </button>
+              </div>
             </div>
           )}
 

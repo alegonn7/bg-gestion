@@ -5,7 +5,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2"
 import { type AfipSdk, type Ambiente, obtenerTicketAcceso } from "../_shared/afipsdk.ts"
 import { decryptSecret } from "../_shared/crypto.ts"
-import { type AuthWsfe, emitirComprobante, type InvoiceRequest, RechazoArca } from "../_shared/wsfe.ts"
+import { type AuthWsfe, emitirComprobante, type InvoiceRequest, RechazoArca, receptorDe } from "../_shared/wsfe.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,6 +14,9 @@ const corsHeaders = {
 
 // El ticket de acceso de ARCA dura 12 hs; se renueva si le quedan menos de 10 minutos
 const MARGEN_TICKET_MS = 10 * 60 * 1000
+
+const FACTURAS = [1, 6, 11]
+const NOTAS_CREDITO = [3, 8, 13]
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
@@ -57,6 +60,29 @@ Deno.serve(async (req) => {
     } = await req.json()
 
     const ambiente: Ambiente = cred.ambiente
+
+    // Una venta se factura una sola vez, salvo que la factura anterior tenga nota de crédito
+    if (saleId && FACTURAS.includes(invoiceRequest.tipoComprobante)) {
+      const { data: previas } = await admin.from("fiscal_comprobantes")
+        .select("id, punto_venta, numero")
+        .eq("organization_id", org.id)
+        .eq("ambiente", ambiente)
+        .eq("sale_id", saleId)
+        .in("tipo_cbte", FACTURAS)
+        .in("resultado", ["A", "O"])
+      for (const previa of previas ?? []) {
+        const { count } = await admin.from("fiscal_comprobantes")
+          .select("id", { count: "exact", head: true })
+          .eq("original_comprobante_id", previa.id)
+          .in("tipo_cbte", NOTAS_CREDITO)
+          .in("resultado", ["A", "O"])
+        if (!count) {
+          const numero = `${String(previa.punto_venta).padStart(5, "0")}-${String(previa.numero).padStart(8, "0")}`
+          return errorResponse(`Esta venta ya tiene la factura ${numero}. Para volver a facturarla, primero emití la nota de crédito.`)
+        }
+      }
+    }
+
     const sdk: AfipSdk = { accessToken: Deno.env.get("AFIPSDK_ACCESS_TOKEN")!, ambiente }
     const llave = Deno.env.get("FISCAL_CERTS_ENCRYPTION_KEY")!
     const cert = cred.cert_encrypted ? await decryptSecret(cred.cert_encrypted, llave) : undefined
@@ -88,6 +114,7 @@ Deno.serve(async (req) => {
       emision = await emitirComprobante(sdk, await obtenerAuth(true), request)
     }
 
+    const receptor = receptorDe(request)
     const { error: insertError } = await admin.from("fiscal_comprobantes").insert({
       organization_id: org.id,
       ambiente,
@@ -97,9 +124,13 @@ Deno.serve(async (req) => {
       punto_venta: request.puntoVenta,
       numero: emision.numero,
       fecha_emision: emision.fecha,
-      cuit_receptor: request.cuitReceptor || null,
+      doc_tipo: receptor.tipo,
+      doc_nro: receptor.tipo === 99 ? null : receptor.nro,
+      cuit_receptor: receptor.tipo === 80 ? receptor.nro : null,
       razon_social_receptor: request.razonSocialReceptor || null,
       condicion_iva_receptor: request.condicionIVAReceptor,
+      items: request.items,
+      alicuotas: emision.importes.alicuotas,
       importe_neto: emision.importes.neto,
       importe_iva: emision.importes.iva,
       importe_total: emision.importes.total,

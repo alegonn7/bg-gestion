@@ -1,11 +1,23 @@
 import { useEffect, useState } from 'react'
-import { FileText, CheckCircle, AlertTriangle, XCircle, RefreshCw } from 'lucide-react'
-import { useFiscalStore, TIPO_COMPROBANTE_LABELS } from '@/store/fiscal'
+import { FileText, CheckCircle, AlertTriangle, XCircle, RefreshCw, Download } from 'lucide-react'
+import { useFiscalStore, TIPO_COMPROBANTE_LABELS, type FiscalComprobante } from '@/store/fiscal'
+import { useAuthStore } from '@/store/auth'
+import { descargarComprobante } from '@/lib/facturaPdf'
 import FiscalSetupSection from '@/components/FiscalSetupSection'
 
 export default function FiscalPage() {
   const { config, comprobantes, fetchComprobantes } = useFiscalStore()
+  const { organization } = useAuthStore()
   const [loading, setLoading] = useState(false)
+
+  const descargar = (c: FiscalComprobante) => {
+    if (!config) return
+    descargarComprobante(c, config, {
+      nombreFantasia: organization?.name,
+      logoUrl: organization?.logo_url,
+      asociado: comprobantes.find(o => o.id === c.original_comprobante_id) ?? null,
+    })
+  }
 
   useEffect(() => {
     if (config?.fiscal_enabled) {
@@ -128,6 +140,7 @@ export default function FiscalPage() {
                     <th className="px-4 py-3 text-right">Total</th>
                     <th className="px-4 py-3">CAE</th>
                     <th className="px-4 py-3">Estado</th>
+                    <th className="px-4 py-3"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -159,6 +172,16 @@ export default function FiscalPage() {
                         {resultadoLabel(c.resultado)}
                         {c.ambiente === 'dev' && (
                           <span className="ml-1.5 px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-medium rounded-full">Prueba</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {c.cae && (
+                          <button
+                            onClick={() => descargar(c)}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg border border-indigo-200"
+                          >
+                            <Download className="w-3.5 h-3.5" />PDF
+                          </button>
                         )}
                       </td>
                     </tr>

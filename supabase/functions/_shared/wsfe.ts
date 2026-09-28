@@ -35,7 +35,9 @@ export interface ComprobanteAsociado {
 export interface InvoiceRequest {
   tipoComprobante: TipoComprobante
   puntoVenta: number
-  cuitReceptor?: string
+  docTipo?: number             // 80 = CUIT, 96 = DNI, 99 = consumidor final sin identificar
+  docNro?: string
+  cuitReceptor?: string        // atajo para docTipo 80
   razonSocialReceptor?: string
   condicionIVAReceptor: number // 1=RI, 4=Exento, 5=Consumidor Final, 6=Monotributo
   items: InvoiceItem[]
@@ -148,12 +150,19 @@ async function fechaDeComprobante(sdk: AfipSdk, auth: AuthWsfe, puntoVenta: numb
   return fch ? aFechaIso(String(fch)) : null
 }
 
+// Documento del comprador: CUIT, DNI o consumidor final sin identificar (99 / 0)
+export function receptorDe(request: InvoiceRequest): { tipo: number; nro: string } {
+  const nro = (request.docNro ?? request.cuitReceptor ?? "").replace(/\D/g, "")
+  const tipo = request.docTipo ?? (nro ? 80 : 99)
+  return tipo === 99 || !nro ? { tipo: 99, nro: "0" } : { tipo, nro }
+}
+
 function armarSolicitud(request: InvoiceRequest, cuitEmisor: string, numero: number, fecha: string, importes: Importes) {
-  const cuitReceptor = request.cuitReceptor?.replace(/\D/g, "")
+  const receptor = receptorDe(request)
   const detalle: Record<string, unknown> = {
     Concepto: 1,                                  // productos
-    DocTipo: cuitReceptor ? 80 : 99,              // 80 = CUIT, 99 = consumidor final sin identificar
-    DocNro: cuitReceptor ? Number(cuitReceptor) : 0,
+    DocTipo: receptor.tipo,
+    DocNro: Number(receptor.nro),
     CbteDesde: numero,
     CbteHasta: numero,
     CbteFch: aFechaArca(fecha),

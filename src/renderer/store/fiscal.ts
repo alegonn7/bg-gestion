@@ -11,6 +11,9 @@ export interface FiscalConfig {
   condicion_iva: string | null
   punto_venta: number
   actividad_afip: number | null
+  domicilio_comercial: string | null
+  ingresos_brutos: string | null
+  inicio_actividades: string | null
   ambiente: Ambiente
   conectado: boolean
 }
@@ -25,17 +28,32 @@ export interface AltaFiscal {
   punto_venta: number | null
 }
 
+export interface InvoiceItem {
+  codigo: string
+  descripcion: string
+  cantidad: number
+  precioUnitario: number    // SIN IVA en comprobantes A; CON IVA en B y C
+  importeBonificacion?: number
+  codigoAlicuotaIVA: number
+  importeIVA: number        // IVA por unidad (ya bonificado); solo en comprobantes A
+}
+
 export interface FiscalComprobante {
   id: string
   ambiente: Ambiente
   sale_id: string | null
+  original_comprobante_id: string | null
   tipo_cbte: number
   punto_venta: number
   numero: number
   fecha_emision: string
+  doc_tipo: number | null   // 80 = CUIT, 96 = DNI, 99 = consumidor final sin identificar
+  doc_nro: string | null
   cuit_receptor: string | null
   razon_social_receptor: string | null
   condicion_iva_receptor: number | null
+  items: InvoiceItem[] | null
+  alicuotas: { Id: number; BaseImp: number; Importe: number }[] | null
   importe_total: number | null
   importe_neto: number | null
   importe_iva: number | null
@@ -47,19 +65,15 @@ export interface FiscalComprobante {
 
 export type TipoComprobante = 1 | 2 | 3 | 6 | 7 | 8 | 11 | 12 | 13
 
-export interface InvoiceItem {
-  codigo: string
-  descripcion: string
-  cantidad: number
-  precioUnitario: number
-  codigoAlicuotaIVA: number
-  importeIVA: number
-}
+const FACTURAS = [1, 6, 11]
+const NOTAS_CREDITO = [3, 8, 13]
+const aprobado = (c: FiscalComprobante) => c.resultado === 'A' || c.resultado === 'O'
 
 export interface EmitInvoiceParams {
   saleId?: string
   tipoComprobante: TipoComprobante
-  cuitReceptor?: string
+  docTipo?: number          // 80 = CUIT, 96 = DNI; sin documento = consumidor final anónimo
+  docNro?: string
   razonSocialReceptor?: string
   condicionIVAReceptor: number
   items: InvoiceItem[]
@@ -91,6 +105,9 @@ export interface SaveConfigParams {
   razonSocial: string
   condicionIva: string
   actividadAfip: number | null
+  domicilioComercial: string
+  ingresosBrutos: string
+  inicioActividades: string | null
 }
 
 interface FiscalState {
@@ -106,7 +123,7 @@ interface FiscalState {
   avanzarAlta: (clave: string) => Promise<void>
   reintentarAlta: (clave: string, puntoVenta?: number | null) => Promise<void>
   cancelarAlta: () => Promise<void>
-  usarCuitPrueba: () => Promise<void>
+  usarCuitPrueba: (condicionIva: string) => Promise<void>
   saveConfig: (params: SaveConfigParams) => Promise<void>
   deleteConfig: () => Promise<void>
   emitDebitNote: (params: EmitDebitNoteParams) => Promise<{
@@ -128,7 +145,8 @@ interface FiscalState {
     resultado: string
   }>
   fetchComprobantes: (limit?: number) => Promise<void>
-  getComprobanteBySaleId: (saleId: string) => FiscalComprobante | undefined
+  getFacturaDeVenta: (saleId: string) => FiscalComprobante | undefined
+  tieneNotaDeCredito: (facturaId: string) => boolean
 }
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string
@@ -196,8 +214,8 @@ export const useFiscalStore = create<FiscalState>((set, get) => ({
     set({ alta: null })
   },
 
-  usarCuitPrueba: async () => {
-    await callEdgeFunction('fiscal-setup', { action: 'usar_cuit_prueba' })
+  usarCuitPrueba: async (condicionIva) => {
+    await callEdgeFunction('fiscal-setup', { action: 'usar_cuit_prueba', condicionIva })
     await get().fetchConfig()
   },
 
@@ -236,7 +254,7 @@ export const useFiscalStore = create<FiscalState>((set, get) => ({
     const result = await callEdgeFunction('fiscal-emit', {
       invoiceRequest: {
         tipoComprobante: tipoND,
-        cuitReceptor: orig.cuit_receptor || undefined,
+        ...documentoDe(orig),
         razonSocialReceptor: orig.razon_social_receptor || undefined,
         condicionIVAReceptor: orig.condicion_iva_receptor ?? 5,
         items: [{
@@ -258,7 +276,7 @@ export const useFiscalStore = create<FiscalState>((set, get) => ({
       originalComprobanteId: orig.id,
     })
 
-    await get().fetchComprobantes()
+    await get().fetchComprobantes(200)
     return result
   },
 
@@ -269,7 +287,8 @@ export const useFiscalStore = create<FiscalState>((set, get) => ({
     const result = await callEdgeFunction('fiscal-emit', {
       invoiceRequest: {
         tipoComprobante: params.tipoComprobante,
-        cuitReceptor: params.cuitReceptor,
+        docTipo: params.docTipo,
+        docNro: params.docNro,
         razonSocialReceptor: params.razonSocialReceptor,
         condicionIVAReceptor: params.condicionIVAReceptor,
         items: params.items,
@@ -277,6 +296,8 @@ export const useFiscalStore = create<FiscalState>((set, get) => ({
       saleId: params.saleId,
     })
 
+    // Así la venta deja de ofrecer "Factura" y aparece para descargar
+    await get().fetchComprobantes(200)
     return result
   },
 
@@ -294,7 +315,7 @@ export const useFiscalStore = create<FiscalState>((set, get) => ({
     const result = await callEdgeFunction('fiscal-emit', {
       invoiceRequest: {
         tipoComprobante: tipoNC,
-        cuitReceptor: orig.cuit_receptor || undefined,
+        ...documentoDe(orig),
         razonSocialReceptor: orig.razon_social_receptor || undefined,
         condicionIVAReceptor: orig.condicion_iva_receptor ?? 5,
         items: params.items,
@@ -310,7 +331,7 @@ export const useFiscalStore = create<FiscalState>((set, get) => ({
     })
 
     // Refrescar comprobantes
-    await get().fetchComprobantes()
+    await get().fetchComprobantes(200)
     return result
   },
 
@@ -329,10 +350,21 @@ export const useFiscalStore = create<FiscalState>((set, get) => ({
     }
   },
 
-  getComprobanteBySaleId: (saleId) => {
-    return get().comprobantes.find(c => c.sale_id === saleId && c.resultado !== 'R')
+  // La factura vigente de la venta (la más reciente; la lista viene ordenada de nueva a vieja)
+  getFacturaDeVenta: (saleId) => {
+    return get().comprobantes.find(c => c.sale_id === saleId && FACTURAS.includes(c.tipo_cbte) && aprobado(c))
+  },
+
+  tieneNotaDeCredito: (facturaId) => {
+    return get().comprobantes.some(c => c.original_comprobante_id === facturaId && NOTAS_CREDITO.includes(c.tipo_cbte) && aprobado(c))
   },
 }))
+
+// El comprador de una nota de crédito/débito es el mismo de la factura original
+function documentoDe(c: FiscalComprobante): { docTipo: number; docNro?: string } {
+  const docNro = c.doc_nro ?? c.cuit_receptor ?? undefined
+  return { docTipo: c.doc_tipo ?? (docNro ? 80 : 99), docNro }
+}
 
 // Helpers
 export const TIPO_COMPROBANTE_LABELS: Record<number, string> = {
@@ -373,4 +405,61 @@ export function calcularIVA(precioConIva: number, codigoAlicuota: number): numbe
 export function precioSinIva(precioConIva: number, codigoAlicuota: number): number {
   const tasa = ALICUOTAS_IVA[codigoAlicuota] || 0
   return precioConIva / (1 + tasa)
+}
+
+// Condición de venta que se imprime en el comprobante, según cómo se cobró la venta
+export function condicionDeVenta(metodoPago?: string | null): string {
+  const condiciones: Record<string, string> = {
+    cash: 'Contado',
+    debit: 'Tarjeta de Débito',
+    credit: 'Tarjeta de Crédito',
+    transfer: 'Transferencia Bancaria',
+    mixed: 'Otra',
+  }
+  return condiciones[metodoPago ?? ''] ?? 'Contado'
+}
+
+interface ItemDeVenta {
+  product_id?: string
+  product_name: string
+  quantity: number
+  price: number             // precio de venta, con IVA incluido
+  barcode?: string | null
+  alicuota_iva?: number
+}
+
+// Ítems fiscales de una venta para el comprobante `tipo`. Si se cobró menos que la suma de los
+// precios (descuento), la diferencia va como bonificación en cada ítem; si se cobró más
+// (recargo por tarjeta), va como un ítem aparte al 21%. Así el comprobante suma lo cobrado.
+export function itemsDeVenta(items: ItemDeVenta[], totalCobrado: number, tipo: number): InvoiceItem[] {
+  const esA = tipo <= 3
+  const bruto = items.reduce((s, i) => s + i.price * i.quantity, 0)
+  const bonificacion = bruto > 0 && totalCobrado < bruto - 0.005 ? 1 - totalCobrado / bruto : 0
+
+  const lineas: InvoiceItem[] = items.map(i => {
+    const alicuota = i.alicuota_iva ?? 5
+    const precio = esA ? precioSinIva(i.price, alicuota) : i.price
+    return {
+      codigo: i.barcode || i.product_id?.slice(0, 8) || 'SIN-COD',
+      descripcion: i.product_name.slice(0, 100),
+      cantidad: i.quantity,
+      precioUnitario: precio,
+      importeBonificacion: precio * i.quantity * bonificacion,
+      codigoAlicuotaIVA: alicuota,
+      importeIVA: esA ? calcularIVA(i.price, alicuota) * (1 - bonificacion) : 0,
+    }
+  })
+
+  const recargo = totalCobrado - bruto
+  if (recargo > 0.005) {
+    lineas.push({
+      codigo: 'RECARGO',
+      descripcion: 'Recargo financiero',
+      cantidad: 1,
+      precioUnitario: esA ? precioSinIva(recargo, 5) : recargo,
+      codigoAlicuotaIVA: 5,
+      importeIVA: esA ? calcularIVA(recargo, 5) : 0,
+    })
+  }
+  return lineas
 }

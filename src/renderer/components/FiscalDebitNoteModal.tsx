@@ -1,6 +1,8 @@
 import { useState } from 'react'
-import { TrendingUp, Loader2, CheckCircle, AlertTriangle, X } from 'lucide-react'
+import { TrendingUp, Loader2, CheckCircle, AlertTriangle, X, Download } from 'lucide-react'
 import { useFiscalStore, TIPO_COMPROBANTE_LABELS, type FiscalComprobante } from '@/store/fiscal'
+import { useAuthStore } from '@/store/auth'
+import { descargarComprobante } from '@/lib/facturaPdf'
 
 const ND_TIPO: Record<number, number> = { 1: 2, 6: 7, 11: 12 }
 
@@ -19,6 +21,20 @@ export default function FiscalDebitNoteModal({ comprobante, saleId, onClose }: P
   const [error, setError] = useState<string | null>(null)
 
   const ndTipo = ND_TIPO[comprobante.tipo_cbte]
+  const { organization } = useAuthStore()
+
+  const handleDescargar = async () => {
+    if (!result || !config) return
+    const nota = useFiscalStore.getState().comprobantes.find(c =>
+      c.tipo_cbte === ndTipo && c.numero === result.numero && c.ambiente === config.ambiente
+    )
+    if (!nota) return setError('No se encontró la nota emitida. Descargala desde Facturación ARCA.')
+    await descargarComprobante(nota, config, {
+      nombreFantasia: organization?.name,
+      logoUrl: organization?.logo_url,
+      asociado: comprobante,
+    })
+  }
 
   const formatCurrency = (v: number) =>
     new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(v)
@@ -76,6 +92,14 @@ export default function FiscalDebitNoteModal({ comprobante, saleId, onClose }: P
                 <p><span className="font-medium">CAE:</span> {result.cae}</p>
                 <p><span className="font-medium">Vence:</span> {result.caeVence}</p>
               </div>
+              {error && <p className="text-sm text-red-600">{error}</p>}
+              <button
+                onClick={handleDescargar}
+                className="mt-2 w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
+              >
+                <Download className="w-4 h-4" />
+                Descargar PDF
+              </button>
               <button onClick={onClose} className="mt-2 w-full px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700">
                 Cerrar
               </button>

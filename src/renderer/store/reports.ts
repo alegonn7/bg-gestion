@@ -1019,7 +1019,7 @@ export const useReportsStore = create<ReportsState>((set) => ({
       const { data, error } = await supabase
         .from('fiscal_comprobantes')
         .select('tipo_cbte, fecha_emision, importe_total, resultado')
-        .eq('resultado', 'A')
+        .in('resultado', ['A', 'O']) // 'O' = aprobado con observaciones: también es válido
         .eq('ambiente', 'prod') // los comprobantes de prueba no cuentan
         .gte('fecha_emision', start.toISOString().split('T')[0])
         .lte('fecha_emision', end.toISOString().split('T')[0])
