@@ -28,7 +28,8 @@ const PASOS_ALTA = [
 const ORDEN_PASO: Record<AltaFiscal['paso'], number> = {
   habilitar: 0, certificado: 0, autorizacion: 1, puntos_venta: 2, punto_venta: 2, listo: 3,
 }
-const INTERVALO_ALTA_MS = 4000
+// Afip SDK recomienda consultar cada 5 segundos si terminó cada paso
+const INTERVALO_ALTA_MS = 5000
 
 const inputClass = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none'
 
