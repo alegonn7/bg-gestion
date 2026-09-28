@@ -144,7 +144,12 @@ export const useRemitosStore = create<RemitosState>((set, get) => ({
         observaciones: nuevo.observaciones?.trim() || null,
         items: nuevo.items
           .filter(i => i.descripcion.trim() && i.cantidad > 0)
-          .map(i => ({ codigo: i.codigo.trim(), descripcion: i.descripcion.trim(), cantidad: i.cantidad })),
+          .map(i => ({
+            codigo: i.codigo.trim(),
+            descripcion: i.descripcion.trim(),
+            cantidad: i.cantidad,
+            ...(i.precio != null && i.precio >= 0 && Number.isFinite(i.precio) ? { precio: i.precio } : {}),
+          })),
         created_by: user?.id ?? null,
       })
       .select('*')

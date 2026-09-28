@@ -25,6 +25,13 @@ export interface DatosRemito {
 const MARGEN = 10
 const ANCHO = 190
 const FIN_DETALLE = 222
+const FIN_DETALLE_CON_TOTAL = 215
+
+const pesos = (n: number) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(n)
+const cantidad = (n: number) => new Intl.NumberFormat('es-AR', { maximumFractionDigits: 3 }).format(n)
+
+// Con precios, el detalle suma precio unitario e importe y el remito lleva el total
+const tienePrecios = (remito: Remito) => remito.items.some(i => i.precio != null)
 
 function dibujarEncabezado(doc: jsPDF, emisor: EmisorRemito, { remito, sucursalDestino }: DatosRemito, copia: string) {
   doc.setDrawColor(0)
@@ -111,8 +118,14 @@ function dibujarEncabezado(doc: jsPDF, emisor: EmisorRemito, { remito, sucursalD
   doc.setFontSize(7.5)
   doc.text('Código', 12, 105.6)
   doc.text('Descripción', 42, 105.6)
-  doc.text('Cantidad', 172, 105.6, { align: 'right' })
-  doc.text('U. Medida', 176, 105.6)
+  if (tienePrecios(remito)) {
+    doc.text('Cantidad', 142, 105.6, { align: 'right' })
+    doc.text('Precio Unit.', 170, 105.6, { align: 'right' })
+    doc.text('Importe', 198, 105.6, { align: 'right' })
+  } else {
+    doc.text('Cantidad', 172, 105.6, { align: 'right' })
+    doc.text('U. Medida', 176, 105.6)
+  }
 
   if (remito.estado === 'anulado') {
     const d = doc as any
@@ -168,13 +181,15 @@ function dibujarPie(doc: jsPDF, remito: Remito) {
 function dibujarCopia(doc: jsPDF, emisor: EmisorRemito, datos: DatosRemito, copia: string): number {
   const inicio = doc.getNumberOfPages()
   dibujarEncabezado(doc, emisor, datos, copia)
+  const conPrecios = tienePrecios(datos.remito)
+  const fin = conPrecios ? FIN_DETALLE_CON_TOTAL : FIN_DETALLE
   let y = 113
   for (const item of datos.remito.items) {
     doc.setFont('helvetica', 'normal')
     doc.setFontSize(8)
-    const descripcion: string[] = doc.splitTextToSize(item.descripcion, 118).slice(0, 2)
+    const descripcion: string[] = doc.splitTextToSize(item.descripcion, conPrecios ? 82 : 118).slice(0, 2)
     const alto = 4.3 * descripcion.length + 1.5
-    if (y + alto > FIN_DETALLE) {
+    if (y + alto > fin) {
       doc.addPage()
       dibujarEncabezado(doc, emisor, datos, copia)
       y = 113
@@ -183,9 +198,24 @@ function dibujarCopia(doc: jsPDF, emisor: EmisorRemito, datos: DatosRemito, copi
     doc.text((item.codigo || '-').slice(0, 14), 12, y)
     doc.setFontSize(8)
     doc.text(descripcion, 42, y)
-    doc.text(new Intl.NumberFormat('es-AR', { maximumFractionDigits: 3 }).format(item.cantidad), 172, y, { align: 'right' })
-    doc.text('unidades', 176, y)
+    if (conPrecios) {
+      doc.text(cantidad(item.cantidad), 142, y, { align: 'right' })
+      doc.text(item.precio != null ? pesos(item.precio) : '-', 170, y, { align: 'right' })
+      doc.text(item.precio != null ? pesos(item.precio * item.cantidad) : '-', 198, y, { align: 'right' })
+    } else {
+      doc.text(cantidad(item.cantidad), 172, y, { align: 'right' })
+      doc.text('unidades', 176, y)
+    }
     y += alto
+  }
+  if (conPrecios) {
+    const total = datos.remito.items.reduce((s, i) => s + (i.precio ?? 0) * i.cantidad, 0)
+    doc.setDrawColor(0)
+    doc.line(140, 217, 200, 217)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(9)
+    doc.text('Total:', 150, 222)
+    doc.text(pesos(total), 198, 222, { align: 'right' })
   }
   dibujarPie(doc, datos.remito)
   return inicio

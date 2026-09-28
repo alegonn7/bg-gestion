@@ -1,3 +1,8 @@
+Versión 1.2.2
+
+Mejoras
+- Remitos: ahora llevan el precio de cada producto, el importe de cada línea y el total. Al hacer un remito desde una venta, los precios se completan solos; también se pueden cargar o cambiar a mano.
+
 Versión 1.2.1
 
 Novedades

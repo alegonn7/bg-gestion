@@ -15,6 +15,7 @@ export interface ItemRemito {
   codigo: string
   descripcion: string
   cantidad: number
+  precio?: number | null   // precio unitario (opcional; si está, el PDF muestra importes y total)
 }
 
 export interface Remito {

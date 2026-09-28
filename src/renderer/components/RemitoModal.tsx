@@ -59,15 +59,19 @@ export default function RemitoModal({ inicial, onClose, onCreado }: Props) {
     }
   }
 
-  const agregarProducto = (codigo: string, descripcion: string) => {
+  const agregarProducto = (codigo: string, descripcion: string, precio: number | null) => {
     setItems(prev => {
       const sinVacias = prev.filter(i => i.descripcion.trim())
       const existente = sinVacias.find(i => i.codigo && i.codigo === codigo)
       if (existente) return sinVacias.map(i => (i === existente ? { ...i, cantidad: i.cantidad + 1 } : i))
-      return [...sinVacias, { codigo, descripcion, cantidad: 1 }]
+      return [...sinVacias, { codigo, descripcion, cantidad: 1, precio }]
     })
     setBusqueda('')
   }
+
+  // Total de las líneas con precio (null si ninguna tiene precio)
+  const conPrecio = items.filter(i => i.descripcion.trim() && i.precio != null)
+  const totalItems = conPrecio.length ? conPrecio.reduce((s, i) => s + (i.precio ?? 0) * i.cantidad, 0) : null
 
   const cambiarItem = (index: number, cambios: Partial<ItemRemito>) =>
     setItems(prev => prev.map((item, i) => (i === index ? { ...item, ...cambios } : item)))
@@ -234,7 +238,7 @@ export default function RemitoModal({ inicial, onClose, onCreado }: Props) {
                       {encontrados.map(p => (
                         <button
                           key={p.id}
-                          onClick={() => agregarProducto(p.barcode || '', p.product?.name || '')}
+                          onClick={() => agregarProducto(p.barcode || '', p.product?.name || '', p.price_sale ?? null)}
                           className="w-full text-left px-3 py-2 text-sm hover:bg-emerald-50 flex justify-between gap-2"
                         >
                           <span>{p.product?.name}</span>
@@ -245,6 +249,13 @@ export default function RemitoModal({ inicial, onClose, onCreado }: Props) {
                   )}
                 </div>
 
+                <div className="flex gap-2 px-2 text-xs text-gray-500">
+                  <span className="w-36">Código</span>
+                  <span className="flex-1">Descripción</span>
+                  <span className="w-20 text-right">Cantidad</span>
+                  <span className="w-28 text-right">Precio unit.</span>
+                  <span className="w-8" />
+                </div>
                 <div className="border border-gray-200 rounded-lg divide-y">
                   {items.map((item, i) => (
                     <div key={i} className="flex gap-2 p-2 items-center">
@@ -253,7 +264,15 @@ export default function RemitoModal({ inicial, onClose, onCreado }: Props) {
                       <input
                         type="number" min={0} step="any" value={item.cantidad}
                         onChange={e => cambiarItem(i, { cantidad: Number(e.target.value) })}
-                        className={`${inputClass} w-24 text-right`}
+                        className={`${inputClass} w-20 text-right`}
+                        title="Cantidad"
+                      />
+                      <input
+                        type="number" min={0} step="any" value={item.precio ?? ''}
+                        onChange={e => cambiarItem(i, { precio: e.target.value === '' ? null : Number(e.target.value) })}
+                        placeholder="Precio"
+                        title="Precio unitario (opcional)"
+                        className={`${inputClass} w-28 text-right`}
                       />
                       <button onClick={() => setItems(prev => prev.filter((_, j) => j !== i))} className="p-2 text-gray-400 hover:text-red-600">
                         <Trash2 className="w-4 h-4" />
@@ -261,6 +280,11 @@ export default function RemitoModal({ inicial, onClose, onCreado }: Props) {
                     </div>
                   ))}
                 </div>
+                {totalItems !== null && (
+                  <p className="text-right text-sm text-gray-700">
+                    Total: <strong>{new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(totalItems)}</strong>
+                  </p>
+                )}
                 <button
                   onClick={() => setItems(prev => [...prev, { codigo: '', descripcion: '', cantidad: 1 }])}
                   className="flex items-center gap-1.5 text-sm text-emerald-700 hover:text-emerald-800"

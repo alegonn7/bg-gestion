@@ -786,7 +786,12 @@ export default function SalesHistory() {
           inicial={{
             motivo: 'venta',
             saleId: remitoSale.id,
-            items: remitoSale.items.map((i: any) => ({ codigo: i.barcode || '', descripcion: i.product_name, cantidad: i.quantity })),
+            items: remitoSale.items.map((i: any) => ({
+              codigo: i.barcode || '',
+              descripcion: i.product_name,
+              cantidad: i.quantity,
+              precio: Number(i.price) || (i.quantity ? Number(i.subtotal) / i.quantity : null),
+            })),
           }}
           onClose={() => setRemitoSale(null)}
           onCreado={() => cargarRemitos(idsPagina ? idsPagina.split(',') : [])}
