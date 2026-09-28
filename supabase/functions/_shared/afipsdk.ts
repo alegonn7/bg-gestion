@@ -94,6 +94,14 @@ export function iniciarAutomatizacion(sdk: AfipSdk, nombre: string, params: Reco
   return llamar(sdk, "automations", "POST", { automation: nombre, params })
 }
 
-export function consultarAutomatizacion(sdk: AfipSdk, id: string): Promise<Automatizacion> {
-  return llamar(sdk, `automations/${id}`, "GET")
+// Una automatización que terminó con error viene con HTTP 400, pero es un resultado válido:
+// se devuelve con su status "error" para que quien la llamó decida qué hacer
+export async function consultarAutomatizacion(sdk: AfipSdk, id: string): Promise<Automatizacion> {
+  try {
+    return await llamar<Automatizacion>(sdk, `automations/${id}`, "GET")
+  } catch (err) {
+    const body = err instanceof AfipSdkError ? (err.body as any) : null
+    if (body?.id && body?.status) return body as Automatizacion
+    throw err
+  }
 }

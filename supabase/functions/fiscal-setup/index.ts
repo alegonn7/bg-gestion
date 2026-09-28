@@ -184,7 +184,17 @@ Deno.serve(async (req) => {
       // Un certificado nuevo va con otro alias, por si ARCA llegó a registrar el anterior
       if (alta.paso === "certificado") alta.cert_alias = `bg${Date.now().toString(36)}`
 
-      const siguiente = await iniciarPaso(sdkPara(alta.ambiente), alta, alta.paso, body.clave, admin)
+      // En producción, reintentar el certificado vuelve a habilitar antes el servicio de certificados:
+      // es lo que suele faltar cuando el certificado falla
+      const paso: Paso = alta.paso === "certificado" && alta.ambiente === "prod" ? "habilitar" : alta.paso
+      let siguiente: Alta
+      try {
+        siguiente = await iniciarPaso(sdkPara(alta.ambiente), alta, paso, body.clave, admin)
+      } catch (err) {
+        if (paso !== "habilitar" || !(err instanceof AfipSdkError)) throw err
+        console.error("No arrancó la habilitación de certificados:", err.message)
+        siguiente = await iniciarPaso(sdkPara(alta.ambiente), alta, "certificado", body.clave, admin)
+      }
       const { error } = await admin.from("fiscal_onboarding")
         .update({ ...siguiente, updated_at: new Date().toISOString() })
         .eq("organization_id", orgId)
@@ -610,6 +620,13 @@ function esErrorDeClave(data: any): boolean {
 function mensajeDeError(data: any): string {
   const detalle = detalleDeError(data)
   console.error("Automatización con error:", detalle || JSON.stringify(data))
+  // Falta el servicio de certificados en la clave fiscal (y ARCA no dejó habilitarlo solo)
+  if (/Administraci[oó]n de Certificados Digitales/i.test(detalle)) {
+    return "Tu clave fiscal todavía no tiene el servicio \"Administración de Certificados Digitales\". Tocá Reintentar para que lo habilitemos. Si vuelve a fallar, agregalo en la página de ARCA desde \"Administrador de Relaciones de Clave Fiscal\" → \"Adherir servicio\" y después reintentá."
+  }
+  if (/Administrador de Relaciones/i.test(detalle) && /congestionad|intente nuevamente/i.test(detalle)) {
+    return "ARCA está lento en este momento. Esperá unos minutos y tocá Reintentar."
+  }
   if (ERROR_DE_CLAVE.test(detalle)) return "El CUIT o la clave fiscal no son correctos."
   if (ERROR_DE_NIVEL.test(detalle)) return "Tu clave fiscal tiene que ser nivel 3 o superior."
   // Los mensajes de ARCA en castellano se muestran tal cual
