@@ -48,10 +48,15 @@ export default function SalesHistory() {
   const [creditNoteSale, setCreditNoteSale] = useState<any | null>(null)
   const [debitNoteSale, setDebitNoteSale] = useState<any | null>(null)
 
-  const { config: fiscalConfig, comprobantes, fetchComprobantes, getComprobanteBySaleId } = useFiscalStore()
+  const { config: fiscalConfig, fetchConfig: fetchFiscalConfig, comprobantes, fetchComprobantes, getComprobanteBySaleId } = useFiscalStore()
 
   const isOwnerOrAdmin = user?.role === 'owner' || user?.role === 'admin'
   const canVoidSale = user?.role === 'owner' || user?.role === 'manager'
+
+  // Sin la configuración fiscal no aparecen los botones de facturar
+  useEffect(() => {
+    if (!fiscalConfig) fetchFiscalConfig()
+  }, [])
 
   useEffect(() => {
     fetchSales()

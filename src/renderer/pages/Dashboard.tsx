@@ -71,7 +71,7 @@ export default function Dashboard() {
     { id: 'reports' as Page, label: 'Reportes', icon: BarChart3, roles: ['owner', 'admin', 'manager'] },
     { id: 'branches' as Page, label: 'Sucursales', icon: Building2, roles: ['owner', 'admin'] },
     { id: 'users' as Page, label: 'Usuarios', icon: Users, roles: ['owner', 'admin', 'manager'] },
-    // { id: 'fiscal' as Page, label: 'Facturación ARCA', icon: FileText, roles: ['owner', 'admin'] },
+    { id: 'fiscal' as Page, label: 'Facturación ARCA', icon: FileText, roles: ['owner', 'admin'] },
     { id: 'extras' as Page, label: 'Extras', icon: Sparkles, roles: ['owner', 'admin', 'manager'] },
     { id: 'settings' as Page, label: 'Configuración', icon: Settings },
   ]
