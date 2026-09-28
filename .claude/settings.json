@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir \"c:\\\\Projects\\\\trabajo\\\\bg-gestion\\\\bg-gestion\" /B)",
+      "Bash(npm run *)",
+      "Bash(sed -i 's/stock_quantity <= product\\\\.stock_min/stock_quantity < product.stock_min/g' src/renderer/components/ProductCard.tsx src/renderer/components/ProductDetailModal.tsx)",
+      "Bash(sed -i 's/stock_quantity <= p\\\\.stock_min/stock_quantity < p.stock_min/g' src/renderer/pages/Products.tsx src/renderer/store/reports.ts)",
+      "Bash(sed -i 's/stock_quantity <= scannedProduct\\\\.stock_min/stock_quantity < scannedProduct.stock_min/g' src/renderer/pages/ScannerPage.tsx)",
+      "Bash(sed -i 's/product\\\\.stock_quantity <= product\\\\.stock_min/product.stock_quantity < product.stock_min/g' src/renderer/pages/POS.tsx)"
+    ]
+  }
+}

@@ -45,4 +45,10 @@ contextBridge.exposeInMainWorld('electron', {
 
   // Varios archivos juntos en una carpeta que elige el usuario
   guardarArchivos: (carpeta, archivos) => ipcRenderer.invoke('guardar-archivos', { carpeta, archivos }),
+
+  // Un archivo suelto (se propone guardarlo en Descargas)
+  guardarArchivo: (nombre, base64) => ipcRenderer.invoke('guardar-archivo', { nombre, base64 }),
+
+  // Abrir una página de ARCA en el navegador
+  abrirEnlace: (url) => ipcRenderer.invoke('abrir-enlace', url),
 });

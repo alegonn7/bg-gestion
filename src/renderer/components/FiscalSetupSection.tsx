@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { FileText, CheckCircle, AlertTriangle, Loader2, ChevronDown, ChevronUp, Trash2, Edit2, Circle, XCircle, FlaskConical, ShieldCheck } from 'lucide-react'
-import { useFiscalStore, type AltaFiscal, type FiscalConfig, type SaveConfigParams } from '@/store/fiscal'
+import { esSinAutomatizaciones, useFiscalStore, type AltaFiscal, type FiscalConfig, type SaveConfigParams } from '@/store/fiscal'
+import AltaManualArca from './arca/AltaManualArca'
 
 const CONDICIONES_IVA = [
   { value: 'Monotributo', label: 'Monotributista' },
@@ -26,7 +27,7 @@ const PASOS_ALTA = [
   { orden: 2, label: 'Preparar tu punto de venta', soloProduccion: true },
 ]
 const ORDEN_PASO: Record<AltaFiscal['paso'], number> = {
-  habilitar: 0, certificado: 0, autorizacion: 1, puntos_venta: 2, punto_venta: 2, listo: 3,
+  habilitar: 0, certificado: 0, autorizacion: 1, puntos_venta: 2, punto_venta: 2, manual: 0, listo: 3,
 }
 // Afip SDK recomienda consultar cada 5 segundos si terminó cada paso
 const INTERVALO_ALTA_MS = 5000
@@ -35,8 +36,9 @@ const inputClass = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm f
 
 export default function FiscalSetupSection() {
   const {
-    config, alta, ambienteNuevo, isLoading,
+    config, alta, ambienteNuevo, sinAutomatizaciones, isLoading,
     fetchConfig, iniciarAlta, avanzarAlta, reintentarAlta, cancelarAlta, usarCuitPrueba, saveConfig, deleteConfig,
+    pedirCertificadoManual, verificarAltaManual,
   } = useFiscalStore()
   const [expanded, setExpanded] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -46,6 +48,8 @@ export default function FiscalSetupSection() {
   const [editing, setEditing] = useState(false)
   // La clave fiscal solo vive en memoria mientras dura el alta: nunca se guarda
   const [clave, setClave] = useState('')
+  // Lo último que se cargó en el alta automática, por si hay que seguir a mano
+  const [ultimosDatos, setUltimosDatos] = useState<{ cuit: string; razon_social: string; condicion_iva: string } | null>(null)
 
   useEffect(() => { fetchConfig() }, [])
 
@@ -53,6 +57,8 @@ export default function FiscalSetupSection() {
   const enCurso = alta?.estado === 'en_curso'
   const altaConError = alta?.estado === 'error'
   const esPrueba = (conectado ? config?.ambiente : ambienteNuevo) === 'dev'
+  // Sin conexión automática disponible (o si ya se empezó a mano): trámites en la página de ARCA
+  const modoManual = !conectado && (alta?.estado === 'manual' || (sinAutomatizaciones && ambienteNuevo === 'prod'))
 
   // Mientras el alta está en curso, se consulta el avance cada pocos segundos
   useEffect(() => {
@@ -81,7 +87,9 @@ export default function FiscalSetupSection() {
     try {
       await fn()
     } catch (err: any) {
-      setError(err.message)
+      // Sin conexión automática: se pasa al paso a paso, que ya explica qué hacer
+      if (esSinAutomatizaciones(err)) await fetchConfig()
+      else setError(err.message)
     } finally {
       setBusy(false)
     }
@@ -89,6 +97,8 @@ export default function FiscalSetupSection() {
 
   const estadoResumen = conectado
     ? `Conectado · CUIT ${config?.cuit} · Punto de venta ${String(config?.punto_venta).padStart(4, '0')}`
+    : modoManual
+    ? 'Falta conectar con ARCA · paso a paso'
     : enCurso
     ? 'Conectando con ARCA…'
     : altaConError
@@ -204,8 +214,19 @@ export default function FiscalSetupSection() {
             />
           )}
 
+          {/* ─── ALTA A MANO, EN LA PÁGINA DE ARCA ─────────────────────── */}
+          {modoManual && (
+            <AltaManualArca
+              inicial={ultimosDatos ?? config}
+              alta={alta}
+              onPedir={pedirCertificadoManual}
+              onVerificar={verificarAltaManual}
+              onCancelar={() => run(cancelarAlta)}
+            />
+          )}
+
           {/* ─── ALTA EN CURSO O CON ERROR ─────────────────────────────── */}
-          {!conectado && alta && (enCurso || altaConError) && (
+          {!conectado && !modoManual && alta && (enCurso || altaConError) && (
             <ProgresoAlta
               alta={alta}
               esPrueba={esPrueba}
@@ -221,13 +242,14 @@ export default function FiscalSetupSection() {
           )}
 
           {/* ─── ALTA NUEVA ────────────────────────────────────────────── */}
-          {!conectado && !enCurso && !altaConError && (
+          {!conectado && !modoManual && !enCurso && !altaConError && (
             <AltaForm
               initial={config}
               esPrueba={esPrueba}
               busy={busy || isLoading}
               onSubmit={(params) => run(async () => {
                 setClave(params.clave)
+                setUltimosDatos({ cuit: params.cuit, razon_social: params.razonSocial, condicion_iva: params.condicionIva })
                 await iniciarAlta(params)
               })}
               onUsarCuitPrueba={(condicionIva) => run(() => usarCuitPrueba(condicionIva))}

@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { ShieldCheck, X, Loader2, AlertTriangle, Trash2, CheckCircle } from 'lucide-react'
 import { useRemitosStore } from '@/store/remitos'
+import { esSinAutomatizaciones, useFiscalStore } from '@/store/fiscal'
 import type { CaiRemito } from '@/lib/remitos'
+import CaiManualArca from './arca/CaiManualArca'
 
 interface Props {
   onClose: () => void
@@ -28,6 +30,8 @@ function estadoDe(c: CaiRemito) {
 
 export default function RemitoCaiModal({ onClose }: Props) {
   const { cais, fetchCais, solicitarCai, avanzarCai, cargarCai, borrarCai } = useRemitosStore()
+  // Sin automatizaciones, el CAI se pide a mano en ARCA con un paso a paso
+  const { config: configFiscal, sinAutomatizaciones, fetchConfig } = useFiscalStore()
   const [pestaña, setPestaña] = useState<'pedir' | 'cargar'>('pedir')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -44,8 +48,20 @@ export default function RemitoCaiModal({ onClose }: Props) {
 
   // Cargar a mano (datos de la constancia de CAI)
   const [manual, setManual] = useState({ puntoVenta: '', cai: '', vencimiento: '', desde: '', hasta: '' })
+  // "Desde" se completa solo con el número que sigue al último CAI de ese punto de venta
+  const [desdeSugerido, setDesdeSugerido] = useState(true)
 
-  useEffect(() => { fetchCais().catch(err => setError(err.message)) }, [])
+  useEffect(() => {
+    fetchCais().catch(err => setError(err.message))
+    fetchConfig()
+  }, [])
+
+  const cambiarPuntoVenta = (valor: string) => {
+    const numero = Number(valor)
+    const anteriores = cais.filter(c => c.punto_venta === numero && c.hasta).map(c => Number(c.hasta))
+    const siguiente = numero > 0 ? String(anteriores.length ? Math.max(...anteriores) + 1 : 1) : ''
+    setManual(m => ({ ...m, puntoVenta: valor, desde: desdeSugerido || !m.desde ? siguiente : m.desde }))
+  }
 
   const pendientes = cais.filter(c => c.estado === 'pendiente').map(c => c.id).join(',')
   useEffect(() => {
@@ -73,7 +89,9 @@ export default function RemitoCaiModal({ onClose }: Props) {
     try {
       await fn()
     } catch (err: any) {
-      setError(err.message)
+      // Sin pedido automático: se muestra el paso a paso para pedirlo en ARCA
+      if (esSinAutomatizaciones(err)) await fetchConfig()
+      else setError(err.message)
     } finally {
       setBusy(false)
     }
@@ -99,6 +117,7 @@ export default function RemitoCaiModal({ onClose }: Props) {
       hasta: Number(manual.hasta),
     })
     setManual({ puntoVenta: '', cai: '', vencimiento: '', desde: '', hasta: '' })
+    setDesdeSugerido(true)
     setOk('CAI guardado. Ya podés emitir remitos R.')
   })
 
@@ -197,7 +216,9 @@ export default function RemitoCaiModal({ onClose }: Props) {
             ))}
           </div>
 
-          {pestaña === 'pedir' ? (
+          {pestaña === 'pedir' && sinAutomatizaciones ? (
+            <CaiManualArca condicionIva={configFiscal?.condicion_iva ?? null} onCargar={() => setPestaña('cargar')} />
+          ) : pestaña === 'pedir' ? (
             <div className="space-y-3">
               <p className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
                 Pedimos el CAI a ARCA en tu nombre. Tu clave fiscal se usa solo para este trámite y no se guarda.
@@ -238,7 +259,10 @@ export default function RemitoCaiModal({ onClose }: Props) {
             </div>
           ) : (
             <div className="space-y-3">
-              <p className="text-xs text-gray-500">Copiá los datos de la constancia de CAI que te dio ARCA o tu contador.</p>
+              <p className="text-xs text-gray-500">
+                Copiá los datos de la constancia de CAI que te dio ARCA o tu contador. La numeración (desde y hasta) también
+                figura en la constancia.
+              </p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">CAI (14 dígitos) *</label>
@@ -250,12 +274,12 @@ export default function RemitoCaiModal({ onClose }: Props) {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Punto de venta *</label>
-                  <input type="number" min={1} value={manual.puntoVenta} onChange={e => setManual({ ...manual, puntoVenta: e.target.value })} className={inputClass} />
+                  <input type="number" min={1} value={manual.puntoVenta} onChange={e => cambiarPuntoVenta(e.target.value)} className={inputClass} />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Desde N° *</label>
-                    <input type="number" min={1} value={manual.desde} onChange={e => setManual({ ...manual, desde: e.target.value })} className={inputClass} />
+                    <input type="number" min={1} value={manual.desde} onChange={e => { setDesdeSugerido(false); setManual({ ...manual, desde: e.target.value }) }} className={inputClass} />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Hasta N° *</label>

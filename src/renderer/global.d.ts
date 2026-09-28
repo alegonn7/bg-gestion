@@ -74,6 +74,8 @@ interface Window {
       carpeta: string,
       archivos: { nombre: string; base64: string }[],
     ) => Promise<{ success: boolean; canceled?: boolean; path?: string; error?: string }>;
+    guardarArchivo?: (nombre: string, base64: string) => Promise<{ success: boolean; canceled?: boolean; path?: string; error?: string }>;
+    abrirEnlace?: (url: string) => Promise<{ success: boolean; error?: string }>;
     platform: string;
   };
 }

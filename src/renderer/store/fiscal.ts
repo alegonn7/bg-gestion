@@ -18,15 +18,24 @@ export interface FiscalConfig {
   conectado: boolean
 }
 
-// 'habilitar' solo en producción: activa en ARCA el servicio para crear certificados
-export type PasoAlta = 'habilitar' | 'certificado' | 'autorizacion' | 'puntos_venta' | 'punto_venta' | 'listo'
+// 'habilitar' solo en producción: activa en ARCA el servicio para crear certificados.
+// 'manual': el cliente hace los trámites en la página de ARCA con el paso a paso de la app
+export type PasoAlta = 'habilitar' | 'certificado' | 'autorizacion' | 'puntos_venta' | 'punto_venta' | 'manual' | 'listo'
 
 // Alta en ARCA con Afip SDK: se avanza paso a paso con la clave fiscal del cliente
 export interface AltaFiscal {
   paso: PasoAlta
-  estado: 'en_curso' | 'error' | 'listo'
+  estado: 'en_curso' | 'error' | 'manual' | 'listo'
   error: string | null
   punto_venta: number | null
+  cert_alias?: string | null   // nombre del certificado en ARCA (el alta manual lo muestra)
+}
+
+export interface AltaManualParams {
+  cuit: string
+  razonSocial: string
+  condicionIva: string
+  nuevo?: boolean              // descarta el pedido anterior y genera otro
 }
 
 export interface InvoiceItem {
@@ -120,6 +129,8 @@ interface FiscalState {
   config: FiscalConfig | null
   alta: AltaFiscal | null
   ambienteNuevo: Ambiente
+  // Sin automatizaciones disponibles: el alta y el CAI se hacen a mano en la página de ARCA
+  sinAutomatizaciones: boolean
   comprobantes: FiscalComprobante[]
   isLoading: boolean
   error: string | null
@@ -129,6 +140,9 @@ interface FiscalState {
   avanzarAlta: (clave: string) => Promise<void>
   reintentarAlta: (clave: string) => Promise<void>
   cancelarAlta: () => Promise<void>
+  // Alta manual: pedido de certificado para subir en ARCA, y verificación final
+  pedirCertificadoManual: (params: AltaManualParams) => Promise<{ csr: string; alias: string }>
+  verificarAltaManual: (params: { certificadoBase64: string; puntoVenta: number }) => Promise<void>
   usarCuitPrueba: (condicionIva: string) => Promise<void>
   saveConfig: (params: SaveConfigParams) => Promise<void>
   deleteConfig: () => Promise<void>
@@ -201,6 +215,17 @@ export async function ventaTieneFacturaVigente(saleId: string): Promise<boolean>
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string
 
+// Error que devolvió la función del servidor, con lo que mandó además del mensaje
+// (por ejemplo `codigo: 'sin_automatizaciones'` o el `tramite` a revisar en el alta manual)
+export class ErrorDelServidor extends Error {
+  constructor(mensaje: string, readonly datos: Record<string, any>) {
+    super(mensaje)
+  }
+}
+
+export const esSinAutomatizaciones = (err: unknown) =>
+  err instanceof ErrorDelServidor && err.datos.codigo === 'sin_automatizaciones'
+
 export async function callEdgeFunction(fnName: string, body: object) {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('Tu sesión venció. Volvé a iniciar sesión.')
@@ -228,7 +253,9 @@ export async function callEdgeFunction(fnName: string, body: object) {
     console.error(`${fnName}: respuesta inválida (HTTP ${res.status})`)
     throw new Error('No se pudo completar la operación. Probá de nuevo en unos minutos.')
   }
-  if (!res.ok || !data.ok) throw new Error(data.error || 'No se pudo completar la operación. Probá de nuevo en unos minutos.')
+  if (!res.ok || !data.ok) {
+    throw new ErrorDelServidor(data.error || 'No se pudo completar la operación. Probá de nuevo en unos minutos.', data)
+  }
   return data
 }
 
@@ -236,6 +263,7 @@ export const useFiscalStore = create<FiscalState>((set, get) => ({
   config: null,
   alta: null,
   ambienteNuevo: 'dev',
+  sinAutomatizaciones: false,
   comprobantes: [],
   comprobantesVentas: [],
   ventasConsultadas: [],
@@ -252,6 +280,7 @@ export const useFiscalStore = create<FiscalState>((set, get) => ({
         config: data?.config ?? null,
         alta: data?.alta ?? null,
         ambienteNuevo: data?.ambiente_nuevo === 'prod' ? 'prod' : 'dev',
+        sinAutomatizaciones: !!data?.sin_automatizaciones,
         isLoading: false,
       })
     } catch (err: any) {
@@ -279,6 +308,18 @@ export const useFiscalStore = create<FiscalState>((set, get) => ({
   cancelarAlta: async () => {
     await callEdgeFunction('fiscal-setup', { action: 'alta_cancelar' })
     set({ alta: null })
+  },
+
+  pedirCertificadoManual: async (params) => {
+    const data = await callEdgeFunction('fiscal-setup', { action: 'manual_pedido', ...params })
+    set({ alta: data.alta })
+    return { csr: data.csr, alias: data.alta?.cert_alias ?? '' }
+  },
+
+  verificarAltaManual: async ({ certificadoBase64, puntoVenta }) => {
+    const data = await callEdgeFunction('fiscal-setup', { action: 'manual_verificar', certificado: certificadoBase64, puntoVenta })
+    set({ alta: data.alta })
+    await get().fetchConfig()
   },
 
   usarCuitPrueba: async (condicionIva) => {

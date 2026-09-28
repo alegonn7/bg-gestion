@@ -5,7 +5,7 @@ console.log('INICIO MAIN.JS');
 // ============================================================
 // REQUIRES - siempre primero, sin excepción
 // ============================================================
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const Database = require('better-sqlite3');
@@ -547,6 +547,37 @@ ipcMain.handle('guardar-archivos', async (event, { carpeta, archivos }) => {
     return { success: true, path: destino };
   } catch (error) {
     console.error('Error guardar-archivos:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Un archivo suelto, con el diálogo de "Guardar como" abierto en Descargas
+// (por ejemplo, el pedido de certificado que el cliente sube en la página de ARCA)
+ipcMain.handle('guardar-archivo', async (event, { nombre, base64 }) => {
+  try {
+    const nombreSeguro = path.basename(String(nombre || 'archivo'));
+    const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+      title: 'Guardar archivo',
+      defaultPath: path.join(app.getPath('downloads'), nombreSeguro),
+    });
+    if (canceled || !filePath) return { success: false, canceled: true };
+    fs.writeFileSync(filePath, Buffer.from(base64, 'base64'));
+    return { success: true, path: filePath };
+  } catch (error) {
+    console.error('Error guardar-archivo:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Abre una página de ARCA en el navegador (solo sitios de ARCA)
+ipcMain.handle('abrir-enlace', async (event, url) => {
+  try {
+    const { protocol, hostname } = new URL(String(url));
+    const deArca = /(^|\.)(arca|afip)\.gob\.ar$/.test(hostname) || /(^|\.)afip\.gov\.ar$/.test(hostname);
+    if (protocol !== 'https:' || !deArca) return { success: false, error: 'Enlace no permitido' };
+    await shell.openExternal(String(url));
+    return { success: true };
+  } catch (error) {
     return { success: false, error: error.message };
   }
 });

@@ -2,11 +2,22 @@
 // Configuración fiscal de la organización y alta en ARCA con Afip SDK: con el CUIT y la clave
 // fiscal del cliente se crea su propio certificado, se lo autoriza para facturar (wsfe) y se
 // busca o crea su punto de venta. La clave fiscal se usa en cada paso y nunca se guarda.
+// Si no quedan automatizaciones, el cliente hace esos trámites a mano en la página de ARCA
+// (alta manual): acá se genera el pedido de certificado y después se verifica todo.
 
 import { createClient } from "npm:@supabase/supabase-js@2"
-import { type AfipSdk, AfipSdkError, type Ambiente, consultarAutomatizacion, iniciarAutomatizacion } from "../_shared/afipsdk.ts"
-import { encryptSecret } from "../_shared/crypto.ts"
+import {
+  type AfipSdk,
+  AfipSdkError,
+  type Ambiente,
+  consultarAutomatizacion,
+  iniciarAutomatizacion,
+  obtenerTicketAcceso,
+} from "../_shared/afipsdk.ts"
+import { clavePublicaDelPedido, crearPedidoDeCertificado, leerCertificado, mismosBytes } from "../_shared/certificado.ts"
+import { decryptSecret, encryptSecret } from "../_shared/crypto.ts"
 import { usuarioDeLaSesion } from "../_shared/sesion.ts"
+import { puntosDeVenta } from "../_shared/wsfe.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -20,8 +31,9 @@ const corsHeaders = {
 const CUIT_PRUEBA = "20409378472"
 
 // En producción el alta arranca habilitando "Administración de Certificados Digitales" en la clave
-// fiscal del cliente: sin ese servicio ARCA no deja crear el certificado
-type Paso = "habilitar" | "certificado" | "autorizacion" | "puntos_venta" | "punto_venta" | "listo"
+// fiscal del cliente: sin ese servicio ARCA no deja crear el certificado.
+// "manual": el cliente hace los trámites en la página de ARCA (ver manual_pedido y manual_verificar)
+type Paso = "habilitar" | "certificado" | "autorizacion" | "puntos_venta" | "punto_venta" | "manual" | "listo"
 
 interface Alta {
   organization_id: string
@@ -29,11 +41,13 @@ interface Alta {
   usuario: string
   ambiente: Ambiente
   paso: Paso
-  estado: "en_curso" | "error" | "listo"
+  estado: "en_curso" | "error" | "manual" | "listo"
   automatizacion_id: string | null
   cert_alias: string | null
   punto_venta: number | null
   error: string | null
+  // Pedido de certificado del alta manual (no es secreto: la clave queda en fiscal_credentials)
+  csr?: string | null
   // Registro técnico de cada paso (qué automatización, cuándo y qué respondió ARCA). No lo ve el cliente
   detalle?: Registro[]
 }
@@ -57,14 +71,14 @@ function anotar(alta: Alta, entrada: Omit<Registro, "fecha">): Alta {
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
 
+  const admin = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+  )
+
   try {
     const authHeader = req.headers.get("Authorization")
     if (!authHeader) return errorResponse("No autorizado", 401)
-
-    const admin = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    )
 
     const authId = await usuarioDeLaSesion(admin, authHeader)
     if (!authId) return errorResponse("No autorizado", 401)
@@ -119,6 +133,7 @@ Deno.serve(async (req) => {
       if (usuario.length !== 11) return errorResponse("CUIT/CUIL de ingreso a ARCA inválido (11 dígitos)")
       if (!clave) return errorResponse("Ingresá la clave fiscal")
       if (!body.razonSocial?.trim()) return errorResponse("Ingresá la razón social")
+      if (!(await hayAutomatizaciones(admin))) return sinAutomatizaciones()
 
       const { error: orgError } = await admin.from("organizations").update({
         fiscal_enabled: false,
@@ -147,7 +162,7 @@ Deno.serve(async (req) => {
         alta = await iniciarPaso(sdkPara(ambienteNuevo), inicial, ambienteNuevo === "prod" ? "habilitar" : "certificado", clave, admin)
       } catch (err) {
         // Si habilitar el servicio no puede ni arrancar, se prueba directo con el certificado
-        if (ambienteNuevo !== "prod" || !(err instanceof AfipSdkError)) throw err
+        if (ambienteNuevo !== "prod" || !(err instanceof AfipSdkError) || esLimiteDeAutomatizaciones(err)) throw err
         const sinHabilitar = anotar(inicial, { paso: "habilitar", automatizacion: "add-relation", estado: "no arrancó", mensaje: err.message })
         alta = await iniciarPaso(sdkPara(ambienteNuevo), sinHabilitar, "certificado", clave, admin)
       }
@@ -182,7 +197,7 @@ Deno.serve(async (req) => {
         try {
           siguiente = await iniciarPaso(sdk, conRegistro, "certificado", body.clave || "", admin)
         } catch (err) {
-          siguiente = { ...conRegistro, estado: "error", error: mensajeParaCliente(err) }
+          siguiente = { ...conRegistro, estado: "error", error: await errorDelPaso(admin, err) }
         }
       } else if (automatizacion.status === "error") {
         siguiente = { ...conRegistro, estado: "error", error: mensajeDeErrorDelAlta(conRegistro, automatizacion.data) }
@@ -190,7 +205,7 @@ Deno.serve(async (req) => {
         try {
           siguiente = await procesarPaso(admin, sdk, conRegistro, automatizacion.data, body.clave || "")
         } catch (err) {
-          siguiente = { ...conRegistro, estado: "error", error: mensajeParaCliente(err) }
+          siguiente = { ...conRegistro, estado: "error", error: await errorDelPaso(admin, err) }
         }
       }
       const { error } = await admin.from("fiscal_onboarding")
@@ -205,6 +220,7 @@ Deno.serve(async (req) => {
       const { data: alta } = await admin.from("fiscal_onboarding").select("*").eq("organization_id", orgId).maybeSingle()
       if (!alta || alta.estado !== "error") return errorResponse("No hay un paso para reintentar")
       if (!body.clave) return errorResponse("Ingresá la clave fiscal")
+      if (!(await hayAutomatizaciones(admin))) return sinAutomatizaciones()
       if (body.puntoVenta) alta.punto_venta = Number(body.puntoVenta)
       // Un certificado nuevo va con otro alias, por si ARCA llegó a registrar el anterior
       if (alta.paso === "certificado") alta.cert_alias = `bg${Date.now().toString(36)}`
@@ -216,7 +232,7 @@ Deno.serve(async (req) => {
       try {
         siguiente = await iniciarPaso(sdkPara(alta.ambiente), alta, paso, body.clave, admin)
       } catch (err) {
-        if (paso !== "habilitar" || !(err instanceof AfipSdkError)) throw err
+        if (paso !== "habilitar" || !(err instanceof AfipSdkError) || esLimiteDeAutomatizaciones(err)) throw err
         const sinHabilitar = anotar(alta, { paso: "habilitar", automatizacion: "add-relation", estado: "no arrancó", mensaje: err.message })
         siguiente = await iniciarPaso(sdkPara(alta.ambiente), sinHabilitar, "certificado", body.clave, admin)
       }
@@ -229,7 +245,146 @@ Deno.serve(async (req) => {
 
     if (action === "alta_cancelar") {
       await admin.from("fiscal_onboarding").delete().eq("organization_id", orgId)
+      // Un certificado a medio tramitar no sirve: se borra (el de una conexión activa, no)
+      await admin.from("fiscal_credentials").delete().eq("organization_id", orgId).eq("activo", false)
       return jsonResponse({ ok: true })
+    }
+
+    // ── Alta a mano, cuando no quedan automatizaciones ──────────────────────
+    // 1) manual_pedido: se genera la clave (queda en el servidor) y el pedido de certificado que el
+    //    cliente sube en ARCA. 2) El cliente crea el certificado, lo autoriza para facturar y crea el
+    //    punto de venta en la página de ARCA. 3) manual_verificar: sube el certificado, se prueba con
+    //    ARCA y queda conectado. No usa la clave fiscal.
+    if (action === "manual_pedido") {
+      const cuit = soloDigitos(body.cuit)
+      const razonSocial = String(body.razonSocial ?? "").trim()
+      if (cuit.length !== 11) return errorResponse("El CUIT tiene que tener 11 dígitos")
+      if (!razonSocial) return errorResponse("Ingresá la razón social")
+      if (await leerAmbienteNuevo() !== "prod") return errorResponse("En modo prueba usá \"Probar sin clave fiscal\"")
+      const condicionIva = ["Monotributo", "RI", "Exento"].includes(body.condicionIva) ? body.condicionIva : "Monotributo"
+
+      const { error: orgError } = await admin.from("organizations")
+        .update({ fiscal_enabled: false, cuit, razon_social: razonSocial, condicion_iva: condicionIva })
+        .eq("id", orgId)
+      if (orgError) throw orgError
+
+      // Si ya hay un pedido para este CUIT se devuelve el mismo, salvo que se pida empezar de nuevo
+      const { data: previa } = await admin.from("fiscal_onboarding").select("*").eq("organization_id", orgId).maybeSingle()
+      if (previa?.estado === "manual" && previa.cuit === cuit && previa.csr && !body.nuevo) {
+        return jsonResponse({ ok: true, alta: resumen(previa), csr: previa.csr })
+      }
+
+      // Nombre del certificado en ARCA: solo letras y números
+      const alias = `bggestion${100 + Math.floor(Math.random() * 900)}`
+      const pedido = await crearPedidoDeCertificado({ cuit, razonSocial, alias })
+      const { error: credError } = await admin.from("fiscal_credentials").upsert({
+        organization_id: orgId,
+        cuit,
+        ambiente: "prod",
+        cert_alias: alias,
+        cert_encrypted: null,
+        key_encrypted: await encryptSecret(pedido.clave, Deno.env.get("FISCAL_CERTS_ENCRYPTION_KEY")!),
+        activo: false,
+        ta_token: null,
+        ta_sign: null,
+        ta_expira: null,
+        updated_at: new Date().toISOString(),
+      })
+      if (credError) throw credError
+
+      const alta = anotar({
+        organization_id: orgId,
+        cuit,
+        usuario: cuit,
+        ambiente: "prod",
+        paso: "manual",
+        estado: "manual",
+        automatizacion_id: null,
+        cert_alias: alias,
+        punto_venta: null,
+        error: null,
+        csr: pedido.csr,
+        detalle: previa?.detalle ?? [],
+      }, { paso: "manual", estado: "pedido de certificado", mensaje: alias })
+      const { error } = await admin.from("fiscal_onboarding").upsert({ ...alta, updated_at: new Date().toISOString() })
+      if (error) throw error
+      return jsonResponse({ ok: true, alta: resumen(alta), csr: pedido.csr })
+    }
+
+    if (action === "manual_verificar") {
+      const [{ data: alta }, { data: cred }] = await Promise.all([
+        admin.from("fiscal_onboarding").select("*").eq("organization_id", orgId).maybeSingle(),
+        admin.from("fiscal_credentials").select("key_encrypted").eq("organization_id", orgId).maybeSingle(),
+      ])
+      if (alta?.estado !== "manual" || !alta.csr || !cred?.key_encrypted) {
+        return errorResponse("Primero descargá el archivo para ARCA (paso 1)")
+      }
+      const puntoVenta = Number(body.puntoVenta)
+      if (!Number.isInteger(puntoVenta) || puntoVenta < 1 || puntoVenta > 99998) {
+        return errorDelAltaManual(4, "Escribí el número del punto de venta que creaste en el trámite 4.")
+      }
+
+      // 1. Tiene que ser el certificado del pedido que generamos (trámite 2)
+      let certificado
+      try {
+        certificado = leerCertificado(Uint8Array.from(atob(String(body.certificado ?? "")), (c) => c.charCodeAt(0)))
+      } catch {
+        return errorDelAltaManual(2, "Ese archivo no es un certificado. Subí el que descargaste de ARCA al final del trámite 2 (con \"Ver\" y después \"Descargar\").")
+      }
+      if (!mismosBytes(certificado.clavePublica, clavePublicaDelPedido(alta.csr))) {
+        return errorDelAltaManual(2, `Ese certificado no es el que se creó con el archivo de BG Gestión. En ARCA, descargá el certificado del alias "${alta.cert_alias}".`)
+      }
+      if (certificado.vence.getTime() < Date.now()) {
+        return errorDelAltaManual(2, "Ese certificado está vencido. Volvé a empezar para crear uno nuevo.")
+      }
+      const llave = Deno.env.get("FISCAL_CERTS_ENCRYPTION_KEY")!
+      const clave = await decryptSecret(cred.key_encrypted, llave)
+      const { error: certError } = await admin.from("fiscal_credentials")
+        .update({ cert_encrypted: await encryptSecret(certificado.pem, llave), updated_at: new Date().toISOString() })
+        .eq("organization_id", orgId)
+      if (certError) throw certError
+
+      // 2. ARCA tiene que dejar usar el certificado para facturar (trámite 3)
+      const sdk = sdkPara("prod")
+      let ticket
+      try {
+        ticket = await obtenerTicketAcceso(sdk, { cuit: alta.cuit, wsid: "wsfe", cert: certificado.pem, key: clave })
+      } catch (err) {
+        if (!(err instanceof AfipSdkError)) throw err
+        console.error(`Alta manual [${orgId}]: ARCA no dio el ticket de acceso:`, err.status, err.message, JSON.stringify(err.body))
+        if (/not ?authorized|no autorizad|no est[aá] autorizad/i.test(err.message)) {
+          return errorDelAltaManual(3, `ARCA todavía no autorizó el certificado para facturar. Revisá el trámite 3: la relación con "Facturación Electrónica" tiene que tener el certificado "${alta.cert_alias}".`)
+        }
+        if (/cert/i.test(err.message)) {
+          return errorDelAltaManual(2, "ARCA no reconoce el certificado. Subí el que descargaste en el trámite 2.")
+        }
+        return errorResponse("No pudimos comunicarnos con ARCA. Probá de nuevo en unos minutos.", 502)
+      }
+      const auth = { Token: ticket.token, Sign: ticket.sign, Cuit: alta.cuit }
+
+      // 3. El punto de venta tiene que estar habilitado para facturar por sistema (trámite 4).
+      //    Si ARCA no devuelve la lista, se acepta: si hubiera un error, lo dice la primera factura
+      try {
+        const habilitados = (await puntosDeVenta(sdk, auth)).filter((p) => !p.bloqueado && !p.deBaja)
+        if (habilitados.length && !habilitados.some((p) => p.numero === puntoVenta)) {
+          return errorDelAltaManual(4, `El punto de venta ${puntoVenta} no está habilitado para facturar desde un sistema. Los que tenés habilitados son: ${habilitados.map((p) => p.numero).join(", ")}. Si lo acabás de crear, esperá unos minutos y probá de nuevo.`)
+        }
+        if (!habilitados.length) console.log(`Alta manual [${orgId}]: ARCA no listó puntos de venta; se acepta el ${puntoVenta}`)
+      } catch (err) {
+        console.error(`Alta manual [${orgId}]: no se pudieron consultar los puntos de venta:`, (err as Error).message)
+      }
+
+      // 4. Listo: queda conectado, con el ticket de acceso ya guardado
+      const { error: taError } = await admin.from("fiscal_credentials")
+        .update({ ta_token: ticket.token, ta_sign: ticket.sign, ta_expira: ticket.expiration })
+        .eq("organization_id", orgId)
+      if (taError) throw taError
+      const terminado = await terminar(admin, anotar(alta, { paso: "manual", estado: "verificado", mensaje: `punto de venta ${puntoVenta}` }), puntoVenta)
+      const { error } = await admin.from("fiscal_onboarding")
+        .update({ ...terminado, updated_at: new Date().toISOString() })
+        .eq("organization_id", orgId)
+      if (error) throw error
+      return jsonResponse({ ok: true, alta: resumen(terminado) })
     }
 
     // ── Probar sin clave fiscal: CUIT de prueba de Afip SDK (solo en modo prueba) ─
@@ -290,6 +445,7 @@ Deno.serve(async (req) => {
       const cantidad = Number(body.cantidad)
       if (!body.clave) return errorResponse("Ingresá la clave fiscal")
       if (!Number.isInteger(cantidad) || cantidad < 1 || cantidad > 10000) return errorResponse("Cantidad inválida (entre 1 y 10.000)")
+      if (!(await hayAutomatizaciones(admin))) return sinAutomatizaciones()
 
       const { data: org } = await admin.from("organizations").select("cuit, razon_social, condicion_iva").eq("id", orgId).single()
       if (!org?.cuit) return errorResponse("Primero configurá la facturación electrónica para poder pedir el CAI")
@@ -330,7 +486,7 @@ Deno.serve(async (req) => {
         try {
           cambios = await procesarPasoCai(admin, sdk, orgId, fila, automatizacion.data, body)
         } catch (err) {
-          cambios = { estado: "error", paso: null, error: mensajeParaCliente(err) }
+          cambios = { estado: "error", paso: null, error: await errorDelPaso(admin, err) }
         }
       }
       const { data: actualizada, error } = await admin.from("remitos_cai").update(cambios).eq("id", fila.id).select("*").single()
@@ -389,6 +545,11 @@ Deno.serve(async (req) => {
     return errorResponse("Acción desconocida")
 
   } catch (err: any) {
+    // Se terminaron las automatizaciones: la app muestra cómo hacer el trámite a mano
+    if (esLimiteDeAutomatizaciones(err)) {
+      await marcarSinAutomatizaciones(admin)
+      return sinAutomatizaciones()
+    }
     return errorResponse(mensajeParaCliente(err), 500)
   }
 })
@@ -613,6 +774,54 @@ async function procesarPasoCai(admin: any, sdk: AfipSdk, orgId: string, fila: an
   return { estado: "vigente", paso: null, cai, vencimiento: fechaIso(String(data.vencimiento)), error: null }
 }
 
+// ─── Sin automatizaciones ────────────────────────────────────────────────────
+// Afip SDK corta cuando se usan todas las automatizaciones del plan: "Alcanzaste el límite de
+// automatizaciones que podés usar en este período...". Se anota cuándo pasó y, por un día, la app
+// muestra cómo hacer el alta y el CAI a mano en la página de ARCA. Pasado ese tiempo se vuelve a
+// probar solo; si se contrata el adicional antes, alcanza con borrar la marca en fiscal_parametros.
+
+const LIMITE_AUTOMATIZACIONES = /l[íi]mite de automatizaciones|afipsdk\.com\/billing/i
+const HORAS_SIN_AUTOMATIZACIONES = 24
+
+function esLimiteDeAutomatizaciones(err: unknown): boolean {
+  return err instanceof AfipSdkError && LIMITE_AUTOMATIZACIONES.test(`${err.message} ${JSON.stringify(err.body ?? "")}`)
+}
+
+async function marcarSinAutomatizaciones(admin: any) {
+  console.error("Afip SDK: no quedan automatizaciones en el plan. Altas y CAI pasan a hacerse a mano por", HORAS_SIN_AUTOMATIZACIONES, "horas")
+  await admin.from("fiscal_parametros").update({ automatizaciones_agotadas: new Date().toISOString() }).eq("id", 1)
+}
+
+async function hayAutomatizaciones(admin: any): Promise<boolean> {
+  const { data } = await admin.from("fiscal_parametros").select("automatizaciones_agotadas").eq("id", 1).maybeSingle()
+  const agotadas = data?.automatizaciones_agotadas ? new Date(data.automatizaciones_agotadas).getTime() : 0
+  return Date.now() - agotadas > HORAS_SIN_AUTOMATIZACIONES * 3600_000
+}
+
+// La app reconoce el código y muestra el paso a paso para hacerlo en la página de ARCA. El mensaje
+// solo lo ven las versiones anteriores de la app, que no tienen el paso a paso
+const ACTUALIZAR_PARA_PASO_A_PASO = "Actualizá BG Gestión a la última versión para ver el paso a paso y hacerlo en la página de ARCA."
+
+function sinAutomatizaciones() {
+  return jsonResponse({
+    ok: false,
+    codigo: "sin_automatizaciones",
+    error: `En este momento no podemos hacer este trámite automáticamente. ${ACTUALIZAR_PARA_PASO_A_PASO}`,
+  })
+}
+
+// Error al arrancar el paso siguiente de un alta o un pedido de CAI en curso
+async function errorDelPaso(admin: any, err: unknown): Promise<string> {
+  if (!esLimiteDeAutomatizaciones(err)) return mensajeParaCliente(err)
+  await marcarSinAutomatizaciones(admin)
+  return `No se pudo terminar automáticamente. ${ACTUALIZAR_PARA_PASO_A_PASO}`
+}
+
+// Error del alta manual: `tramite` le indica a la app qué paso revisar
+function errorDelAltaManual(tramite: number, mensaje: string) {
+  return jsonResponse({ ok: false, error: mensaje, tramite }, 400)
+}
+
 // ─── Mensajes para el cliente ────────────────────────────────────────────────
 // Los detalles técnicos van al log de la función; al cliente se le muestra algo claro.
 
@@ -632,6 +841,7 @@ const NOMBRES_AUTOMATIZACION: Record<Paso, (ambiente: Ambiente) => string> = {
   autorizacion: (ambiente) => `auth-web-service-${ambiente}`,
   puntos_venta: () => "list-sales-points",
   punto_venta: () => "create-sales-point",
+  manual: () => "",
   listo: () => "",
 }
 
@@ -685,7 +895,7 @@ function mensajeDeError(data: any): string {
 }
 
 function resumen(alta: Alta) {
-  return { paso: alta.paso, estado: alta.estado, error: alta.error, punto_venta: alta.punto_venta }
+  return { paso: alta.paso, estado: alta.estado, error: alta.error, punto_venta: alta.punto_venta, cert_alias: alta.cert_alias }
 }
 
 function soloDigitos(valor: unknown): string {

@@ -141,13 +141,40 @@ export async function ultimoAutorizado(sdk: AfipSdk, auth: AuthWsfe, puntoVenta:
   return Number(resultado?.CbteNro ?? 0)
 }
 
-async function fechaDeComprobante(sdk: AfipSdk, auth: AuthWsfe, puntoVenta: number, tipo: number, numero: number) {
+// Un comprobante ya autorizado, tal como lo tiene ARCA
+async function consultarComprobante(sdk: AfipSdk, auth: AuthWsfe, puntoVenta: number, tipo: number, numero: number): Promise<any> {
   const res: any = await llamarWebService(sdk, WSFE, "FECompConsultar", {
     Auth: auth,
     FeCompConsReq: { CbteTipo: tipo, CbteNro: numero, PtoVta: puntoVenta },
   })
-  const fch = res?.FECompConsultarResult?.ResultGet?.CbteFch
+  return res?.FECompConsultarResult?.ResultGet ?? null
+}
+
+async function fechaDeComprobante(sdk: AfipSdk, auth: AuthWsfe, puntoVenta: number, tipo: number, numero: number) {
+  const fch = (await consultarComprobante(sdk, auth, puntoVenta, tipo, numero))?.CbteFch
   return fch ? aFechaIso(String(fch)) : null
+}
+
+export interface PuntoDeVenta {
+  numero: number
+  tipo: string
+  bloqueado: boolean
+  deBaja: boolean
+}
+
+// Puntos de venta del CUIT habilitados para facturar por web service. Sin resultados, ARCA
+// responde el error 602
+export async function puntosDeVenta(sdk: AfipSdk, auth: AuthWsfe): Promise<PuntoDeVenta[]> {
+  const res: any = await llamarWebService(sdk, WSFE, "FEParamGetPtosVenta", { Auth: auth })
+  const resultado = res?.FEParamGetPtosVentaResult
+  const errores = erroresDe(resultado).filter((e) => e.codigo !== 602)
+  if (errores.length) throw new RechazoArca(errores)
+  return lista<any>(resultado?.ResultGet?.PtoVenta).map((p) => ({
+    numero: Number(p.Nro),
+    tipo: String(p.EmisionTipo ?? ""),
+    bloqueado: String(p.Bloqueado ?? "").toUpperCase() === "S",
+    deBaja: !!p.FchBaja && String(p.FchBaja).toUpperCase() !== "NULL",
+  }))
 }
 
 // Documento del comprador: CUIT, DNI o consumidor final sin identificar (99 / 0)
@@ -220,6 +247,58 @@ async function solicitarCAE(sdk: AfipSdk, auth: AuthWsfe, request: InvoiceReques
   }
 }
 
+// Si no llegó la respuesta (se cortó la comunicación o ARCA tardó demasiado), el comprobante pudo
+// haberse autorizado igual. Como indica el manual de ARCA, se consulta el último autorizado y, si es
+// este número con los mismos datos, ese es el comprobante: pedirlo de nuevo lo haría repetido.
+async function recuperarComprobante(
+  sdk: AfipSdk,
+  auth: AuthWsfe,
+  request: InvoiceRequest,
+  numero: number,
+  fecha: string,
+  importes: Importes,
+): Promise<Emision | null> {
+  const ultimo = await ultimoAutorizado(sdk, auth, request.puntoVenta, request.tipoComprobante)
+  if (ultimo < numero) return null
+
+  const cbte = await consultarComprobante(sdk, auth, request.puntoVenta, request.tipoComprobante, numero)
+  const solicitud = armarSolicitud(request, auth.Cuit, numero, fecha, importes)
+  const enviado = solicitud.FeDetReq.FECAEDetRequest
+  const mismoImporte = (a: unknown, b: unknown) => Math.abs(Number(a) - Number(b)) < 0.005
+  const coincide = !!cbte?.CodAutorizacion &&
+    Number(cbte.DocTipo) === enviado.DocTipo &&
+    Number(cbte.DocNro) === enviado.DocNro &&
+    String(cbte.CbteFch) === enviado.CbteFch &&
+    mismoImporte(cbte.ImpTotal, enviado.ImpTotal) &&
+    mismoImporte(cbte.ImpNeto, enviado.ImpNeto) &&
+    mismoImporte(cbte.ImpIVA, enviado.ImpIVA)
+  if (!coincide) return null
+
+  return {
+    cae: String(cbte.CodAutorizacion),
+    caeVence: aFechaIso(String(cbte.FchVto)),
+    numero,
+    fecha,
+    resultado: String(cbte.Resultado ?? "A"),
+    observaciones: lista<any>(cbte.Observaciones?.Obs).map((o) => `(${o.Code}) ${o.Msg}`),
+    importes,
+    solicitud,
+    respuesta: { FECompConsultarResult: { ResultGet: cbte } },
+  }
+}
+
+async function pedirCAE(sdk: AfipSdk, auth: AuthWsfe, request: InvoiceRequest, numero: number, fecha: string, importes: Importes): Promise<Emision> {
+  try {
+    return await solicitarCAE(sdk, auth, request, numero, fecha, importes)
+  } catch (err) {
+    if (err instanceof RechazoArca) throw err
+    const recuperado = await recuperarComprobante(sdk, auth, request, numero, fecha, importes).catch(() => null)
+    if (!recuperado) throw err
+    console.warn(`WSFE: no llegó la respuesta de ARCA, pero el comprobante ${request.tipoComprobante}-${request.puntoVenta}-${numero} quedó autorizado`)
+    return recuperado
+  }
+}
+
 // Pide el CAE para el siguiente número del punto de venta. Si ARCA rechaza la fecha porque el
 // último comprobante tiene una posterior (error 10016), reintenta con la fecha de ese comprobante.
 export async function emitirComprobante(sdk: AfipSdk, auth: AuthWsfe, request: InvoiceRequest): Promise<Emision> {
@@ -228,11 +307,11 @@ export async function emitirComprobante(sdk: AfipSdk, auth: AuthWsfe, request: I
   const fecha = hoyArgentina()
 
   try {
-    return await solicitarCAE(sdk, auth, request, ultimo + 1, fecha, importes)
+    return await pedirCAE(sdk, auth, request, ultimo + 1, fecha, importes)
   } catch (err) {
     if (!(err instanceof RechazoArca) || !err.tieneCodigo(10016) || ultimo === 0) throw err
     const fechaUltimo = await fechaDeComprobante(sdk, auth, request.puntoVenta, request.tipoComprobante, ultimo)
     if (!fechaUltimo || fechaUltimo <= fecha) throw err
-    return await solicitarCAE(sdk, auth, request, ultimo + 1, fechaUltimo, importes)
+    return await pedirCAE(sdk, auth, request, ultimo + 1, fechaUltimo, importes)
   }
 }
