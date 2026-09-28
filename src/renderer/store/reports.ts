@@ -1020,6 +1020,7 @@ export const useReportsStore = create<ReportsState>((set) => ({
         .from('fiscal_comprobantes')
         .select('tipo_cbte, fecha_emision, importe_total, resultado')
         .eq('resultado', 'A')
+        .eq('ambiente', 'prod') // los comprobantes de prueba no cuentan
         .gte('fecha_emision', start.toISOString().split('T')[0])
         .lte('fecha_emision', end.toISOString().split('T')[0])
         .order('fecha_emision', { ascending: true })

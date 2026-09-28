@@ -24,9 +24,9 @@ interface Props {
 export default function FiscalInvoiceModal({ sale, onClose }: Props) {
   const { config, emitInvoice } = useFiscalStore()
 
-  // Determinar tipo inicial según condición IVA del emisor
-  const isMonotributo = config?.condicion_iva === 'Monotributo'
-  const defaultTipo: TipoComprobante = isMonotributo ? 11 : 6
+  // Monotributistas y exentos emiten comprobantes C; responsables inscriptos, A o B
+  const emiteC = config?.condicion_iva === 'Monotributo' || config?.condicion_iva === 'Exento'
+  const defaultTipo: TipoComprobante = emiteC ? 11 : 6
   const [tipoComprobante, setTipoComprobante] = useState<TipoComprobante>(defaultTipo)
   const [cuitReceptor, setCuitReceptor] = useState('')
   const [razonSocialReceptor, setRazonSocialReceptor] = useState('')
@@ -58,7 +58,6 @@ export default function FiscalInvoiceModal({ sale, onClose }: Props) {
 
         return {
           codigo: item.product_id || 'SIN-COD',
-          codigoMtx: item.barcode || undefined,
           descripcion: item.product_name.slice(0, 100),
           cantidad: item.quantity,
           // Fact A: precio SIN IVA + IVA desglosado. Fact B/C: precio CON IVA.
@@ -73,7 +72,7 @@ export default function FiscalInvoiceModal({ sale, onClose }: Props) {
         tipoComprobante,
         cuitReceptor: isFactA ? cuitReceptor.replace(/-/g, '') : undefined,
         razonSocialReceptor: isFactA ? razonSocialReceptor : undefined,
-        condicionIVAReceptor: isFactA ? 1 : isFactC ? 6 : 5,  // 1=RI, 5=CF, 6=Monotributo
+        condicionIVAReceptor: isFactA ? 1 : 5,  // 1=Responsable Inscripto, 5=Consumidor Final
         items,
       })
 
@@ -95,7 +94,12 @@ export default function FiscalInvoiceModal({ sale, onClose }: Props) {
               <FileText className="w-5 h-5 text-indigo-600" />
             </div>
             <div>
-              <h2 className="text-lg font-semibold">Emitir Factura Electrónica</h2>
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                Emitir Factura Electrónica
+                {config?.ambiente === 'dev' && (
+                  <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-semibold rounded-full">Modo prueba</span>
+                )}
+              </h2>
               <p className="text-xs text-gray-500">{config?.razon_social} · CUIT {config?.cuit}</p>
             </div>
           </div>
@@ -110,7 +114,7 @@ export default function FiscalInvoiceModal({ sale, onClose }: Props) {
             <div className="bg-green-50 border border-green-200 rounded-lg p-4 space-y-2">
               <div className="flex items-center gap-2 text-green-700 font-semibold">
                 <CheckCircle className="w-5 h-5" />
-                Factura emitida correctamente
+                {config?.ambiente === 'dev' ? 'Factura de prueba emitida (sin validez fiscal)' : 'Factura emitida correctamente'}
               </div>
               <div className="text-sm text-green-800 space-y-1">
                 <p><span className="font-medium">Tipo:</span> {TIPO_COMPROBANTE_LABELS[tipoComprobante]} N° {String(config?.punto_venta).padStart(4, '0')}-{String(result.numero).padStart(8, '0')}</p>
@@ -146,10 +150,10 @@ export default function FiscalInvoiceModal({ sale, onClose }: Props) {
               {/* Tipo de comprobante */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Tipo de comprobante</label>
-                {isMonotributo ? (
+                {emiteC ? (
                   <div className="p-3 rounded-lg border-2 border-indigo-500 bg-indigo-50">
                     <p className="font-semibold text-sm">Factura C</p>
-                    <p className="text-xs text-gray-500 mt-0.5">Monotributista — único tipo habilitado</p>
+                    <p className="text-xs text-gray-500 mt-0.5">Monotributista o exento — único tipo habilitado</p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-3">

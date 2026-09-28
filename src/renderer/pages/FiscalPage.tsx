@@ -43,8 +43,8 @@ export default function FiscalPage() {
     13: 'bg-orange-100 text-orange-700',
   }
 
-  // KPIs del historial
-  const aprobados = comprobantes.filter(c => c.resultado === 'A')
+  // KPIs del historial (los comprobantes de prueba no cuentan)
+  const aprobados = comprobantes.filter(c => c.resultado === 'A' && c.ambiente === 'prod')
   const totalFacturado = aprobados.reduce((s, c) => s + (c.importe_total ?? 0), 0)
   const thisMonth = new Date()
   thisMonth.setDate(1)
@@ -155,8 +155,11 @@ export default function FiscalPage() {
                       <td className="px-4 py-3 font-mono text-xs text-gray-500">
                         {c.cae || '-'}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 whitespace-nowrap">
                         {resultadoLabel(c.resultado)}
+                        {c.ambiente === 'dev' && (
+                          <span className="ml-1.5 px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-medium rounded-full">Prueba</span>
+                        )}
                       </td>
                     </tr>
                   ))}

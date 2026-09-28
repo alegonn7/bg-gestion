@@ -1,6 +1,9 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
 
+// 'dev' = modo prueba (homologación de ARCA, sin validez fiscal) · 'prod' = facturas reales
+export type Ambiente = 'dev' | 'prod'
+
 export interface FiscalConfig {
   fiscal_enabled: boolean
   cuit: string | null
@@ -8,10 +11,23 @@ export interface FiscalConfig {
   condicion_iva: string | null
   punto_venta: number
   actividad_afip: number | null
+  ambiente: Ambiente
+  conectado: boolean
+}
+
+export type PasoAlta = 'certificado' | 'autorizacion' | 'puntos_venta' | 'punto_venta' | 'listo'
+
+// Alta en ARCA con Afip SDK: se avanza paso a paso con la clave fiscal del cliente
+export interface AltaFiscal {
+  paso: PasoAlta
+  estado: 'en_curso' | 'error' | 'listo'
+  error: string | null
+  punto_venta: number | null
 }
 
 export interface FiscalComprobante {
   id: string
+  ambiente: Ambiente
   sale_id: string | null
   tipo_cbte: number
   punto_venta: number
@@ -33,7 +49,6 @@ export type TipoComprobante = 1 | 2 | 3 | 6 | 7 | 8 | 11 | 12 | 13
 
 export interface InvoiceItem {
   codigo: string
-  codigoMtx?: string
   descripcion: string
   cantidad: number
   precioUnitario: number
@@ -63,22 +78,35 @@ export interface EmitDebitNoteParams {
   importe: number
 }
 
-export interface SaveConfigParams {
+export interface IniciarAltaParams {
   cuit: string
+  usuario?: string          // CUIT/CUIL con el que se entra a ARCA, si no es el del negocio
+  clave: string             // clave fiscal: viaja al servidor en cada paso y no se guarda
   razonSocial: string
   condicionIva: string
-  puntoVenta: number
-  actividadAfip: number
+  puntoVenta?: number | null
+}
+
+export interface SaveConfigParams {
+  razonSocial: string
+  condicionIva: string
+  actividadAfip: number | null
 }
 
 interface FiscalState {
   config: FiscalConfig | null
-  developerCuit: string
+  alta: AltaFiscal | null
+  ambienteNuevo: Ambiente
   comprobantes: FiscalComprobante[]
   isLoading: boolean
   error: string | null
 
   fetchConfig: () => Promise<void>
+  iniciarAlta: (params: IniciarAltaParams) => Promise<void>
+  avanzarAlta: (clave: string) => Promise<void>
+  reintentarAlta: (clave: string, puntoVenta?: number | null) => Promise<void>
+  cancelarAlta: () => Promise<void>
+  usarCuitPrueba: () => Promise<void>
   saveConfig: (params: SaveConfigParams) => Promise<void>
   deleteConfig: () => Promise<void>
   emitDebitNote: (params: EmitDebitNoteParams) => Promise<{
@@ -131,7 +159,8 @@ async function callEdgeFunction(fnName: string, body: object) {
 
 export const useFiscalStore = create<FiscalState>((set, get) => ({
   config: null,
-  developerCuit: '',
+  alta: null,
+  ambienteNuevo: 'dev',
   comprobantes: [],
   isLoading: false,
   error: null,
@@ -140,10 +169,36 @@ export const useFiscalStore = create<FiscalState>((set, get) => ({
     set({ isLoading: true, error: null })
     try {
       const data = await callEdgeFunction('fiscal-setup', { action: 'get_config' })
-      set({ config: data.config, developerCuit: data.developer_cuit || '', isLoading: false })
+      set({ config: data.config, alta: data.alta, ambienteNuevo: data.ambiente_nuevo, isLoading: false })
     } catch (err: any) {
       set({ error: err.message, isLoading: false })
     }
+  },
+
+  iniciarAlta: async (params) => {
+    const data = await callEdgeFunction('fiscal-setup', { action: 'alta_iniciar', ...params })
+    set({ alta: data.alta })
+  },
+
+  avanzarAlta: async (clave) => {
+    const data = await callEdgeFunction('fiscal-setup', { action: 'alta_avanzar', clave })
+    set({ alta: data.alta })
+    if (data.alta?.estado === 'listo') await get().fetchConfig()
+  },
+
+  reintentarAlta: async (clave, puntoVenta) => {
+    const data = await callEdgeFunction('fiscal-setup', { action: 'alta_reintentar', clave, puntoVenta })
+    set({ alta: data.alta })
+  },
+
+  cancelarAlta: async () => {
+    await callEdgeFunction('fiscal-setup', { action: 'alta_cancelar' })
+    set({ alta: null })
+  },
+
+  usarCuitPrueba: async () => {
+    await callEdgeFunction('fiscal-setup', { action: 'usar_cuit_prueba' })
+    await get().fetchConfig()
   },
 
   saveConfig: async (params) => {
@@ -161,7 +216,7 @@ export const useFiscalStore = create<FiscalState>((set, get) => ({
     set({ isLoading: true, error: null })
     try {
       await callEdgeFunction('fiscal-setup', { action: 'delete_config' })
-      set({ config: null, isLoading: false })
+      await get().fetchConfig()
     } catch (err: any) {
       set({ error: err.message, isLoading: false })
       throw err
@@ -177,13 +232,10 @@ export const useFiscalStore = create<FiscalState>((set, get) => ({
     const tipoND = ND_TIPO[orig.tipo_cbte]
     if (!tipoND) throw new Error(`No se puede hacer ND para tipo ${orig.tipo_cbte}`)
 
-    const today = new Date().toISOString().split('T')[0]
-
+    // El punto de venta y la fecha los pone el servidor
     const result = await callEdgeFunction('fiscal-emit', {
       invoiceRequest: {
         tipoComprobante: tipoND,
-        puntoVenta: config.punto_venta,
-        fechaEmision: today,
         cuitReceptor: orig.cuit_receptor || undefined,
         razonSocialReceptor: orig.razon_social_receptor || undefined,
         condicionIVAReceptor: orig.condicion_iva_receptor ?? 5,
@@ -192,15 +244,13 @@ export const useFiscalStore = create<FiscalState>((set, get) => ({
           descripcion: params.concepto.slice(0, 100),
           cantidad: 1,
           precioUnitario: params.importe,
-          codigoAlicuotaIVA: 3,  // exento
+          codigoAlicuotaIVA: 3,  // 0%
           importeIVA: 0,
         }],
-        actividadAfip: config.actividad_afip,
         comprobantesAsociados: [{
           tipoComprobante: orig.tipo_cbte,
           puntoVenta: orig.punto_venta,
           numero: orig.numero,
-          cuit: orig.cuit_receptor || '0',
           fechaEmision: orig.fecha_emision,
         }],
       },
@@ -216,18 +266,13 @@ export const useFiscalStore = create<FiscalState>((set, get) => ({
     const { config } = get()
     if (!config?.fiscal_enabled) throw new Error('Facturación no configurada')
 
-    const today = new Date().toISOString().split('T')[0]
-
     const result = await callEdgeFunction('fiscal-emit', {
       invoiceRequest: {
         tipoComprobante: params.tipoComprobante,
-        puntoVenta: config.punto_venta,
-        fechaEmision: today,
         cuitReceptor: params.cuitReceptor,
         razonSocialReceptor: params.razonSocialReceptor,
         condicionIVAReceptor: params.condicionIVAReceptor,
         items: params.items,
-        actividadAfip: config.actividad_afip,
       },
       saleId: params.saleId,
     })
@@ -246,23 +291,17 @@ export const useFiscalStore = create<FiscalState>((set, get) => ({
     const tipoNC = NC_TIPO[orig.tipo_cbte]
     if (!tipoNC) throw new Error(`No se puede hacer NC para tipo ${orig.tipo_cbte}`)
 
-    const today = new Date().toISOString().split('T')[0]
-
     const result = await callEdgeFunction('fiscal-emit', {
       invoiceRequest: {
         tipoComprobante: tipoNC,
-        puntoVenta: config.punto_venta,
-        fechaEmision: today,
         cuitReceptor: orig.cuit_receptor || undefined,
         razonSocialReceptor: orig.razon_social_receptor || undefined,
         condicionIVAReceptor: orig.condicion_iva_receptor ?? 5,
         items: params.items,
-        actividadAfip: config.actividad_afip,
         comprobantesAsociados: [{
           tipoComprobante: orig.tipo_cbte,
           puntoVenta: orig.punto_venta,
           numero: orig.numero,
-          cuit: orig.cuit_receptor || '0',
           fechaEmision: orig.fecha_emision,
         }],
       },

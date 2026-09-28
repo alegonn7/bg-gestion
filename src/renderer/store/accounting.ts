@@ -424,6 +424,7 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
         .select('id, fecha_emision, tipo_cbte, punto_venta, numero, cuit_receptor, razon_social_receptor, importe_neto, importe_iva, importe_total, cae, resultado')
         .eq('organization_id', organization.id)
         .eq('resultado', 'A')
+        .eq('ambiente', 'prod') // los comprobantes de prueba no van al libro IVA
         .gte('fecha_emision', startDate.toISOString().split('T')[0])
         .lte('fecha_emision', endDate.toISOString().split('T')[0])
         .order('fecha_emision', { ascending: true })

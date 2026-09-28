@@ -1,20 +1,19 @@
 // Edge Function: fiscal-emit
-// Emite comprobantes usando el certificado compartido del desarrollador
+// Emite facturas, notas de crédito y notas de débito con el certificado propio de la
+// organización, a través de Afip SDK.
 
 import { createClient } from "npm:@supabase/supabase-js@2"
-import {
-  getWSAAToken,
-  autorizarComprobante,
-  consultarUltimoNumero,
-  logWSAATokenRelations,
-  type InvoiceRequest,
-  type WSAACredentials,
-} from "../_shared/afip.ts"
+import { type AfipSdk, type Ambiente, obtenerTicketAcceso } from "../_shared/afipsdk.ts"
+import { decryptSecret } from "../_shared/crypto.ts"
+import { type AuthWsfe, emitirComprobante, type InvoiceRequest, RechazoArca } from "../_shared/wsfe.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 }
+
+// El ticket de acceso de ARCA dura 12 hs; se renueva si le quedan menos de 10 minutos
+const MARGEN_TICKET_MS = 10 * 60 * 1000
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
@@ -40,192 +39,93 @@ Deno.serve(async (req) => {
 
     if (!dbUser) return errorResponse("Usuario no encontrado", 404)
 
-    const adminSupabase = createClient(
+    const admin = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     )
 
-    // Cargar configuración fiscal del cliente
-    const { data: org } = await adminSupabase
-      .from("organizations")
-      .select("id, cuit, razon_social, condicion_iva, punto_venta, actividad_afip, fiscal_enabled")
-      .eq("id", dbUser.organization_id)
-      .single()
+    const [{ data: org }, { data: cred }] = await Promise.all([
+      admin.from("organizations").select("id, fiscal_enabled, punto_venta").eq("id", dbUser.organization_id).single(),
+      admin.from("fiscal_credentials").select("*").eq("organization_id", dbUser.organization_id).maybeSingle(),
+    ])
+    if (!org?.fiscal_enabled || !cred?.activo) return errorResponse("Facturación electrónica no configurada")
 
-    if (!org?.fiscal_enabled) return errorResponse("Facturación electrónica no configurada")
-    if (!org.cuit) return errorResponse("CUIT no configurado")
-
-    // Cargar certificado compartido del desarrollador desde env vars
-    const certPemRaw = Deno.env.get("FISCAL_CERT_PEM")
-    const keyPemRaw = Deno.env.get("FISCAL_KEY_PEM")
-    if (!certPemRaw || !keyPemRaw) {
-      return errorResponse("Certificado del sistema no configurado. Contactá al soporte.", 500)
-    }
-    // Supabase puede guardar los saltos de línea como \n literal
-    const certPem = certPemRaw.replace(/\\n/g, '\n')
-    const keyPem = keyPemRaw.replace(/\\n/g, '\n')
-
-    const body = await req.json()
     const { invoiceRequest, saleId, originalComprobanteId }: {
       invoiceRequest: InvoiceRequest
       saleId?: string
       originalComprobanteId?: string
-    } = body
+    } = await req.json()
 
-    // ── 1. Obtener token WSAA (caché global compartido) ───────────────────────
-    const loadCredentials = async (forceRefresh = false): Promise<WSAACredentials> => {
-      if (!forceRefresh) {
-        const { data: cache } = await adminSupabase
-          .from("fiscal_wsaa_cache")
-          .select("wsaa_token, wsaa_sign, wsaa_token_expires")
-          .eq("id", 1)
-          .single()
+    const ambiente: Ambiente = cred.ambiente
+    const sdk: AfipSdk = { accessToken: Deno.env.get("AFIPSDK_ACCESS_TOKEN")!, ambiente }
+    const llave = Deno.env.get("FISCAL_CERTS_ENCRYPTION_KEY")!
+    const cert = cred.cert_encrypted ? await decryptSecret(cred.cert_encrypted, llave) : undefined
+    const key = cred.key_encrypted ? await decryptSecret(cred.key_encrypted, llave) : undefined
 
-        const tokenExpires = cache?.wsaa_token_expires ? new Date(cache.wsaa_token_expires) : null
-        const tokenValid = tokenExpires && tokenExpires.getTime() - Date.now() > 30 * 60 * 1000
-
-        if (tokenValid && cache?.wsaa_token && cache?.wsaa_sign) {
-          logWSAATokenRelations(cache.wsaa_token)
-          return { token: cache.wsaa_token, sign: cache.wsaa_sign, expires: tokenExpires! }
-        }
+    // ── Ticket de acceso: se reutiliza el guardado mientras siga vigente ─────
+    const obtenerAuth = async (forzar: boolean): Promise<AuthWsfe> => {
+      const vigente = cred.ta_expira && new Date(cred.ta_expira).getTime() - Date.now() > MARGEN_TICKET_MS
+      if (!forzar && vigente && cred.ta_token && cred.ta_sign) {
+        return { Token: cred.ta_token, Sign: cred.ta_sign, Cuit: cred.cuit }
       }
-
-      const fresh = await getWSAAToken(certPem, keyPem)
-      await adminSupabase
-        .from("fiscal_wsaa_cache")
-        .upsert({
-          id: 1,
-          wsaa_token: fresh.token,
-          wsaa_sign: fresh.sign,
-          wsaa_token_expires: fresh.expires.toISOString(),
-        })
-      return fresh
+      const ta = await obtenerTicketAcceso(sdk, { cuit: cred.cuit, wsid: "wsfe", cert, key, forzar })
+      await admin.from("fiscal_credentials")
+        .update({ ta_token: ta.token, ta_sign: ta.sign, ta_expira: ta.expiration })
+        .eq("organization_id", org.id)
+      return { Token: ta.token, Sign: ta.sign, Cuit: cred.cuit }
     }
 
-    let credentials: WSAACredentials = await loadCredentials()
+    // El punto de venta es el de la organización, no el que manda la app
+    const request: InvoiceRequest = { ...invoiceRequest, puntoVenta: org.punto_venta }
 
-    // ── DIAGNÓSTICO: verificar si wsfe funciona con el CUIT del desarrollador ──
-    const devCuit = Deno.env.get("FISCAL_DEVELOPER_CUIT")
-    if (devCuit) {
-      try {
-        await consultarUltimoNumero(credentials, devCuit, invoiceRequest.tipoComprobante, invoiceRequest.puntoVenta)
-        console.log("[DIAG] wsfe con CUIT desarrollador OK — wsfe funciona para el desarrollador mismo")
-      } catch (devErr: any) {
-        console.log("[DIAG] wsfe con CUIT desarrollador ERROR:", devErr.message)
-      }
-    }
-
-    // ── 2 + 3. Consultar último número y emitir (con retry si el token era stale) ─
-    const rawRequest: Record<string, unknown> = { ...invoiceRequest }
-    let rawResponse: object = {}
-    let result
-    let ultimoNumero: number
-
-    const attemptEmision = async (creds: WSAACredentials) => {
-      const ultimo = await consultarUltimoNumero(
-        creds,
-        org.cuit,
-        invoiceRequest.tipoComprobante,
-        invoiceRequest.puntoVenta
-      )
-      rawRequest.ultimoNumero = ultimo
-      const res = await autorizarComprobante(creds, org.cuit, invoiceRequest, ultimo)
-      return { res, ultimo }
-    }
-
+    let emision
     try {
-      const { res, ultimo } = await attemptEmision(credentials)
-      result = res
-      rawResponse = res
-      ultimoNumero = ultimo
-    } catch (afipError: any) {
-      const isTokenRelationError = /ValidacionDeToken|lista de relaciones|no aparecio/i.test(afipError.message)
-      if (isTokenRelationError) {
-        console.log("[fiscal-emit] ValidacionDeToken — refrescando token WSAA y reintentando")
-        credentials = await loadCredentials(true)
-        try {
-          const { res, ultimo } = await attemptEmision(credentials)
-          result = res
-          rawResponse = res
-          ultimoNumero = ultimo
-        } catch (retryError: any) {
-          await adminSupabase.from("fiscal_comprobantes").insert({
-            organization_id: org.id,
-            sale_id: saleId || null,
-            tipo_cbte: invoiceRequest.tipoComprobante,
-            punto_venta: invoiceRequest.puntoVenta,
-            numero: (rawRequest.ultimoNumero as number ?? 0) + 1,
-            fecha_emision: invoiceRequest.fechaEmision,
-            cuit_receptor: invoiceRequest.cuitReceptor || null,
-            importe_total: invoiceRequest.items.reduce((s, i) => s + i.precioUnitario * i.cantidad, 0),
-            resultado: "R",
-            raw_request: rawRequest,
-            raw_response: { error: retryError.message },
-          })
-          return errorResponse(retryError.message)
-        }
-      } else {
-        await adminSupabase.from("fiscal_comprobantes").insert({
-          organization_id: org.id,
-          sale_id: saleId || null,
-          tipo_cbte: invoiceRequest.tipoComprobante,
-          punto_venta: invoiceRequest.puntoVenta,
-          numero: (rawRequest.ultimoNumero as number ?? 0) + 1,
-          fecha_emision: invoiceRequest.fechaEmision,
-          cuit_receptor: invoiceRequest.cuitReceptor || null,
-          importe_total: invoiceRequest.items.reduce((s, i) => s + i.precioUnitario * i.cantidad, 0),
-          resultado: "R",
-          raw_request: rawRequest,
-          raw_response: { error: afipError.message },
-        })
-        return errorResponse(afipError.message)
-      }
+      emision = await emitirComprobante(sdk, await obtenerAuth(false), request)
+    } catch (err) {
+      // 600-602: ARCA no reconoce el ticket de acceso (vencido o revocado) → se pide uno nuevo
+      const ticketInvalido = err instanceof RechazoArca && [600, 601, 602].some((c) => err.tieneCodigo(c))
+      if (!ticketInvalido) throw err
+      emision = await emitirComprobante(sdk, await obtenerAuth(true), request)
     }
 
-    // ── 4. Guardar en DB ───────────────────────────────────────────────────────
-    const totales = invoiceRequest.items.reduce(
-      (acc, item) => {
-        acc.subtotal += item.precioUnitario * item.cantidad
-        acc.iva += item.importeIVA * item.cantidad
-        return acc
-      },
-      { subtotal: 0, iva: 0 }
-    )
-
-    await adminSupabase.from("fiscal_comprobantes").insert({
+    const { error: insertError } = await admin.from("fiscal_comprobantes").insert({
       organization_id: org.id,
+      ambiente,
       sale_id: saleId || null,
       original_comprobante_id: originalComprobanteId || null,
-      tipo_cbte: invoiceRequest.tipoComprobante,
-      punto_venta: invoiceRequest.puntoVenta,
-      numero: result.numero,
-      fecha_emision: invoiceRequest.fechaEmision,
-      cuit_receptor: invoiceRequest.cuitReceptor || null,
-      razon_social_receptor: invoiceRequest.razonSocialReceptor || null,
-      condicion_iva_receptor: invoiceRequest.condicionIVAReceptor,
-      importe_neto: totales.subtotal,
-      importe_iva: totales.iva,
-      importe_total: totales.subtotal + totales.iva,
-      cae: result.cae,
-      cae_vence: result.caeVence,
-      resultado: result.resultado,
-      observaciones: result.observaciones?.length ? result.observaciones : null,
-      raw_request: rawRequest,
-      raw_response: rawResponse,
+      tipo_cbte: request.tipoComprobante,
+      punto_venta: request.puntoVenta,
+      numero: emision.numero,
+      fecha_emision: emision.fecha,
+      cuit_receptor: request.cuitReceptor || null,
+      razon_social_receptor: request.razonSocialReceptor || null,
+      condicion_iva_receptor: request.condicionIVAReceptor,
+      importe_neto: emision.importes.neto,
+      importe_iva: emision.importes.iva,
+      importe_total: emision.importes.total,
+      cae: emision.cae,
+      cae_vence: emision.caeVence,
+      resultado: emision.resultado,
+      observaciones: emision.observaciones.length ? emision.observaciones : null,
+      raw_request: emision.solicitud,
+      raw_response: emision.respuesta,
     })
+    // El comprobante ya tiene CAE en ARCA: si no se pudo guardar, se avisa pero se devuelve igual
+    if (insertError) console.error("fiscal-emit: no se pudo guardar el comprobante", emision.numero, insertError.message)
 
     return jsonResponse({
       ok: true,
-      cae: result.cae,
-      caeVence: result.caeVence,
-      numero: result.numero,
-      resultado: result.resultado,
-      observaciones: result.observaciones,
+      cae: emision.cae,
+      caeVence: emision.caeVence,
+      numero: emision.numero,
+      resultado: emision.resultado,
+      observaciones: emision.observaciones,
+      ambiente,
     })
 
   } catch (err: any) {
-    console.error("fiscal-emit error:", err)
-    return errorResponse(err.message || "Error interno", 500)
+    console.error("fiscal-emit error:", err?.message)
+    return errorResponse(err?.message || "Error interno", err instanceof RechazoArca ? 400 : 500)
   }
 })
 

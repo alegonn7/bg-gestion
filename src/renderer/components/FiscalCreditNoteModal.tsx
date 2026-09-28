@@ -42,7 +42,6 @@ export default function FiscalCreditNoteModal({ comprobante, saleItems, onClose 
 
         return {
           codigo: item.product_id || 'SIN-COD',
-          codigoMtx: item.barcode || undefined,
           descripcion: item.product_name.slice(0, 100),
           cantidad: item.quantity,
           precioUnitario: isFactA ? precioSinIva(precioTotal, alicuota) : precioTotal,
