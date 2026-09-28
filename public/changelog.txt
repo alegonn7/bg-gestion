@@ -1,3 +1,8 @@
+Versión 1.2.4
+
+Mejoras
+- Mejoras de rendimiento y estabilidad.
+
 Versión 1.2.3
 
 Mejoras
