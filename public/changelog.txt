@@ -1,7 +1,7 @@
 Versión 1.2.4
 
 Mejoras
-- Mejoras de rendimiento y estabilidad.
+- Actualización de detalles ARCA.
 
 Versión 1.2.3
 
