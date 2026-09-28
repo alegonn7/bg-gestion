@@ -1,5 +1,6 @@
 # Arma la versión de Mac en una Mac de GitHub (no hace falta tener una Mac).
-# Se corre a mano: GitHub → Actions → "Versión Mac" → Run workflow.
+# Se corre a mano: GitHub → Actions → "Versión Mac" → Run workflow. También la usa
+# "Publicar versión" (publicar.yml), que le pasa la versión donde subir los archivos.
 name: Versión Mac
 
 on:
@@ -9,6 +10,15 @@ on:
         description: "Subir los archivos a la última versión publicada (para que las Mac se actualicen solas)"
         type: boolean
         default: false
+  workflow_call:
+    inputs:
+      publicar:
+        type: boolean
+        default: false
+      tag:
+        description: "Versión donde subir los archivos (por ejemplo v1.2.1). Vacío: la última publicada"
+        type: string
+        default: ""
 
 permissions:
   contents: write
@@ -74,6 +84,7 @@ jobs:
         if: ${{ inputs.publicar }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
         run: |
-          TAG=$(gh release view --json tagName --jq .tagName)
+          if [ -z "$TAG" ]; then TAG=$(gh release view --json tagName --jq .tagName); fi
           gh release upload "$TAG" release/*.dmg release/*.zip release/*.blockmap release/latest-mac.yml --clobber

@@ -1,3 +1,13 @@
+Versión 1.2.1
+
+Novedades
+- Conectar con ARCA paso a paso: si la conexión automática no está disponible, la app te guía para hacer los trámites en la página de ARCA (con el nombre de cada pantalla y cada botón) y al final revisa que esté todo bien.
+- CAI de remitos paso a paso: si no se puede pedir automáticamente, la app te muestra cómo pedirlo en la página de ARCA y después lo cargás en "Ya tengo un CAI".
+
+Mejoras
+- Al cargar un CAI a mano, el número "desde" se completa solo.
+- Facturas: si ARCA tarda en responder, la app revisa si la factura igual quedó aprobada, así no sale repetida.
+
 Versión 1.2.0
 
 Novedades

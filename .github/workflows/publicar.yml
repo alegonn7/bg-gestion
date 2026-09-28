@@ -1,0 +1,91 @@
+# Publica una versión nueva para Windows y Mac, con las notas de public/changelog.txt.
+# Se dispara al subir un tag vX.Y.Z (el mismo número que "version" en package.json) o a mano:
+# GitHub → Actions → "Publicar versión" → Run workflow (usa la versión de package.json).
+# Windows se arma en una PC de GitHub (sin firma, como hasta ahora) y crea el release; después
+# "Versión Mac" (mac.yml) sube sus archivos a ese mismo release. Las apps instaladas se
+# actualizan solas con latest.yml (Windows) y latest-mac.yml (Mac).
+name: Publicar versión
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Número de versión
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v$VERSION"
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "$TAG" ]; then
+            echo "::error::El tag $GITHUB_REF_NAME no coincide con la versión de package.json ($VERSION)"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Compilar la app
+        run: npx tsc && npx vite build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
+      - name: Armar el instalador
+        run: npx electron-builder --win --publish never
+
+      - name: Dejar el instalador para descargar
+        uses: actions/upload-artifact@v4
+        with:
+          name: bggestion-windows
+          path: |
+            release/BGGestion-Setup-*.exe
+            release/BGGestion-Setup-*.exe.blockmap
+            release/latest.yml
+
+      # Notas del release: la primera versión de public/changelog.txt, en Markdown
+      - name: Crear la versión y subir el instalador
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          node -e '
+            const texto = require("fs").readFileSync("public/changelog.txt", "utf8").replace(/\r/g, "")
+            const actual = texto.split(/\n(?=Versión )/)[0].split("\n").slice(1).join("\n").trim()
+            console.log(actual.replace(/^(Novedades|Mejoras)$/gm, "## $1").replace(/^- ([^:\n]{1,60}):/gm, "- **$1**:"))
+          ' > notas.md
+          cat notas.md
+          ARCHIVOS=("release/BGGestion-Setup-$VERSION.exe" "release/BGGestion-Setup-$VERSION.exe.blockmap" "release/latest.yml")
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" "${ARCHIVOS[@]}" --clobber
+          else
+            gh release create "$TAG" --title "$VERSION" --notes-file notas.md --target "$GITHUB_SHA" "${ARCHIVOS[@]}"
+          fi
+
+  mac:
+    needs: windows
+    uses: ./.github/workflows/mac.yml
+    with:
+      publicar: true
+      tag: ${{ needs.windows.outputs.tag }}
+    secrets: inherit
