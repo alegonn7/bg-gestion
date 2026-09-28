@@ -1,7 +1,7 @@
 Versión 1.2.3
 
 Mejoras
-- Facturas: el código QR ahora se puede verificar en la página de ARCA también en las facturas a Consumidor Final. Las facturas ya hechas se arreglan al volver a descargar el PDF.
+- Mejora de rendimiento.
 
 Versión 1.2.2
 
