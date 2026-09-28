@@ -34,6 +34,24 @@ interface Alta {
   cert_alias: string | null
   punto_venta: number | null
   error: string | null
+  // Registro técnico de cada paso (qué automatización, cuándo y qué respondió ARCA). No lo ve el cliente
+  detalle?: Registro[]
+}
+
+interface Registro {
+  fecha: string
+  paso: Paso
+  automatizacion?: string
+  id?: string
+  estado: string
+  mensaje?: string
+}
+
+// Suma una entrada al registro del alta y la deja en el log de la función
+function anotar(alta: Alta, entrada: Omit<Registro, "fecha">): Alta {
+  const registro: Registro = { fecha: new Date().toISOString(), ...entrada }
+  console.log(`Alta ARCA [${alta.organization_id}] CUIT ${alta.cuit}:`, JSON.stringify(registro))
+  return { ...alta, detalle: [...(alta.detalle ?? []), registro].slice(-30) }
 }
 
 Deno.serve(async (req) => {
@@ -130,8 +148,8 @@ Deno.serve(async (req) => {
       } catch (err) {
         // Si habilitar el servicio no puede ni arrancar, se prueba directo con el certificado
         if (ambienteNuevo !== "prod" || !(err instanceof AfipSdkError)) throw err
-        console.error("No arrancó la habilitación de certificados:", err.message)
-        alta = await iniciarPaso(sdkPara(ambienteNuevo), inicial, "certificado", clave, admin)
+        const sinHabilitar = anotar(inicial, { paso: "habilitar", automatizacion: "add-relation", estado: "no arrancó", mensaje: err.message })
+        alta = await iniciarPaso(sdkPara(ambienteNuevo), sinHabilitar, "certificado", clave, admin)
       }
       const { error } = await admin.from("fiscal_onboarding").upsert({ ...alta, updated_at: new Date().toISOString() })
       if (error) throw error
@@ -150,22 +168,29 @@ Deno.serve(async (req) => {
         return jsonResponse({ ok: true, alta: resumen(alta) })
       }
 
+      // Lo que respondió ARCA queda en el registro del alta (sin el certificado ni la clave)
+      const conRegistro = anotar(alta, {
+        paso: alta.paso,
+        id: alta.automatizacion_id,
+        estado: automatizacion.status,
+        mensaje: automatizacion.status === "error" ? detalleDeError(automatizacion.data) : "ok",
+      })
+
       let siguiente: Alta
       if (automatizacion.status === "error" && alta.paso === "habilitar" && !esErrorDeClave(automatizacion.data)) {
-        // Casi siempre es porque el servicio ya estaba habilitado: se sigue con el certificado
-        console.log("Habilitar certificados:", JSON.stringify(automatizacion.data))
+        // Puede que el servicio ya estuviera habilitado: se sigue con el certificado
         try {
-          siguiente = await iniciarPaso(sdk, alta, "certificado", body.clave || "", admin)
+          siguiente = await iniciarPaso(sdk, conRegistro, "certificado", body.clave || "", admin)
         } catch (err) {
-          siguiente = { ...alta, estado: "error", error: mensajeParaCliente(err) }
+          siguiente = { ...conRegistro, estado: "error", error: mensajeParaCliente(err) }
         }
       } else if (automatizacion.status === "error") {
-        siguiente = { ...alta, estado: "error", error: mensajeDeError(automatizacion.data) }
+        siguiente = { ...conRegistro, estado: "error", error: mensajeDeErrorDelAlta(conRegistro, automatizacion.data) }
       } else {
         try {
-          siguiente = await procesarPaso(admin, sdk, alta, automatizacion.data, body.clave || "")
+          siguiente = await procesarPaso(admin, sdk, conRegistro, automatizacion.data, body.clave || "")
         } catch (err) {
-          siguiente = { ...alta, estado: "error", error: mensajeParaCliente(err) }
+          siguiente = { ...conRegistro, estado: "error", error: mensajeParaCliente(err) }
         }
       }
       const { error } = await admin.from("fiscal_onboarding")
@@ -192,8 +217,8 @@ Deno.serve(async (req) => {
         siguiente = await iniciarPaso(sdkPara(alta.ambiente), alta, paso, body.clave, admin)
       } catch (err) {
         if (paso !== "habilitar" || !(err instanceof AfipSdkError)) throw err
-        console.error("No arrancó la habilitación de certificados:", err.message)
-        siguiente = await iniciarPaso(sdkPara(alta.ambiente), alta, "certificado", body.clave, admin)
+        const sinHabilitar = anotar(alta, { paso: "habilitar", automatizacion: "add-relation", estado: "no arrancó", mensaje: err.message })
+        siguiente = await iniciarPaso(sdkPara(alta.ambiente), sinHabilitar, "certificado", body.clave, admin)
       }
       const { error } = await admin.from("fiscal_onboarding")
         .update({ ...siguiente, updated_at: new Date().toISOString() })
@@ -464,7 +489,8 @@ async function iniciarPaso(sdk: AfipSdk, alta: Alta, paso: Paso, clave: string, 
   } else {
     return alta
   }
-  return { ...alta, paso, estado: "en_curso", automatizacion_id: automatizacion.id, error: null }
+  const registrada = anotar(alta, { paso, automatizacion: NOMBRES_AUTOMATIZACION[paso](alta.ambiente), id: automatizacion.id, estado: "iniciada" })
+  return { ...registrada, paso, estado: "en_curso", automatizacion_id: automatizacion.id, error: null }
 }
 
 async function terminar(admin: any, alta: Alta, puntoVenta: number): Promise<Alta> {
@@ -600,6 +626,30 @@ function mensajeParaCliente(err: unknown): string {
   return mensaje || "Ocurrió un error. Probá de nuevo."
 }
 
+const NOMBRES_AUTOMATIZACION: Record<Paso, (ambiente: Ambiente) => string> = {
+  habilitar: () => "add-relation",
+  certificado: (ambiente) => `create-cert-${ambiente}`,
+  autorizacion: (ambiente) => `auth-web-service-${ambiente}`,
+  puntos_venta: () => "list-sales-points",
+  punto_venta: () => "create-sales-point",
+  listo: () => "",
+}
+
+// ARCA no respondió (páginas que no abren, servidores congestionados)
+const ARCA_NO_RESPONDE = /congestionad|intente nuevamente|no fue posible abrir|no responde|tiempo de espera|timeout/i
+
+// Mensaje del paso que falló, teniendo en cuenta lo que pasó antes en el mismo intento: si el
+// certificado falla por falta del servicio y habilitarlo falló porque ARCA no respondía, la causa es ARCA
+function mensajeDeErrorDelAlta(alta: Alta, data: any): string {
+  const detalle = detalleDeError(data)
+  const habilitar = [...(alta.detalle ?? [])].reverse().find((r) => r.paso === "habilitar" && r.estado !== "iniciada")
+  if (/Administraci[oó]n de Certificados Digitales/i.test(detalle) && habilitar?.estado === "error" && ARCA_NO_RESPONDE.test(habilitar.mensaje ?? "")) {
+    console.error("Alta ARCA: el certificado falló porque ARCA no dejó habilitar el servicio:", habilitar.mensaje)
+    return "No se pudo completar porque ARCA no está respondiendo: no abre el \"Administrador de Relaciones de Clave Fiscal\", que hace falta para habilitar los certificados. Probá de nuevo en unos minutos. Si sigue igual, revisá que tu clave fiscal sea nivel 3."
+  }
+  return mensajeDeError(data)
+}
+
 function detalleDeError(data: any): string {
   return String(data?.message || data?.error || (typeof data === "string" ? data : ""))
 }
@@ -624,8 +674,8 @@ function mensajeDeError(data: any): string {
   if (/Administraci[oó]n de Certificados Digitales/i.test(detalle)) {
     return "Tu clave fiscal todavía no tiene el servicio \"Administración de Certificados Digitales\". Tocá Reintentar para que lo habilitemos. Si vuelve a fallar, agregalo en la página de ARCA desde \"Administrador de Relaciones de Clave Fiscal\" → \"Adherir servicio\" y después reintentá."
   }
-  if (/Administrador de Relaciones/i.test(detalle) && /congestionad|intente nuevamente/i.test(detalle)) {
-    return "ARCA está lento en este momento. Esperá unos minutos y tocá Reintentar."
+  if (ARCA_NO_RESPONDE.test(detalle)) {
+    return "ARCA no está respondiendo en este momento. Probá de nuevo en unos minutos."
   }
   if (ERROR_DE_CLAVE.test(detalle)) return "El CUIT o la clave fiscal no son correctos."
   if (ERROR_DE_NIVEL.test(detalle)) return "Tu clave fiscal tiene que ser nivel 3 o superior."
