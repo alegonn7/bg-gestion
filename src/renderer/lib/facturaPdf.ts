@@ -380,14 +380,24 @@ export async function crearComprobantePdf(emisor: EmisorPdf, cbte: ComprobantePd
 
 // ─── Desde la app ────────────────────────────────────────────────────────────
 
+// El logo se descarga una sola vez por sesión, no en cada PDF
+const imagenes = new Map<string, Promise<HTMLImageElement | null>>()
+
 export function cargarImagen(url: string): Promise<HTMLImageElement | null> {
-  return new Promise((resolve) => {
+  const guardada = imagenes.get(url)
+  if (guardada) return guardada
+  const carga = new Promise<HTMLImageElement | null>((resolve) => {
     const img = new Image()
     img.crossOrigin = 'anonymous'
     img.onload = () => resolve(img)
-    img.onerror = () => resolve(null)
+    img.onerror = () => {
+      imagenes.delete(url) // si falló, se reintenta en el próximo PDF
+      resolve(null)
+    }
     img.src = url
   })
+  imagenes.set(url, carga)
+  return carga
 }
 
 export function nombreArchivoComprobante(c: FiscalComprobante) {

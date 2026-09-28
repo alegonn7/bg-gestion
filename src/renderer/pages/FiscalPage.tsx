@@ -4,6 +4,7 @@ import {
   useFiscalStore,
   TIPO_COMPROBANTE_LABELS,
   COMPROBANTES_POR_PAGINA,
+  COLUMNAS_COMPROBANTE,
   type FiscalComprobante,
   type FiltrosComprobantes,
 } from '@/store/fiscal'
@@ -29,8 +30,9 @@ const tipoColor: Record<number, string> = {
 }
 
 export default function FiscalPage() {
-  const { config, buscarComprobantes } = useFiscalStore()
-  const { organization } = useAuthStore()
+  const { config, fetchConfig, buscarComprobantes } = useFiscalStore()
+  const { organization, user } = useAuthStore()
+  const esDueño = user?.role === 'owner'
   const [filtros, setFiltros] = useState<FiltrosComprobantes>(FILTROS_INICIALES)
   const [texto, setTexto] = useState('')
   const [comprobantes, setComprobantes] = useState<FiscalComprobante[]>([])
@@ -55,6 +57,11 @@ export default function FiscalPage() {
 
   useEffect(() => { cargar() }, [filtros, config?.fiscal_enabled])
 
+  // La sección de configuración (solo del dueño) es la que carga la configuración; sin ella, se carga acá
+  useEffect(() => {
+    if (!esDueño && !config) fetchConfig()
+  }, [])
+
   // La búsqueda por texto se aplica medio segundo después de dejar de escribir
   useEffect(() => {
     const id = setTimeout(() => setFiltros(f => (f.texto === texto ? f : { ...f, texto, pagina: 1 })), 500)
@@ -69,7 +76,7 @@ export default function FiscalPage() {
     // Las notas llevan impresa la factura a la que corresponden
     let asociado = c.original_comprobante_id ? comprobantes.find(o => o.id === c.original_comprobante_id) ?? null : null
     if (c.original_comprobante_id && !asociado) {
-      const { data } = await supabase.from('fiscal_comprobantes').select('*').eq('id', c.original_comprobante_id).single()
+      const { data } = await supabase.from('fiscal_comprobantes').select(COLUMNAS_COMPROBANTE).eq('id', c.original_comprobante_id).single()
       asociado = data as FiscalComprobante | null
     }
     descargarComprobante(c, config, { nombreFantasia: organization?.name, logoUrl: organization?.logo_url, asociado })
@@ -107,13 +114,17 @@ export default function FiscalPage() {
         )}
       </div>
 
-      {/* Configuración (reutiliza el componente de Settings) */}
-      <FiscalSetupSection />
+      {/* Configuración: solo el dueño */}
+      {esDueño && <FiscalSetupSection />}
 
       {!config?.fiscal_enabled ? (
         <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400">
           <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
-          <p className="text-sm">Configurá la facturación electrónica arriba para ver el historial de comprobantes.</p>
+          <p className="text-sm">
+            {esDueño
+              ? 'Configurá la facturación electrónica arriba para empezar a facturar.'
+              : 'La facturación electrónica todavía no está activada. Pedile al dueño que la configure.'}
+          </p>
         </div>
       ) : (
         <div className="bg-white rounded-xl border border-gray-200">
@@ -170,6 +181,7 @@ export default function FiscalPage() {
                     <th className="px-4 py-3">Cliente</th>
                     <th className="px-4 py-3 text-right">Total</th>
                     <th className="px-4 py-3">CAE</th>
+                    <th className="px-4 py-3">Emitió</th>
                     <th className="px-4 py-3">Estado</th>
                     <th className="px-4 py-3"></th>
                   </tr>
@@ -193,6 +205,7 @@ export default function FiscalPage() {
                       </td>
                       <td className="px-4 py-3 text-right font-medium text-gray-900 whitespace-nowrap">{formatCurrency(c.importe_total)}</td>
                       <td className="px-4 py-3 font-mono text-xs text-gray-500">{c.cae || '-'}</td>
+                      <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{c.created_by_name || <span className="text-gray-400">—</span>}</td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         {resultadoLabel(c.resultado)}
                         {c.ambiente === 'dev' && (

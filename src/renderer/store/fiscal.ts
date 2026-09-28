@@ -61,9 +61,13 @@ export interface FiscalComprobante {
   cae_vence: string | null
   resultado: string
   created_at: string
+  created_by_name: string | null   // quién lo emitió
 }
 
 export type TipoComprobante = 1 | 2 | 3 | 6 | 7 | 8 | 11 | 12 | 13
+
+// Columnas que usan las pantallas y los PDF: no se trae lo enviado/recibido de ARCA (raw_*)
+const COLUMNAS_COMPROBANTE = 'id, ambiente, sale_id, original_comprobante_id, tipo_cbte, punto_venta, numero, fecha_emision, doc_tipo, doc_nro, cuit_receptor, razon_social_receptor, condicion_iva_receptor, items, alicuotas, importe_total, importe_neto, importe_iva, cae, cae_vence, resultado, created_at, created_by_name'
 
 const FACTURAS = [1, 6, 11]
 const NOTAS_CREDITO = [3, 8, 13]
@@ -163,6 +167,8 @@ export interface FiltrosComprobantes {
   pagina: number
 }
 
+export { COLUMNAS_COMPROBANTE }
+
 export const COMPROBANTES_POR_PAGINA = 20
 
 const TIPOS_FILTRO = { facturas: FACTURAS, nc: NOTAS_CREDITO, nd: [2, 7, 12] }
@@ -222,10 +228,18 @@ export const useFiscalStore = create<FiscalState>((set, get) => ({
   fetchConfig: async () => {
     set({ isLoading: true, error: null })
     try {
-      const data = await callEdgeFunction('fiscal-setup', { action: 'get_config' })
-      set({ config: data.config, alta: data.alta, ambienteNuevo: data.ambiente_nuevo, isLoading: false })
+      // Una sola consulta a la base: sin pasar por las funciones del servidor, que son más lentas
+      const { data, error } = await supabase.rpc('fiscal_config')
+      if (error) throw error
+      set({
+        config: data?.config ?? null,
+        alta: data?.alta ?? null,
+        ambienteNuevo: data?.ambiente_nuevo === 'prod' ? 'prod' : 'dev',
+        isLoading: false,
+      })
     } catch (err: any) {
-      set({ error: err.message, isLoading: false })
+      console.error('Error leyendo la configuración fiscal:', err)
+      set({ error: 'No se pudo cargar la configuración de facturación', isLoading: false })
     }
   },
 
@@ -379,7 +393,7 @@ export const useFiscalStore = create<FiscalState>((set, get) => ({
     try {
       const { data, error } = await supabase
         .from('fiscal_comprobantes')
-        .select('*')
+        .select(COLUMNAS_COMPROBANTE)
         .order('created_at', { ascending: false })
         .limit(limit)
 
@@ -398,7 +412,7 @@ export const useFiscalStore = create<FiscalState>((set, get) => ({
     }
     const { data, error } = await supabase
       .from('fiscal_comprobantes')
-      .select('*')
+      .select(COLUMNAS_COMPROBANTE)
       .in('sale_id', saleIds)
       .order('created_at', { ascending: false })
     if (error) {
@@ -424,7 +438,7 @@ export const useFiscalStore = create<FiscalState>((set, get) => ({
     const desde = (filtros.pagina - 1) * COMPROBANTES_POR_PAGINA
     let query = supabase
       .from('fiscal_comprobantes')
-      .select('*', { count: 'exact' })
+      .select(COLUMNAS_COMPROBANTE, { count: 'exact' })
       .order('fecha_emision', { ascending: false })
       .order('created_at', { ascending: false })
       .range(desde, desde + COMPROBANTES_POR_PAGINA - 1)

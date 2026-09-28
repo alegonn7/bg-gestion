@@ -5,11 +5,15 @@
 import { createClient } from "npm:@supabase/supabase-js@2"
 import { type AfipSdk, AfipSdkError, type Ambiente, obtenerTicketAcceso } from "../_shared/afipsdk.ts"
 import { decryptSecret } from "../_shared/crypto.ts"
+import { usuarioDeLaSesion } from "../_shared/sesion.ts"
 import { type AuthWsfe, calcularImportes, emitirComprobante, type InvoiceRequest, RechazoArca, receptorDe } from "../_shared/wsfe.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  // El navegador recuerda el permiso previo (preflight) y no lo vuelve a pedir en cada llamada
+  "Access-Control-Max-Age": "86400",
 }
 
 // El ticket de acceso de ARCA dura 12 hs; se renueva si le quedan menos de 10 minutos
@@ -25,32 +29,25 @@ Deno.serve(async (req) => {
     const authHeader = req.headers.get("Authorization")
     if (!authHeader) return errorResponse("No autorizado", 401)
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    )
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) return errorResponse("No autorizado", 401)
-
-    const { data: dbUser } = await supabase
-      .from("users")
-      .select("organization_id")
-      .eq("auth_id", user.id)
-      .single()
-
-    if (!dbUser) return errorResponse("Usuario no encontrado", 404)
-
     const admin = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     )
 
-    const [{ data: org }, { data: cred }] = await Promise.all([
-      admin.from("organizations").select("id, fiscal_enabled, punto_venta").eq("id", dbUser.organization_id).single(),
-      admin.from("fiscal_credentials").select("*").eq("organization_id", dbUser.organization_id).maybeSingle(),
-    ])
+    const authId = await usuarioDeLaSesion(admin, authHeader)
+    if (!authId) return errorResponse("No autorizado", 401)
+
+    // Usuario, organización y certificado en una sola consulta
+    const { data: dbUser } = await admin
+      .from("users")
+      .select("id, full_name, email, organization_id, organizations(id, fiscal_enabled, punto_venta, fiscal_credentials(*))")
+      .eq("auth_id", authId)
+      .single()
+    if (!dbUser) return errorResponse("Usuario no encontrado", 404)
+
+    const primero = <T>(x: T | T[] | null | undefined): T | null => (Array.isArray(x) ? x[0] ?? null : x ?? null)
+    const org: any = primero(dbUser.organizations as any)
+    const cred: any = primero(org?.fiscal_credentials)
     if (!org?.fiscal_enabled || !cred?.activo) return errorResponse("Facturación electrónica no configurada")
 
     const { invoiceRequest, saleId, originalComprobanteId }: {
@@ -140,6 +137,9 @@ Deno.serve(async (req) => {
     const { error: insertError } = await admin.from("fiscal_comprobantes").insert({
       organization_id: org.id,
       ambiente,
+      // Quién lo emitió (se ve en las listas, no en el PDF)
+      created_by: dbUser.id,
+      created_by_name: dbUser.full_name || dbUser.email,
       sale_id: saleId || null,
       original_comprobante_id: originalComprobanteId || null,
       tipo_cbte: request.tipoComprobante,

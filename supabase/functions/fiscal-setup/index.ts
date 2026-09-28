@@ -6,10 +6,14 @@
 import { createClient } from "npm:@supabase/supabase-js@2"
 import { type AfipSdk, AfipSdkError, type Ambiente, consultarAutomatizacion, iniciarAutomatizacion } from "../_shared/afipsdk.ts"
 import { encryptSecret } from "../_shared/crypto.ts"
+import { usuarioDeLaSesion } from "../_shared/sesion.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  // El navegador recuerda el permiso previo (preflight) y no lo vuelve a pedir en cada llamada
+  "Access-Control-Max-Age": "86400",
 }
 
 // CUIT de prueba de Afip SDK: factura en homologación sin certificado propio
@@ -37,36 +41,36 @@ Deno.serve(async (req) => {
     const authHeader = req.headers.get("Authorization")
     if (!authHeader) return errorResponse("No autorizado", 401)
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    )
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) return errorResponse("No autorizado", 401)
-
-    const { data: dbUser } = await supabase
-      .from("users")
-      .select("organization_id, role")
-      .eq("auth_id", user.id)
-      .single()
-
-    if (!dbUser) return errorResponse("Usuario no encontrado", 404)
-
     const admin = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     )
+
+    const authId = await usuarioDeLaSesion(admin, authHeader)
+    if (!authId) return errorResponse("No autorizado", 401)
+
+    const { data: dbUser } = await admin
+      .from("users")
+      .select("id, full_name, email, organization_id, role")
+      .eq("auth_id", authId)
+      .single()
+
+    if (!dbUser) return errorResponse("Usuario no encontrado", 404)
+
     const orgId: string = dbUser.organization_id
-    const ambienteNuevo: Ambiente = Deno.env.get("AFIPSDK_ENVIRONMENT") === "prod" ? "prod" : "dev"
     const sdkPara = (ambiente: Ambiente): AfipSdk => ({ accessToken: Deno.env.get("AFIPSDK_ACCESS_TOKEN")!, ambiente })
+    // Ambiente de las altas nuevas: 'dev' (modo prueba) o 'prod' (facturas reales)
+    const leerAmbienteNuevo = async (): Promise<Ambiente> => {
+      const { data } = await admin.from("fiscal_parametros").select("ambiente_nuevo").eq("id", 1).maybeSingle()
+      return data?.ambiente_nuevo === "prod" ? "prod" : "dev"
+    }
 
     const body = await req.json()
     const { action } = body
 
     // ── Configuración actual (cualquier usuario de la organización) ─────────
     if (action === "get_config") {
+      const ambienteNuevo = await leerAmbienteNuevo()
       const [{ data: org }, { data: cred }, { data: alta }] = await Promise.all([
         admin.from("organizations")
           .select("fiscal_enabled, cuit, razon_social, condicion_iva, punto_venta, actividad_afip, domicilio_comercial, ingresos_brutos, inicio_actividades")
@@ -82,8 +86,9 @@ Deno.serve(async (req) => {
       })
     }
 
-    // El resto modifica la configuración: solo dueños y administradores
-    if (!["owner", "admin"].includes(dbUser.role)) return errorResponse("Sin permisos", 403)
+    // La configuración de la facturación la cambia solo el dueño
+    if (dbUser.role !== "owner") return errorResponse("Solo el dueño puede cambiar la configuración de facturación", 403)
+    const autor = { created_by: dbUser.id, created_by_name: dbUser.full_name || dbUser.email }
 
     // ── Iniciar el alta: primer paso, crear el certificado del cliente ──────
     if (action === "alta_iniciar") {
@@ -104,6 +109,7 @@ Deno.serve(async (req) => {
       }).eq("id", orgId)
       if (orgError) throw orgError
 
+      const ambienteNuevo = await leerAmbienteNuevo()
       const alias = `bg${Date.now().toString(36)}`
       const automatizacion = await iniciarAutomatizacion(sdkPara(ambienteNuevo), `create-cert-${ambienteNuevo}`, {
         cuit, username: usuario, password: clave, alias,
@@ -179,7 +185,7 @@ Deno.serve(async (req) => {
 
     // ── Probar sin clave fiscal: CUIT de prueba de Afip SDK (solo en modo prueba) ─
     if (action === "usar_cuit_prueba") {
-      if (ambienteNuevo !== "dev") return errorResponse("El CUIT de prueba solo existe en modo prueba")
+      if (await leerAmbienteNuevo() !== "dev") return errorResponse("El CUIT de prueba solo existe en modo prueba")
       // Punto de venta al azar: el CUIT de prueba lo comparten todos los usuarios de Afip SDK
       const puntoVenta = 1000 + Math.floor(Math.random() * 8000)
       const { error: credError } = await admin.from("fiscal_credentials").upsert({
@@ -251,6 +257,7 @@ Deno.serve(async (req) => {
         ...pedido,
         ...inicio,
         origen: "automatico",
+        ...autor,
         estado: "pendiente",
       }).select("*").single()
       if (error) throw error
@@ -302,6 +309,7 @@ Deno.serve(async (req) => {
         desde,
         hasta,
         origen: "manual",
+        ...autor,
         estado: "vigente",
       }).select("*").single()
       if (error) throw error

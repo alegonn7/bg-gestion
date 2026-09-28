@@ -660,7 +660,7 @@ export default function SalesHistory() {
                         <button
                           key={c.id}
                           onClick={() => descargarFiscal(c, sale, c.id === factura.id ? undefined : factura)}
-                          title="Descargar PDF"
+                          title={`Descargar PDF${c.created_by_name ? ` · Emitió: ${c.created_by_name}` : ''}`}
                           className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-full border ${
                             [3, 8, 13].includes(c.tipo_cbte) ? 'bg-orange-50 text-orange-700 border-orange-200'
                               : [2, 7, 12].includes(c.tipo_cbte) ? 'bg-blue-50 text-blue-700 border-blue-200'
@@ -676,7 +676,7 @@ export default function SalesHistory() {
                         <button
                           key={r.id}
                           onClick={() => descargarRemitoPdf(r)}
-                          title="Descargar PDF"
+                          title={`Descargar PDF${r.created_by_name ? ` · Hizo: ${r.created_by_name}` : ''}${r.anulado_por_nombre ? ` · Anuló: ${r.anulado_por_nombre}` : ''}`}
                           className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200 ${r.estado === 'anulado' ? 'line-through opacity-60' : ''}`}
                         >
                           <Truck className="h-3 w-3" />

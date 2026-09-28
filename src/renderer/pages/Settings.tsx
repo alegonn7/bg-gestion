@@ -390,8 +390,8 @@ export default function SettingsPage() {
         </p>
       </section>
 
-      {/* Facturación Electrónica: solo owner/admin */}
-      {isOwnerOrAdmin && <FiscalSetupSection />}
+      {/* Facturación Electrónica: la configura solo el dueño */}
+      {user?.role === 'owner' && <FiscalSetupSection />}
 
 {/* Cuenta del usuario */}
       <section className="bg-white rounded-xl border border-gray-200 p-6">

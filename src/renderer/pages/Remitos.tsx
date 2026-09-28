@@ -18,7 +18,8 @@ export default function RemitosPage() {
   const [gestionarCai, setGestionarCai] = useState(false)
   const [confirmarAnular, setConfirmarAnular] = useState<string | null>(null)
   const { user } = useAuthStore()
-  const esAdmin = user?.role === 'owner' || user?.role === 'admin'
+  // Pedir o cargar CAI es configuración: solo el dueño
+  const esDueño = user?.role === 'owner'
 
   useEffect(() => { buscar(filtros) }, [filtros])
 
@@ -39,7 +40,7 @@ export default function RemitosPage() {
           <p className="text-sm text-gray-500 mt-1">Entregas y traslados de mercadería · documento no válido como factura</p>
         </div>
         <div className="flex gap-2">
-          {esAdmin && (
+          {esDueño && (
             <button
               onClick={() => setGestionarCai(true)}
               className="flex items-center gap-2 px-4 py-2.5 bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50 text-sm font-medium rounded-lg"
@@ -103,6 +104,7 @@ export default function RemitosPage() {
                   <th className="px-4 py-3">Motivo</th>
                   <th className="px-4 py-3">Destinatario</th>
                   <th className="px-4 py-3 text-right">Ítems</th>
+                  <th className="px-4 py-3">Hecho por</th>
                   <th className="px-4 py-3">Estado</th>
                   <th className="px-4 py-3"></th>
                 </tr>
@@ -118,10 +120,19 @@ export default function RemitosPage() {
                       {r.destinatario_doc_nro && <span className="text-xs text-gray-400 ml-1">({r.destinatario_doc_nro})</span>}
                     </td>
                     <td className="px-4 py-3 text-right text-gray-600">{r.items.reduce((s, i) => s + i.cantidad, 0)}</td>
+                    <td className="px-4 py-3 text-gray-600">{r.created_by_name || <span className="text-gray-400">—</span>}</td>
                     <td className="px-4 py-3">
-                      {r.estado === 'anulado'
-                        ? <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-medium rounded-full">Anulado</span>
-                        : <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-medium rounded-full">Emitido</span>}
+                      {r.estado === 'anulado' ? (
+                        <>
+                          <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-medium rounded-full">Anulado</span>
+                          {r.anulado_por_nombre && (
+                            <p className="text-xs text-gray-400 mt-1">
+                              por {r.anulado_por_nombre}
+                              {r.anulado_en && ` el ${new Date(r.anulado_en).toLocaleDateString('es-AR')}`}
+                            </p>
+                          )}
+                        </>
+                      ) : <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-medium rounded-full">Emitido</span>}
                     </td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
                       <button

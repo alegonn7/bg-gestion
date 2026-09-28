@@ -38,6 +38,9 @@ export interface Remito {
   cai: string | null
   cai_vence: string | null
   created_at: string
+  created_by_name: string | null      // quién lo hizo
+  anulado_por_nombre: string | null   // quién lo anuló
+  anulado_en: string | null
 }
 
 // CAI de ARCA para remitos R: autoriza un rango de números de un punto de venta hasta su vencimiento
