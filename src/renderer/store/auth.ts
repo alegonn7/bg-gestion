@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { supabase, clearStoredSession, User, Organization, Branch } from '@/lib/supabase'
 import { useNetworkStore } from './network'
 import {
+  clearOfflineCredentials,
   getOfflineSnapshot,
   isNetworkError,
   saveOfflineCredentials,
@@ -38,6 +39,10 @@ interface AuthState {
   selectBranch: (branchId: string) => void
   /** Reintenta validar la sesión contra el servidor al recuperar la conexión */
   handleReconnect: () => Promise<void>
+  /** Cambia el nombre propio (dueño o administrador; al resto se lo cambia el dueño) */
+  actualizarMiNombre: (nombre: string) => Promise<void>
+  /** Cambia la contraseña propia, confirmando antes la actual */
+  cambiarMiClave: (actual: string, nueva: string) => Promise<void>
 }
 
 /** Datos que se guardan localmente para poder ingresar y operar sin conexión */
@@ -72,8 +77,16 @@ async function loadProfile(authId: string) {
 
   const org = userData.organizations as Organization
 
-  if (org.subscription_status === 'suspended') {
-    throw new Error('Tu cuenta está suspendida. Contacta al administrador.')
+  // Sin acceso: se cierra la sesión y esta computadora deja de permitir el ingreso sin conexión
+  const sinAcceso = !userData.is_active
+    ? 'Tu usuario está desactivado. Pedile al dueño del negocio que lo vuelva a activar.'
+    : org.subscription_status === 'suspended'
+      ? 'Tu cuenta está suspendida. Contacta al administrador.'
+      : null
+  if (sinAcceso) {
+    await clearOfflineCredentials(userData.email)
+    await supabase.auth.signOut().catch(() => {})
+    throw new Error(sinAcceso)
   }
 
   const { data: branchesData, error: branchesError } = await supabase
@@ -357,5 +370,49 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       console.warn('No se pudo revalidar la sesión al reconectar:', error)
       set({ needsRelogin: true })
     }
+  },
+
+  actualizarMiNombre: async (nombre: string) => {
+    const { user, organization, branch, branches, selectedBranch } = get()
+    if (!user || !organization) throw new Error('Tu sesión venció. Volvé a iniciar sesión.')
+    const limpio = nombre.trim()
+    if (!limpio) throw new Error('Escribí tu nombre')
+
+    const { data, error } = await supabase
+      .from('users')
+      .update({ full_name: limpio })
+      .eq('id', user.id)
+      .select('id')
+    if (error || !data?.length) {
+      if (error) console.error('Error guardando el nombre:', error)
+      throw new Error(isNetworkError(error) ? 'No hay conexión. Revisá tu internet y probá de nuevo.' : 'No se pudo guardar el nombre. Probá de nuevo.')
+    }
+
+    const actualizado = { ...user, full_name: limpio }
+    set({ user: actualizado })
+    await touchOfflineSnapshot(user.email, buildSnapshot({ user: actualizado, organization, branch, branches, selectedBranch }))
+  },
+
+  cambiarMiClave: async (actual: string, nueva: string) => {
+    const { user, organization, branch, branches, selectedBranch } = get()
+    if (!user || !organization) throw new Error('Tu sesión venció. Volvé a iniciar sesión.')
+    if (nueva.length < 6) throw new Error('La contraseña nueva debe tener al menos 6 caracteres')
+
+    // Confirmar la contraseña actual: nadie cambia la clave desde una computadora que quedó abierta
+    const { error: errorActual } = await supabase.auth.signInWithPassword({ email: user.email, password: actual })
+    if (errorActual) {
+      throw new Error(isNetworkError(errorActual) ? 'No hay conexión. Revisá tu internet y probá de nuevo.' : 'La contraseña actual no es correcta')
+    }
+
+    const { error } = await supabase.auth.updateUser({ password: nueva })
+    if (error) {
+      if (error.code === 'same_password') throw new Error('La contraseña nueva tiene que ser distinta de la actual')
+      if (error.code === 'weak_password') throw new Error('La contraseña nueva es muy débil: usá al menos 6 caracteres')
+      console.error('Error cambiando la contraseña:', error)
+      throw new Error('No se pudo cambiar la contraseña. Probá de nuevo.')
+    }
+
+    // El ingreso sin conexión en esta computadora pasa a usar la contraseña nueva
+    await saveOfflineCredentials(user.email, nueva, buildSnapshot({ user, organization, branch, branches, selectedBranch }))
   },
 }))

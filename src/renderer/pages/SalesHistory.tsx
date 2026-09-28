@@ -578,7 +578,18 @@ export default function SalesHistory() {
                     <div className="flex items-center gap-2">
                       {!isVoided && canVoidSale && (
                         <>
-                          {voidConfirmId === sale.id ? (
+                          {voidConfirmId === sale.id && facturaVigente ? (
+                            // Anular borra la venta: con factura, primero va la nota de crédito
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-red-600 font-medium">Tiene factura: primero hacé una nota de crédito por el total</span>
+                              <button
+                                onClick={() => setVoidConfirmId(null)}
+                                className="px-3 py-1.5 bg-gray-200 text-gray-700 text-xs rounded-lg hover:bg-gray-300"
+                              >
+                                Entendido
+                              </button>
+                            </div>
+                          ) : voidConfirmId === sale.id ? (
                             <div className="flex items-center gap-2">
                               <span className="text-xs text-red-600 font-medium">¿Anular?</span>
                               <button

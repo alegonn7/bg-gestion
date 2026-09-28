@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from './auth'
+import { callEdgeFunction } from './fiscal'
 
 export interface User {
   id: string
@@ -39,6 +40,8 @@ interface UsersState {
   updateUser: (id: string, updates: Partial<User>) => Promise<void>
   toggleUserStatus: (id: string) => Promise<void>
   deleteUser: (id: string) => Promise<void>
+  /** Contraseña nueva para otro usuario (por ejemplo, si se la olvidó) */
+  cambiarClave: (id: string, password: string) => Promise<void>
   setSearchQuery: (query: string) => void
 
   // Devuelve los usuarios visibles según el rol
@@ -128,39 +131,8 @@ export const useUsersStore = create<UsersState>((set, get) => ({
         throw new Error('Debes asignar una sucursal para este rol')
       }
 
-      // 1. Crear usuario en Supabase Auth (vía IPC → proceso principal Node.js)
-      const authResult = await window.electron.admin.createUser(userData.email, userData.password)
-      if (!authResult.success || !authResult.user) {
-        throw new Error(authResult.error || 'No se pudo crear el usuario')
-      }
-      const authData = { user: authResult.user }
-
-      // 2. Crear registro en la tabla users
-      const { data: dbUser, error: dbError } = await supabase
-        .from('users')
-        .insert({
-          auth_id: authData.user.id,
-          email: userData.email,
-          full_name: userData.full_name,
-          organization_id: organization.id,
-          branch_id: userData.branch_id || null,
-          role: userData.role,
-          is_active: true,
-        })
-        .select(`
-          *,
-          branches (
-            id,
-            name
-          )
-        `)
-        .single()
-
-      if (dbError) {
-        // Si falla la creación en la BD, eliminar el usuario de Auth (rollback)
-        await window.electron.admin.deleteUser(authData.user.id)
-        throw dbError
-      }
+      // La cuenta de acceso la crea el servidor: la app instalada no tiene permiso para hacerlo
+      const { usuario: dbUser } = await callEdgeFunction('usuarios', { accion: 'crear', ...userData })
 
       // Transformar datos para asegurar que branch sea correcto
       const transformedUser: User = {
@@ -338,20 +310,8 @@ export const useUsersStore = create<UsersState>((set, get) => ({
         throw new Error('Solo el dueño puede eliminar usuarios permanentemente')
       }
 
-      const targetUser = get().users.find(u => u.id === id)
-      if (!targetUser) throw new Error('Usuario no encontrado')
-
-      // Eliminar de Auth primero (vía IPC → proceso principal Node.js)
-      const authResult = await window.electron.admin.deleteUser(targetUser.auth_id)
-      if (!authResult.success) throw new Error(authResult.error || 'No se pudo eliminar el usuario de Auth')
-
-      // Eliminar de la base de datos (debería hacerse automáticamente por CASCADE)
-      const { error: dbError } = await supabase
-        .from('users')
-        .delete()
-        .eq('id', id)
-
-      if (dbError) throw dbError
+      // El servidor borra el usuario y su cuenta de acceso (si no tiene ventas u otros registros)
+      await callEdgeFunction('usuarios', { accion: 'eliminar', id })
 
       // Remover de la lista local
       set(state => ({
@@ -362,6 +322,10 @@ export const useUsersStore = create<UsersState>((set, get) => ({
       console.error('Error deleting user:', error)
       throw error
     }
+  },
+
+  cambiarClave: async (id, password) => {
+    await callEdgeFunction('usuarios', { accion: 'cambiar_clave', id, password })
   },
 
   setSearchQuery: (query) => {

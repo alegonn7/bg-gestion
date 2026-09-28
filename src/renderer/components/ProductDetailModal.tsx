@@ -1,6 +1,7 @@
 import { X, Barcode, TrendingUp, DollarSign, Clock, Copy } from 'lucide-react'
 import type { Product } from '@/store/products'
 import { useDollarStore } from '@/store/dollar'
+import { gananciaSobreCosto } from '@/lib/ganancia'
 
 interface ProductDetailModalProps {
   product: Product | null
@@ -31,10 +32,9 @@ export default function ProductDetailModal({ product, isOpen, onClose, onEdit, o
 
   const displayDescription = product.product?.description
 
-  // Calcular margen
-  const margin = product.price_sale > 0
-    ? ((product.price_sale - product.price_cost) / product.price_sale) * 100
-    : 0
+  // Ganancia sobre el costo (el mismo porcentaje que se carga al ponerle precio)
+  const ganancia = gananciaSobreCosto(product.price_cost, product.price_sale)
+  const margin = ganancia ?? 0
 
   const marginAmount = product.price_sale - product.price_cost
 
@@ -191,12 +191,12 @@ export default function ProductDetailModal({ product, isOpen, onClose, onEdit, o
                   margin > 0 ? 'text-blue-600' : 'text-red-600'
                 }`}>
                   <TrendingUp className="w-4 h-4" />
-                  <span className="text-xs font-medium">Margen</span>
+                  <span className="text-xs font-medium">Ganancia</span>
                 </div>
                 <div className={`text-2xl font-bold ${
                   margin > 0 ? 'text-blue-900' : 'text-red-900'
                 }`}>
-                  {margin.toFixed(1)}%
+                  {ganancia === null ? '—' : `${ganancia.toFixed(1)}%`}
                 </div>
                 <div className={`text-xs ${
                   margin > 0 ? 'text-blue-700' : 'text-red-700'

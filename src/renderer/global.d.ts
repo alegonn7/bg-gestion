@@ -28,12 +28,6 @@ declare module '*.svg' {
   export default src;
 }
 
-interface AdminResult {
-  success: boolean;
-  error?: string;
-  user?: { id: string; email: string };
-}
-
 interface Window {
   electron: {
     db: {
@@ -67,6 +61,7 @@ interface Window {
         maxDays?: number;
       }>;
       status: () => Promise<{ available: boolean; email?: string; lastOnlineAt?: number; maxDays: number }>;
+      clear?: (email: string) => Promise<{ success: boolean; error?: string }>;
     };
     getDeviceId: () => Promise<string | null>;
     getSystemInfo: () => Promise<{ platform: string; arch: string; version: string; electronVersion: string }>;
@@ -76,9 +71,5 @@ interface Window {
     getChangelogText: () => Promise<string>;
     exportPdf: (html: string, filename?: string) => Promise<{ success: boolean; canceled?: boolean; path?: string; error?: string }>;
     platform: string;
-    admin: {
-      createUser: (email: string, password: string) => Promise<AdminResult>;
-      deleteUser: (authId: string) => Promise<AdminResult>;
-    };
   };
 }

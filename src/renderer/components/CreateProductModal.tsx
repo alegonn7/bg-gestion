@@ -5,6 +5,7 @@ import { useSuppliersStore } from '@/store/suppliers'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/auth'
 import { useDollarStore } from '@/store/dollar'
+import { gananciaSobreCosto } from '@/lib/ganancia'
 
 interface CreateProductModalProps {
   isOpen: boolean
@@ -393,7 +394,7 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Margen %</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Ganancia %</label>
                 <div className="relative">
                   <input
                     type="text"
@@ -449,7 +450,7 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
                 )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Margen %</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Ganancia %</label>
                 <div className="relative">
                   <input
                     type="text"
@@ -515,20 +516,18 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
             )}
           </div>
 
-          {/* Margen */}
+          {/* Ganancia (sobre el costo, como el campo "Ganancia %") */}
           {formData.price_cost && formData.price_sale && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-blue-700">Margen de ganancia:</span>
+                <span className="text-sm text-blue-700">Ganancia por unidad:</span>
                 <span className="font-semibold text-blue-900">
                   {(() => {
                     const cost = parseFloat(formData.price_cost)
                     const sale = parseFloat(formData.price_sale)
-                    if (sale > 0) {
-                      const margin = ((sale - cost) / sale) * 100
-                      return `${margin.toFixed(1)}% ($${(sale - cost).toFixed(2)})`
-                    }
-                    return '-'
+                    const ganancia = gananciaSobreCosto(cost, sale)
+                    if (ganancia === null || isNaN(sale)) return '-'
+                    return `$${(sale - cost).toFixed(2)} (${ganancia.toFixed(1)}%)`
                   })()}
                 </span>
               </div>

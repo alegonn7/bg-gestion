@@ -5,7 +5,6 @@ console.log('INICIO MAIN.JS');
 // ============================================================
 // REQUIRES - siempre primero, sin excepción
 // ============================================================
-require('dotenv').config();
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
@@ -401,6 +400,17 @@ ipcMain.handle('offline-auth:verify', async (event, { email, password }) => {
   }
 });
 
+// Borra el acceso sin conexión de un usuario (por ejemplo, si lo desactivaron)
+ipcMain.handle('offline-auth:clear', async (event, { email }) => {
+  try {
+    db.prepare('DELETE FROM offline_auth WHERE email = ?').run(String(email || '').trim().toLowerCase());
+    return { success: true };
+  } catch (error) {
+    console.error('Error offline-auth:clear:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 // Devuelve el perfil cacheado sin validar contraseña.
 // Solo se usa cuando ya existe una sesión de Supabase válida en disco.
 ipcMain.handle('offline-auth:get-snapshot', async (event, { email } = {}) => {
@@ -512,49 +522,6 @@ ipcMain.handle('get-last-shown-version', async () => {
     return result ? result.value : null;
   } catch (error) {
     return null;
-  }
-});
-
-// ============================================================
-// IPC HANDLERS - ADMIN AUTH (operaciones privilegiadas)
-// La service role key solo se usa aquí, en el proceso principal Node.js
-// NUNCA se expone al renderer/frontend
-// ============================================================
-function getSupabaseAdmin() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) {
-    throw new Error('Faltan variables de entorno SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY');
-  }
-  const { createClient } = require('@supabase/supabase-js');
-  return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
-}
-
-ipcMain.handle('admin:create-user', async (event, { email, password }) => {
-  try {
-    const supabaseAdmin = getSupabaseAdmin();
-    const { data, error } = await supabaseAdmin.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-    });
-    if (error) return { success: false, error: error.message };
-    return { success: true, user: data.user };
-  } catch (error) {
-    console.error('Error admin:create-user:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-ipcMain.handle('admin:delete-user', async (event, { authId }) => {
-  try {
-    const supabaseAdmin = getSupabaseAdmin();
-    const { error } = await supabaseAdmin.auth.admin.deleteUser(authId);
-    if (error) return { success: false, error: error.message };
-    return { success: true };
-  } catch (error) {
-    console.error('Error admin:delete-user:', error);
-    return { success: false, error: error.message };
   }
 });
 

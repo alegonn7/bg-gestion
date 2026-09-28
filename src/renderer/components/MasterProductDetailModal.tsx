@@ -1,5 +1,6 @@
 import { X, Store, Package, DollarSign, TrendingUp, BarChart, Calendar } from 'lucide-react'
 import type { MasterProduct } from '@/store/master-catalog'
+import { gananciaSobreCosto } from '@/lib/ganancia'
 
 interface MasterProductDetailModalProps {
   product: MasterProduct | null
@@ -111,9 +112,8 @@ export default function MasterProductDetailModal({ product, isOpen, onClose }: M
               const revenue = branch.stock * branch.price_sale
               const cost = branch.stock * branch.price_cost
               const profit = revenue - cost
-              const margin = branch.price_sale > 0 
-                ? ((branch.price_sale - branch.price_cost) / branch.price_sale) * 100 
-                : 0
+              // Ganancia sobre el costo, igual que en Productos
+              const margin = gananciaSobreCosto(branch.price_cost, branch.price_sale) ?? 0
 
               return (
                 <div 
@@ -138,7 +138,7 @@ export default function MasterProductDetailModal({ product, isOpen, onClose }: M
                     </div>
 
                     <div className="text-right">
-                      <p className="text-sm text-gray-500">Margen</p>
+                      <p className="text-sm text-gray-500">Ganancia</p>
                       <p className={`text-lg font-bold ${margin > 30 ? 'text-green-600' : margin > 15 ? 'text-yellow-600' : 'text-red-600'}`}>
                         {margin.toFixed(1)}%
                       </p>

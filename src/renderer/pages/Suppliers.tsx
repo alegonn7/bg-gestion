@@ -16,6 +16,7 @@ export default function SuppliersPage() {
   const [editing, setEditing] = useState<string | null>(null)
   const [form, setForm] = useState(EMPTY_FORM)
   const [searchQuery, setSearchQuery] = useState('')
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
 
   useEffect(() => { fetchSuppliers(); fetchProducts() }, [])
@@ -365,22 +366,45 @@ export default function SuppliersPage() {
                   </div>
 
                   {/* Actions */}
-                  <div className="p-3 border-t border-gray-200 flex gap-2">
-                    <button
-                      onClick={() => handleEdit(s)}
-                      className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg transition"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                      Editar
-                    </button>
-                    <button
-                      onClick={() => deleteSupplier(s.id)}
-                      className="flex items-center justify-center gap-1.5 px-3 py-2 bg-red-50 hover:bg-red-100 text-red-700 text-sm font-medium rounded-lg transition"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      Eliminar
-                    </button>
-                  </div>
+                  {confirmDeleteId === s.id ? (
+                    <div className="p-3 border-t border-gray-200 bg-red-50 rounded-b-lg">
+                      <p className="text-xs text-red-700 font-medium mb-2">
+                        ¿Eliminar a {s.name}?
+                        {suppliedProducts.length > 0 && ` Tiene ${suppliedProducts.length} producto${suppliedProducts.length !== 1 ? 's' : ''} asociado${suppliedProducts.length !== 1 ? 's' : ''}.`}
+                      </p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setConfirmDeleteId(null)}
+                          className="flex-1 px-3 py-1.5 bg-white border border-gray-200 hover:bg-gray-100 text-gray-700 text-sm rounded-lg transition"
+                        >
+                          Cancelar
+                        </button>
+                        <button
+                          onClick={() => { deleteSupplier(s.id); setConfirmDeleteId(null) }}
+                          className="flex-1 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition"
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-3 border-t border-gray-200 flex gap-2">
+                      <button
+                        onClick={() => handleEdit(s)}
+                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg transition"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                        Editar
+                      </button>
+                      <button
+                        onClick={() => setConfirmDeleteId(s.id)}
+                        className="flex items-center justify-center gap-1.5 px-3 py-2 bg-red-50 hover:bg-red-100 text-red-700 text-sm font-medium rounded-lg transition"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        Eliminar
+                      </button>
+                    </div>
+                  )}
                 </div>
               )
             })}

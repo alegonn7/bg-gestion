@@ -34,6 +34,7 @@ export default function POS() {
   const [showCheckout, setShowCheckout] = useState(false)
   const [discountInput, setDiscountInput] = useState('')
   const [discountTypeInput, setDiscountTypeInput] = useState(discountType)
+  const [discountError, setDiscountError] = useState('')
   const barcodeRef = useRef<HTMLInputElement>(null)
   const { selectedBranch } = useAuthStore()
   const { blueRate, manualMode, manualBlueRate, fetchBlueRate } = useDollarStore()
@@ -107,6 +108,10 @@ export default function POS() {
 
   const handleDiscountApply = () => {
     const value = parseFloat(discountInput) || 0
+    const monto = discountTypeInput === 'percentage' ? (getSubtotal() * value) / 100 : value
+    if (value < 0) return setDiscountError('El descuento no puede ser negativo')
+    if (monto > getSubtotal()) return setDiscountError('El descuento no puede ser mayor que el total')
+    setDiscountError('')
     setDiscount(value, discountTypeInput)
   }
 
@@ -463,6 +468,7 @@ export default function POS() {
                     Aplicar
                   </button>
                 </div>
+                {discountError && <p className="text-xs text-red-600 mt-1">{discountError}</p>}
               </div>
 
               <div className="space-y-2">

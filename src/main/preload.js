@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('electron', {
     verify: (email, password) => ipcRenderer.invoke('offline-auth:verify', { email, password }),
     getSnapshot: (email) => ipcRenderer.invoke('offline-auth:get-snapshot', { email }),
     status: () => ipcRenderer.invoke('offline-auth:status'),
+    clear: (email) => ipcRenderer.invoke('offline-auth:clear', { email }),
   },
 
   // System info
@@ -38,12 +39,6 @@ contextBridge.exposeInMainWorld('electron', {
 
   // Platform
   platform: process.platform,
-
-  // Admin operations (requieren service role key, se ejecutan en el proceso principal)
-  admin: {
-    createUser: (email, password) => ipcRenderer.invoke('admin:create-user', { email, password }),
-    deleteUser: (authId) => ipcRenderer.invoke('admin:delete-user', { authId }),
-  },
 
   // PDF export
   exportPdf: (html, filename) => ipcRenderer.invoke('export-pdf', { html, filename }),

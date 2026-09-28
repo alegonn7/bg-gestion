@@ -5,6 +5,7 @@ import { useSuppliersStore } from '@/store/suppliers'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/auth'
 import { useDollarStore } from '@/store/dollar'
+import { gananciaSobreCosto } from '@/lib/ganancia'
 
 interface EditProductModalProps {
   product: Product | null
@@ -270,7 +271,7 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
             </div>
           )}
 
-          {/* Código de Barras - Solo editable si es producto propio */}
+          {/* Código de Barras: identifica al producto en ventas e historial, no se cambia */}
           <div>
             <label htmlFor="barcode" className="block text-sm font-medium text-gray-700 mb-2">
               Código de Barras
@@ -280,14 +281,10 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
               id="barcode"
               name="barcode"
               value={formData.barcode}
-              onChange={handleChange}
-              placeholder="7790123456789"
-              className={`w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
-                 ''
-              }`}
-              pattern="[0-9]*"
-              maxLength={13}
+              disabled
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-500 cursor-not-allowed"
             />
+            <p className="text-xs text-gray-500 mt-1">El código de barras no se puede cambiar.</p>
           </div>
 
           {/* Nombre - Solo editable si es producto propio */}
@@ -391,7 +388,7 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Margen %</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Ganancia %</label>
                 <div className="relative">
                   <input
                     type="number"
@@ -449,7 +446,7 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
                 )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Margen %</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Ganancia %</label>
                 <div className="relative">
                   <input
                     type="number"
@@ -516,20 +513,18 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
             )}
           </div>
 
-          {/* Margen calculado */}
+          {/* Ganancia calculada (sobre el costo, como el campo "Ganancia %") */}
           {formData.price_cost && formData.price_sale && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-blue-700">Margen de ganancia:</span>
+                <span className="text-sm text-blue-700">Ganancia por unidad:</span>
                 <span className="font-semibold text-blue-900">
                   {(() => {
                     const cost = parseFloat(formData.price_cost)
                     const sale = parseFloat(formData.price_sale)
-                    if (sale > 0) {
-                      const margin = ((sale - cost) / sale) * 100
-                      return `${margin.toFixed(1)}% ($${(sale - cost).toFixed(2)})`
-                    }
-                    return '-'
+                    const ganancia = gananciaSobreCosto(cost, sale)
+                    if (ganancia === null || isNaN(sale)) return '-'
+                    return `$${(sale - cost).toFixed(2)} (${ganancia.toFixed(1)}%)`
                   })()}
                 </span>
               </div>

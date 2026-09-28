@@ -93,7 +93,7 @@ export default function Users() {
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition"
               >
                 <UserPlus className="w-4 h-4" />
-                Invitar Usuario
+                Nuevo usuario
               </button>
             )}
           </div>
@@ -124,7 +124,7 @@ export default function Users() {
           <div className="bg-green-50 rounded-lg p-4">
             <div className="flex items-center gap-2 text-green-600 mb-1">
               <Shield className="w-4 h-4" />
-              <span className="text-sm font-medium">Owners</span>
+              <span className="text-sm font-medium">Dueños</span>
             </div>
             <p className="text-2xl font-bold text-green-900">{usersByRole.owner.length}</p>
           </div>
@@ -132,7 +132,7 @@ export default function Users() {
           <div className="bg-purple-50 rounded-lg p-4">
             <div className="flex items-center gap-2 text-purple-600 mb-1">
               <UserCog className="w-4 h-4" />
-              <span className="text-sm font-medium">Admins</span>
+              <span className="text-sm font-medium">Administradores</span>
             </div>
             <p className="text-2xl font-bold text-purple-900">{usersByRole.admin.length}</p>
           </div>
@@ -180,7 +180,7 @@ export default function Users() {
               <p className="text-gray-600 mb-4">
                 {searchQuery 
                   ? 'Intenta con otro término de búsqueda'
-                  : 'Invita a tu equipo para comenzar a trabajar juntos'
+                  : 'Sumá a tu equipo para empezar a trabajar juntos'
                 }
               </p>
               {!searchQuery && canInvite && (
@@ -189,7 +189,7 @@ export default function Users() {
                   className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition"
                 >
                   <UserPlus className="w-4 h-4" />
-                  Invitar Usuario
+                  Nuevo usuario
                 </button>
               )}
             </div>
@@ -316,6 +316,12 @@ function UserCard({ user, currentUser, onEdit, onDetail, onToggleStatus }: UserC
           <div>
             <p className="text-xs text-gray-500 mb-1">Sucursal Asignada</p>
             <p className="text-sm font-medium text-gray-900">{user.branch.name}</p>
+          </div>
+        ) : user.role === 'owner' || user.role === 'admin' ? (
+          // Dueño y administrador no tienen una sucursal fija: eligen con cuál trabajar
+          <div>
+            <p className="text-xs text-gray-500 mb-1">Sucursal</p>
+            <p className="text-sm font-medium text-gray-900">Todas las sucursales</p>
           </div>
         ) : (
           <div>

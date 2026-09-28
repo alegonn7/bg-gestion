@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, Trash2 } from 'lucide-react'
+import { X, Trash2, Eye, EyeOff } from 'lucide-react'
 import { useUsersStore, User } from '@/store/users'
 import { useAuthStore } from '@/store/auth'
 import { useBranchesStore } from '@/store/branches'
@@ -12,39 +12,43 @@ interface EditUserModalProps {
 }
 
 export default function EditUserModal({ user, isOpen, onClose, onSuccess }: EditUserModalProps) {
-  const { updateUser, deleteUser } = useUsersStore()
+  const { updateUser, deleteUser, cambiarClave } = useUsersStore()
   const { user: currentUser } = useAuthStore()
   const { branches, fetchBranches } = useBranchesStore()
-  
+
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-  
+  const [showPassword, setShowPassword] = useState(false)
+
   const [formData, setFormData] = useState({
     full_name: '',
     role: 'employee' as 'admin' | 'manager' | 'employee',
     branch_id: '',
+    password: '',
   })
 
   useEffect(() => {
     if (isOpen && user) {
       fetchBranches()
-      
+
       setFormData({
         full_name: user.full_name || '',
         role: user.role as any,
         branch_id: user.branch_id || '',
+        password: '',
       })
       setError('')
       setShowDeleteConfirm(false)
+      setShowPassword(false)
     }
   }, [isOpen, user])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!user) return
-    
+
     setError('')
     setLoading(true)
 
@@ -52,12 +56,20 @@ export default function EditUserModal({ user, isOpen, onClose, onSuccess }: Edit
       if (!formData.full_name.trim()) {
         throw new Error('El nombre completo es obligatorio')
       }
+      if (formData.password && formData.password.length < 6) {
+        throw new Error('La contraseña nueva debe tener al menos 6 caracteres')
+      }
 
       await updateUser(user.id, {
         full_name: formData.full_name.trim(),
         role: formData.role,
         branch_id: formData.branch_id || null,
       })
+
+      // Contraseña nueva solo si se escribió una (por ejemplo, si el usuario se la olvidó)
+      if (formData.password) {
+        await cambiarClave(user.id, formData.password)
+      }
 
       onSuccess()
     } catch (err: any) {
@@ -173,7 +185,8 @@ export default function EditUserModal({ user, isOpen, onClose, onSuccess }: Edit
                 name="branch_id"
                 value={formData.branch_id}
                 onChange={handleChange}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                disabled={currentUser?.role === 'manager'}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none disabled:bg-gray-100"
                 required
               >
                 <option value="">Selecciona una sucursal</option>
@@ -185,6 +198,32 @@ export default function EditUserModal({ user, isOpen, onClose, onSuccess }: Edit
               </select>
             </div>
           )}
+
+          <div>
+            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
+              Contraseña nueva
+            </label>
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                id="password"
+                name="password"
+                value={formData.password}
+                onChange={handleChange}
+                placeholder="Dejalo vacío para no cambiarla"
+                autoComplete="new-password"
+                className="w-full px-4 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mt-1">Por si se la olvidó: escribí una nueva y pasásela.</p>
+          </div>
 
           {canDelete && showDeleteConfirm ? (
             <div className="bg-red-50 border border-red-200 rounded-lg p-4">

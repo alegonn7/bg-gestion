@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from './auth'
+import { ventaTieneFacturaVigente } from './fiscal'
 
 export interface SaleItem {
   product_id: string
@@ -235,6 +236,14 @@ export const useSalesStore = create<SalesState>((set, get) => ({
       const sale = get().sales.find(s => s.id === saleId)
       if (!sale) return { success: false, error: 'Venta no encontrada' }
       if (sale.status === 'voided') return { success: false, error: 'La venta ya fue anulada' }
+
+      // Anular borra la venta: si tiene factura, la factura quedaría suelta y sin forma de anularla
+      if (await ventaTieneFacturaVigente(saleId)) {
+        return {
+          success: false,
+          error: 'Esta venta tiene factura. Primero hacé una nota de crédito por el total y después anulá la venta.',
+        }
+      }
 
       // Si esta venta viene de un pedido online pagado con Mercado Pago, anularla acá borraría
       // la venta sin devolverle la plata al cliente -- confirm_store_order_paid guarda

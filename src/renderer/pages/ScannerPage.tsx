@@ -207,13 +207,13 @@ export default function ScannerPage() {
                 <div className="bg-white rounded-xl shadow-sm border p-4">
                   <div className="flex items-center gap-2 text-gray-500 text-sm mb-1">
                     {margin >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
-                    Margen
+                    Ganancia
                   </div>
                   <p className={`text-3xl font-bold ${margin >= 30 ? 'text-green-600' : margin >= 15 ? 'text-yellow-600' : 'text-red-600'}`}>
-                    {scannedProduct.price_cost > 0 ? `${margin.toFixed(1)}%` : 'N/A'}
+                    {scannedProduct.price_cost > 0 ? `${margin.toFixed(1)}%` : '—'}
                   </p>
                   <p className="text-xs text-gray-400 mt-1">
-                    Ganancia: {formatCurrency(scannedProduct.price_sale - scannedProduct.price_cost)}
+                    Por unidad: {formatCurrency(scannedProduct.price_sale - scannedProduct.price_cost)}
                   </p>
                 </div>
                 {blueRate && (

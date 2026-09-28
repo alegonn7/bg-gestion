@@ -161,7 +161,9 @@ export const usePOSStore = create<POSState>((set, get) => ({
   getDiscountAmount: () => {
     const { discount, discountType } = get()
     const subtotal = get().getSubtotal()
-    return discountType === 'percentage' ? (subtotal * discount) / 100 : discount
+    const monto = discountType === 'percentage' ? (subtotal * discount) / 100 : discount
+    // Nunca negativo ni mayor que lo que se está vendiendo (por ejemplo, si después se sacan productos)
+    return Math.min(subtotal, Math.max(0, monto))
   },
 
   getTotal: () => Math.max(0, get().getSubtotal() - get().getDiscountAmount()),

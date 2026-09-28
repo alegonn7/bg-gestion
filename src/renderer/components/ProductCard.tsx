@@ -1,6 +1,7 @@
 import { Barcode, TrendingUp, TrendingDown, DollarSign, Calendar } from 'lucide-react'
 import type { Product } from '@/store/products'
 import { useDollarStore } from '@/store/dollar'
+import { gananciaSobreCosto } from '@/lib/ganancia'
 
 interface ProductCardProps {
   product: Product
@@ -15,10 +16,8 @@ export default function ProductCard({ product, onClick }: ProductCardProps) {
 
   const displayBarcode =  product.barcode
 
-  // Calcular margen
-  const margin = product.price_sale > 0
-    ? ((product.price_sale - product.price_cost) / product.price_sale) * 100
-    : 0
+  // Ganancia sobre el costo (el mismo porcentaje que se carga al ponerle precio)
+  const ganancia = gananciaSobreCosto(product.price_cost, product.price_sale)
 
   // Determinar si stock es bajo
   const isLowStock = product.stock_quantity < product.stock_min
@@ -102,11 +101,15 @@ export default function ProductCard({ product, onClick }: ProductCardProps) {
         </div>
         
         <div>
-          <div className="text-xs text-gray-500 mb-1">Margen</div>
-          <div className={`font-semibold flex items-center gap-1 ${margin > 0 ? 'text-green-600' : 'text-red-600'}`}>
-            {margin > 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-            {margin.toFixed(1)}%
-          </div>
+          <div className="text-xs text-gray-500 mb-1">Ganancia</div>
+          {ganancia === null ? (
+            <div className="font-semibold text-gray-400">—</div>
+          ) : (
+            <div className={`font-semibold flex items-center gap-1 ${ganancia > 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {ganancia > 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+              {ganancia.toFixed(1)}%
+            </div>
+          )}
         </div>
       </div>
 

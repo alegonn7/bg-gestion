@@ -112,7 +112,7 @@ export default function InviteUserModal({ isOpen, onClose, onSuccess }: InviteUs
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div>
-            <h2 className="text-xl font-bold text-gray-900">Invitar Usuario</h2>
+            <h2 className="text-xl font-bold text-gray-900">Nuevo usuario</h2>
             <p className="text-sm text-gray-600 mt-1">
               Crea una cuenta para un nuevo miembro del equipo
             </p>
@@ -178,7 +178,7 @@ export default function InviteUserModal({ isOpen, onClose, onSuccess }: InviteUs
               </button>
             </div>
             <p className="text-xs text-gray-500 mt-1">
-              💡 Asigna una contraseña que el usuario pueda cambiar después
+              💡 Después la puede cambiar desde Configuración → Mi Cuenta
             </p>
           </div>
 
@@ -252,9 +252,9 @@ export default function InviteUserModal({ isOpen, onClose, onSuccess }: InviteUs
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm">
             <p className="text-blue-900 font-medium mb-2">📋 Información importante:</p>
             <ul className="text-blue-700 space-y-1 text-xs">
-              <li>• El usuario podrá iniciar sesión con el email y contraseña que asignaste</li>
-              <li>• Comparte las credenciales de forma segura con el usuario</li>
-              <li>• El usuario puede cambiar su contraseña después del primer login</li>
+              <li>• El usuario entra con el email y la contraseña que pongas acá (no le llega ningún correo)</li>
+              <li>• Pasale esos datos en persona o por un medio privado</li>
+              <li>• Después puede cambiar su contraseña desde Configuración → Mi Cuenta</li>
               <li>• Los permisos se aplican inmediatamente</li>
             </ul>
           </div>
@@ -274,7 +274,7 @@ export default function InviteUserModal({ isOpen, onClose, onSuccess }: InviteUs
               className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={loading}
             >
-              {loading ? 'Invitando...' : 'Invitar Usuario'}
+              {loading ? 'Creando...' : 'Crear usuario'}
             </button>
           </div>
         </form>

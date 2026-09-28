@@ -182,6 +182,22 @@ export function saldoDeFactura(factura: FiscalComprobante, notas: FiscalComproba
   }, factura.importe_total ?? 0)
 }
 
+// ¿La venta tiene una factura que todavía no se anuló con notas de crédito? Se consulta a la base
+// porque la pantalla puede no tener cargados los comprobantes de esa venta
+export async function ventaTieneFacturaVigente(saleId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('fiscal_comprobantes')
+    .select(COLUMNAS_COMPROBANTE)
+    .eq('sale_id', saleId)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  const comprobantes = (data || []) as FiscalComprobante[]
+  const factura = comprobantes.find(c => FACTURAS.includes(c.tipo_cbte) && aprobado(c))
+  if (!factura) return false
+  const notas = comprobantes.filter(c => c.original_comprobante_id === factura.id && aprobado(c))
+  return saldoDeFactura(factura, notas) > 0.05
+}
+
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string
 
 export async function callEdgeFunction(fnName: string, body: object) {

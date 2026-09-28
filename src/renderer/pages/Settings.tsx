@@ -4,6 +4,7 @@ import { useAuthStore } from '@/store/auth'
 import { useDollarStore } from '@/store/dollar'
 import { supabase } from '@/lib/supabase'
 import FiscalSetupSection from '@/components/FiscalSetupSection'
+import MiCuentaSection from '@/components/MiCuentaSection'
 
 export default function SettingsPage() {
   const { user, organization } = useAuthStore()
@@ -35,6 +36,7 @@ export default function SettingsPage() {
   const [logoUrl, setLogoUrl] = useState<string | null>(organization?.logo_url || null)
   const [uploadingLogo, setUploadingLogo] = useState(false)
   const [logoError, setLogoError] = useState<string | null>(null)
+  const [confirmDeleteLogo, setConfirmDeleteLogo] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -235,16 +237,32 @@ export default function SettingsPage() {
                     )}
                     {logoUrl ? 'Cambiar logo' : 'Subir logo'}
                   </button>
-                  {logoUrl && (
+                  {logoUrl && (confirmDeleteLogo ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-red-600 font-medium">¿Eliminar el logo?</span>
+                      <button
+                        onClick={() => { setConfirmDeleteLogo(false); handleDeleteLogo() }}
+                        className="px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium"
+                      >
+                        Sí
+                      </button>
+                      <button
+                        onClick={() => setConfirmDeleteLogo(false)}
+                        className="px-3 py-1.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium"
+                      >
+                        No
+                      </button>
+                    </div>
+                  ) : (
                     <button
-                      onClick={handleDeleteLogo}
+                      onClick={() => setConfirmDeleteLogo(true)}
                       disabled={uploadingLogo}
                       className="flex items-center gap-2 px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 disabled:opacity-50 transition text-sm font-medium"
                     >
                       <Trash2 className="w-4 h-4" />
                       Eliminar logo
                     </button>
-                  )}
+                  ))}
                 </div>
               </div>
               {logoError && (
@@ -393,49 +411,8 @@ export default function SettingsPage() {
       {/* Facturación Electrónica: la configura solo el dueño */}
       {user?.role === 'owner' && <FiscalSetupSection />}
 
-{/* Cuenta del usuario */}
-      <section className="bg-white rounded-xl border border-gray-200 p-6">
-        <div className="flex items-center gap-3 mb-5">
-          <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center text-lg">
-            👤
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">Mi Cuenta</h2>
-            <p className="text-sm text-gray-500">Datos de tu usuario</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
-            <div className="px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 text-sm">
-              {user?.full_name || '—'}
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-            <div className="px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 text-sm truncate">
-              {user?.email || '—'}
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Rol</label>
-            <div className="px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-gray-700 text-sm capitalize">
-              {user?.role || '—'}
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
-            <div className={`px-4 py-2.5 rounded-lg border text-sm font-medium ${
-              user?.is_active
-                ? 'bg-green-50 border-green-200 text-green-700'
-                : 'bg-red-50 border-red-200 text-red-700'
-            }`}>
-              {user?.is_active ? 'Activo' : 'Inactivo'}
-            </div>
-          </div>
-        </div>
-      </section>
+      {/* Cuenta del usuario */}
+      <MiCuentaSection />
     </div>
   )
 }

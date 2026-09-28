@@ -306,6 +306,7 @@ export default function ExtrasPage() {
   const [sheets, setSheets] = useState<BarcodeSheet[]>([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!organization) return
@@ -392,12 +393,31 @@ export default function ExtrasPage() {
                   >
                     <Download className="w-4 h-4" /> PDF
                   </button>
-                  <button
-                    onClick={() => deleteSheet(sheet.id)}
-                    className="p-1.5 text-gray-300 hover:text-red-400 hover:bg-red-50 rounded-lg transition"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  {confirmDeleteId === sheet.id ? (
+                    <span className="flex items-center gap-1.5">
+                      <span className="text-xs text-red-600 font-medium">¿Eliminar?</span>
+                      <button
+                        onClick={() => { deleteSheet(sheet.id); setConfirmDeleteId(null) }}
+                        className="px-2.5 py-1 bg-red-600 text-white text-xs rounded-lg hover:bg-red-700"
+                      >
+                        Sí
+                      </button>
+                      <button
+                        onClick={() => setConfirmDeleteId(null)}
+                        className="px-2.5 py-1 bg-gray-100 text-gray-700 text-xs rounded-lg hover:bg-gray-200"
+                      >
+                        No
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmDeleteId(sheet.id)}
+                      title="Eliminar hoja"
+                      className="p-1.5 text-gray-300 hover:text-red-400 hover:bg-red-50 rounded-lg transition"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               )
             })}

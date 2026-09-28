@@ -96,6 +96,15 @@ export async function touchOfflineSnapshot(email: string, snapshot: OfflineSnaps
   }
 }
 
+/** Borra el acceso sin conexión guardado para ese email (usuario desactivado, cuenta suspendida). Nunca lanza. */
+export async function clearOfflineCredentials(email: string): Promise<void> {
+  try {
+    await window.electron?.offlineAuth?.clear?.(email)
+  } catch (err) {
+    console.warn('No se pudo borrar el acceso offline:', err)
+  }
+}
+
 /** Valida email + contraseña contra los datos guardados localmente. Nunca lanza. */
 export async function verifyOfflineCredentials(email: string, password: string) {
   try {
