@@ -124,7 +124,15 @@ Deno.serve(async (req) => {
         punto_venta: Number(body.puntoVenta) || null,
         error: null,
       }
-      const alta = await iniciarPaso(sdkPara(ambienteNuevo), inicial, ambienteNuevo === "prod" ? "habilitar" : "certificado", clave, admin)
+      let alta: Alta
+      try {
+        alta = await iniciarPaso(sdkPara(ambienteNuevo), inicial, ambienteNuevo === "prod" ? "habilitar" : "certificado", clave, admin)
+      } catch (err) {
+        // Si habilitar el servicio no puede ni arrancar, se prueba directo con el certificado
+        if (ambienteNuevo !== "prod" || !(err instanceof AfipSdkError)) throw err
+        console.error("No arrancó la habilitación de certificados:", err.message)
+        alta = await iniciarPaso(sdkPara(ambienteNuevo), inicial, "certificado", clave, admin)
+      }
       const { error } = await admin.from("fiscal_onboarding").upsert({ ...alta, updated_at: new Date().toISOString() })
       if (error) throw error
       return jsonResponse({ ok: true, alta: resumen(alta) })
@@ -421,8 +429,9 @@ async function iniciarPaso(sdk: AfipSdk, alta: Alta, paso: Paso, clave: string, 
 
   let automatizacion
   if (paso === "habilitar") {
-    // Habilita "Administración de Certificados Digitales" para quien entra a ARCA
-    automatizacion = await iniciarAutomatizacion(sdk, "enable-cert-prod-admin", {
+    // Habilita "Administración de Certificados Digitales" para quien entra a ARCA. La automatización
+    // se llama "add-relation" (en la documentación figura como enable-cert-prod-admin)
+    automatizacion = await iniciarAutomatizacion(sdk, "add-relation", {
       ...login, service: "web://arfe_certificado", delegate_to: alta.usuario,
     })
   } else if (paso === "certificado") {
