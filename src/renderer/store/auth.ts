@@ -31,8 +31,17 @@ interface AuthState {
   /** Hay conexión de nuevo pero la sesión sigue siendo local: hace falta re-loguear */
   needsRelogin: boolean
 
+  /** Modo soporte de plataforma: un super admin viendo otra empresa, en solo lectura */
+  isSupport: boolean
+  /** Super admin autenticado que todavía no eligió a qué empresa entrar */
+  supportNeedsOrg: boolean
+  /** Empresas entre las que puede elegir el super admin (para el selector) */
+  supportEmpresas: { id: string; name: string }[]
+
   // Actions
   login: (email: string, password: string) => Promise<void>
+  /** Entra a una empresa en modo soporte (solo lectura). Queda registrado en el servidor. */
+  enterSupportOrg: (organizationId: string) => Promise<void>
   logout: () => Promise<void>
   checkAuth: () => Promise<void>
   setDeviceId: (id: string) => void
@@ -157,6 +166,50 @@ function offlineLoginError(reason: string | undefined, maxDays?: number): Error 
   }
 }
 
+/** Llama a la Edge Function "soporte" con la sesión actual del super admin */
+async function callSoporte(accion: string, extra: Record<string, unknown> = {}) {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('Sesión no válida')
+  const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/soporte`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${session.access_token}`,
+      apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string,
+    },
+    body: JSON.stringify({ accion, ...extra }),
+  })
+  const json: any = await res.json().catch(() => ({}))
+  if (!res.ok || !json.ok) throw new Error(json.error || 'La operación de soporte no está disponible')
+  return json
+}
+
+/**
+ * Perfil de una empresa vista en modo soporte (solo lectura). El "usuario" es sintético: la cuenta
+ * de soporte no pertenece a la organización, así que se arma un perfil de solo lectura para la app.
+ * Requiere haber llamado antes a soporte/"entrar" (que fija la empresa activa en el servidor).
+ */
+async function loadSupportProfile(authId: string, email: string, orgId: string) {
+  const { data: org, error: orgError } = await supabase.from('organizations').select('*').eq('id', orgId).single()
+  if (orgError) throw orgError
+
+  const { data: branchesData } = await supabase.from('branches').select('*').eq('organization_id', orgId).order('name')
+  const branches = (branchesData || []) as Branch[]
+  const selectedBranch = branches[0] ?? null
+
+  const user: User = {
+    id: `support:${authId}`,
+    auth_id: authId,
+    email,
+    full_name: 'Soporte',
+    organization_id: orgId,
+    branch_id: selectedBranch?.id ?? null,
+    role: 'employee',   // rol mínimo; además el acceso es de solo lectura por las policies
+    is_active: true,
+  }
+  return { user, organization: org as Organization, branch: selectedBranch, branches, selectedBranch }
+}
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   organization: null,
@@ -169,6 +222,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isOffline: false,
   lastOnlineAt: null,
   needsRelogin: false,
+  isSupport: false,
+  supportNeedsOrg: false,
+  supportEmpresas: [],
 
   setDeviceId: (id: string) => {
     set({ deviceId: id })
@@ -212,7 +268,27 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (authError) throw authError
 
       // 2. Cargar perfil (usuario, organización, sucursales)
-      const profile = await loadProfile(authData.user.id)
+      let profile
+      try {
+        profile = await loadProfile(authData.user.id)
+      } catch (perfilError) {
+        // La cuenta de soporte de plataforma no es usuario de ninguna empresa: si es super admin,
+        // se pide elegir a qué empresa entrar (solo lectura)
+        const estado = await callSoporte('estado').catch(() => null)
+        if (estado?.es_admin) {
+          const { empresas } = await callSoporte('empresas')
+          set({
+            isSupport: true,
+            supportNeedsOrg: true,
+            supportEmpresas: empresas,
+            isAuthenticated: false,
+            isLoading: false,
+            isOffline: false,
+          })
+          return
+        }
+        throw perfilError
+      }
 
       set({
         ...profile,
@@ -245,7 +321,33 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
+  enterSupportOrg: async (organizationId: string) => {
+    set({ isLoading: true })
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) throw new Error('Tu sesión venció. Volvé a iniciar sesión.')
+      // Fija la empresa activa en el servidor (y la registra) antes de leer sus datos
+      await callSoporte('entrar', { organizationId })
+      const profile = await loadSupportProfile(session.user.id, session.user.email || 'soporte', organizationId)
+      set({
+        ...profile,
+        isAuthenticated: true,
+        isSupport: true,
+        supportNeedsOrg: false,
+        isLoading: false,
+        isOffline: false,
+        needsRelogin: false,
+        lastOnlineAt: Math.floor(Date.now() / 1000),
+      })
+    } catch (error) {
+      set({ isLoading: false })
+      throw error
+    }
+  },
+
   logout: async () => {
+    // En modo soporte, avisar al servidor que se sale de la empresa (queda registrado)
+    if (get().isSupport) await callSoporte('salir').catch(() => {})
     try {
       const result = await withTimeout(supabase.auth.signOut(), 5000)
       // Sin conexión el servidor no puede invalidar el token: se borra la sesión local
@@ -265,6 +367,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       isAuthenticated: false,
       isOffline: false,
       needsRelogin: false,
+      isSupport: false,
+      supportNeedsOrg: false,
+      supportEmpresas: [],
     })
   },
 
@@ -327,6 +432,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           })
           return
         }
+      }
+
+      // Sesión de una cuenta de soporte de plataforma: pedir de nuevo a qué empresa entrar
+      const estado = await callSoporte('estado').catch(() => null)
+      if (estado?.es_admin) {
+        const empresas = await callSoporte('empresas').then(r => r.empresas).catch(() => [])
+        await callSoporte('salir').catch(() => {})
+        set({ isLoading: false, isAuthenticated: false, isSupport: true, supportNeedsOrg: true, supportEmpresas: empresas })
+        return
       }
 
       console.error('Check auth error:', error)

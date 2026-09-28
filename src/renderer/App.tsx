@@ -4,9 +4,10 @@ import { useAuthStore } from '@/store/auth'
 import { useNetworkStore } from '@/store/network'
 import Login from '@/pages/Login'
 import Dashboard from '@/pages/Dashboard'
+import { SupportBanner, SupportOrgPicker } from '@/components/SupportMode'
 
 function App() {
-  const { isAuthenticated, isLoading, checkAuth, setDeviceId } = useAuthStore()
+  const { isAuthenticated, isLoading, checkAuth, setDeviceId, isSupport, supportNeedsOrg } = useAuthStore()
   const [showChangelog, setShowChangelog] = useState(false)
   const [changelog, setChangelog] = useState('')
   const [currentVersion, setCurrentVersion] = useState<string | null>(null)
@@ -75,8 +76,19 @@ function App() {
             <p className="text-gray-600">Cargando...</p>
           </div>
         </div>
+      ) : isSupport && supportNeedsOrg ? (
+        <SupportOrgPicker />
       ) : isAuthenticated ? (
-        <Dashboard />
+        isSupport ? (
+          <div className="min-h-screen flex flex-col">
+            <SupportBanner />
+            <div className="flex-1 min-h-0">
+              <Dashboard />
+            </div>
+          </div>
+        ) : (
+          <Dashboard />
+        )
       ) : (
         <Login />
       )}
