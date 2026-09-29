@@ -191,17 +191,21 @@ export const usePOSStore = create<POSState>((set, get) => ({
     try {
       // 1. Crear registro de venta principal
       // Calcular montos según método
+      // Lo que queda REGISTRADO por método debe sumar el total de la venta, no lo que entregó el
+      // cliente: el vuelto se devuelve, no queda en la caja. Antes se guardaba el efectivo recibido
+      // (con el vuelto adentro) y eso inflaba el efectivo en caja.
       let cash_amount = 0, card_amount = 0, transfer_amount = 0
       if (paymentMethod === 'Efectivo') {
-        cash_amount = cashReceived
+        cash_amount = total
       } else if (paymentMethod === 'Tarjeta') {
         card_amount = cardReceived || total
       } else if (paymentMethod === 'Transferencia') {
         transfer_amount = transferReceived || total
       } else if (paymentMethod === 'Mixto') {
-        cash_amount = cashReceived
+        // Tarjeta y transferencia como se ingresaron; el efectivo completa el total (sin el vuelto)
         card_amount = cardReceived
         transfer_amount = transferReceived
+        cash_amount = Math.max(0, total - card_amount - transfer_amount)
       }
 
       const { data: sale, error: saleError } = await supabase
