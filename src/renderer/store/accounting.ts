@@ -286,7 +286,11 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
       const grossProfit = totalSalesRevenue - totalCOGS
       const grossMarginPct = totalSalesRevenue > 0 ? (grossProfit / totalSalesRevenue) * 100 : 0
 
-      const expenseMovements = extraMovements.filter(m => m.type === 'gasto')
+      // La compra de mercadería NO es un gasto del resultado: su costo ya se cuenta como "costo de
+      // lo vendido" (COGS) cuando la mercadería se vende. Si además se restara acá, el costo quedaría
+      // contado dos veces y el resultado daría pérdida de más. La compra sí sigue en el flujo de
+      // caja y en los saldos, porque ahí realmente salió la plata de la caja.
+      const expenseMovements = extraMovements.filter(m => m.type === 'gasto' && m.category !== 'mercaderia')
       const catMap = new Map<string, { total: number; count: number }>()
       expenseMovements.forEach(m => {
         const cat = m.category || 'otro'

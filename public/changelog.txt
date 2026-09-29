@@ -1,41 +1,4 @@
-Versión 1.2.4
+Versión 1.2.5
 
 Mejoras
-- Actualización de detalles ARCA.
-
-Versión 1.2.3
-
-Mejoras
-- Mejora de rendimiento.
-
-Versión 1.2.2
-
-Mejoras
-- Remitos: ahora llevan el precio de cada producto, el importe de cada línea y el total. Al hacer un remito desde una venta, los precios se completan solos; también se pueden cargar o cambiar a mano.
-
-Versión 1.2.1
-
-Novedades
-- Conectar con ARCA paso a paso: si la conexión automática no está disponible, la app te guía para hacer los trámites en la página de ARCA (con el nombre de cada pantalla y cada botón) y al final revisa que esté todo bien.
-- CAI de remitos paso a paso: si no se puede pedir automáticamente, la app te muestra cómo pedirlo en la página de ARCA y después lo cargás en "Ya tengo un CAI".
-
-Mejoras
-- Al cargar un CAI a mano, el número "desde" se completa solo.
-- Facturas: si ARCA tarda en responder, la app revisa si la factura igual quedó aprobada, así no sale repetida.
-
-Versión 1.2.0
-
-Novedades
-- Facturación electrónica ARCA: el dueño conecta el negocio desde Configuración con su CUIT y su clave fiscal. Después, cualquiera hace facturas A, B o C, notas de crédito y notas de débito desde el Historial de Ventas.
-- Remitos: nueva sección para hacer remitos X y remitos R (con CAI de ARCA), con su PDF para firmar.
-- Libro IVA Digital: en Contabilidad → Libro IVA descargás los archivos del mes para ARCA (responsables inscriptos).
-- Mi Cuenta: todos pueden cambiar su contraseña, y el dueño su nombre.
-- El dueño puede ponerle una contraseña nueva a un empleado que se la olvidó.
-
-Mejoras
-- Crear y eliminar usuarios funciona desde la aplicación.
-- Un usuario desactivado ya no puede entrar.
-- Se pide confirmación antes de borrar proveedores, hojas de etiquetas y el logo.
-- El descuento no puede ser mayor que el total.
-- La ganancia de los productos se calcula igual en todas las pantallas.
-- Nueva guía de uso.
+- Contabilidad y Reportes: corregimos cálculos para que el resultado y los ingresos reflejen lo realmente cobrado (antes la compra de mercadería se restaba dos veces y los reportes no descontaban las rebajas).

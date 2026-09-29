@@ -570,7 +570,8 @@ export const useReportsStore = create<ReportsState>((set) => ({
           branch_id,
           sale_id,
           sales (
-            status
+            status,
+            total
           ),
           products_branch!inner (
             id,
@@ -609,7 +610,23 @@ export const useReportsStore = create<ReportsState>((set) => ({
         return saleStatus !== 'voided'
       }) || []
 
-      const totalRevenue = sales?.reduce((sum, s) => sum + (s.quantity * s.price_at_movement), 0) || 0
+      // Reparto de descuentos: los movimientos guardan el precio de LISTA de cada línea, pero el
+      // total realmente cobrado (con el descuento de la venta) está en la venta. Se reparte ese
+      // total proporcional a cada línea, para que ingresos, ganancia y márgenes coincidan con lo
+      // cobrado (antes Reportes sumaba el precio de lista e inflaba todo por el descuento).
+      const brutoPorVenta = new Map<string, number>()
+      sales.forEach((s: any) => {
+        if (!s.sale_id) return
+        brutoPorVenta.set(s.sale_id, (brutoPorVenta.get(s.sale_id) || 0) + s.quantity * s.price_at_movement)
+      })
+      const ingresoLinea = (s: any): number => {
+        const bruto = s.sale_id ? brutoPorVenta.get(s.sale_id) : undefined
+        const neto = Number((s.sales as any)?.total)
+        const factor = (s.sale_id && bruto && bruto > 0 && Number.isFinite(neto)) ? neto / bruto : 1
+        return s.quantity * s.price_at_movement * factor
+      }
+
+      const totalRevenue = sales?.reduce((sum, s) => sum + ingresoLinea(s), 0) || 0
       const totalCost = sales?.reduce((sum, s) => sum + (s.quantity * s.cost_at_movement), 0) || 0
       const totalProfit = totalRevenue - totalCost
       const totalQuantitySold = sales?.reduce((sum, s) => sum + s.quantity, 0) || 0
@@ -639,10 +656,11 @@ export const useReportsStore = create<ReportsState>((set) => ({
         }
 
         const data = productSalesMap.get(productId)!
+        const ingreso = ingresoLinea(s)
         data.total_quantity_sold += s.quantity
-        data.total_revenue += s.quantity * s.price_at_movement
+        data.total_revenue += ingreso
         data.total_cost += s.quantity * s.cost_at_movement
-        data.total_profit += (s.quantity * s.price_at_movement) - (s.quantity * s.cost_at_movement)
+        data.total_profit += ingreso - (s.quantity * s.cost_at_movement)
         data.profit_margin = data.total_revenue > 0 ? (data.total_profit / data.total_revenue) * 100 : 0
       })
 
@@ -674,9 +692,10 @@ export const useReportsStore = create<ReportsState>((set) => ({
         }
 
         const data = periodMap.get(period)!
-        data.revenue += s.quantity * s.price_at_movement
+        const ingreso = ingresoLinea(s)
+        data.revenue += ingreso
         data.cost += s.quantity * s.cost_at_movement
-        data.profit += (s.quantity * s.price_at_movement) - (s.quantity * s.cost_at_movement)
+        data.profit += ingreso - (s.quantity * s.cost_at_movement)
         data.quantity_sold += s.quantity
       })
 
@@ -702,9 +721,10 @@ export const useReportsStore = create<ReportsState>((set) => ({
         }
 
         const data = branchRevenueMap.get(branchId)!
-        data.total_revenue += s.quantity * s.price_at_movement
+        const ingreso = ingresoLinea(s)
+        data.total_revenue += ingreso
         data.total_cost += s.quantity * s.cost_at_movement
-        data.total_profit += (s.quantity * s.price_at_movement) - (s.quantity * s.cost_at_movement)
+        data.total_profit += ingreso - (s.quantity * s.cost_at_movement)
         data.quantity_sold += s.quantity
       })
 
@@ -739,8 +759,9 @@ export const useReportsStore = create<ReportsState>((set) => ({
         }
 
         const data = categoryRevenueMap.get(categoryId)!
-        data.total_revenue += s.quantity * s.price_at_movement
-        data.total_profit += (s.quantity * s.price_at_movement) - (s.quantity * s.cost_at_movement)
+        const ingreso = ingresoLinea(s)
+        data.total_revenue += ingreso
+        data.total_profit += ingreso - (s.quantity * s.cost_at_movement)
         data.quantity_sold += s.quantity
       })
 

@@ -334,6 +334,7 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
               type="text" id="barcode" name="barcode"
               value={formData.barcode} onChange={handleChange}
               placeholder="7790123456789"
+              autoFocus={!initialBarcode}
               readOnly={!!initialBarcode}
               className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
                 initialBarcode ? 'border-green-300 bg-green-50 text-green-800 font-mono' : 'border-gray-300'
