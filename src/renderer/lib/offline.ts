@@ -1,12 +1,18 @@
 import type { User, Organization, Branch } from '@/lib/supabase'
+import { webCache, webOfflineAuth } from '@/lib/webStorage'
 
 /**
  * Utilidades para el modo offline.
  *
- * El sistema guarda en SQLite local (proceso principal de Electron):
+ * El sistema guarda en SQLite local (proceso principal de Electron), o en IndexedDB
+ * en la versión web (lib/webStorage.ts):
  *  - el perfil del usuario + hash de su contraseña, para poder ingresar sin internet
  *  - la última copia de los productos de la sucursal, para consultar precios sin internet
  */
+
+// En escritorio, lo que expone Electron; en el navegador, IndexedDB
+export const offlineAuthApi = () => window.electron ? window.electron.offlineAuth : webOfflineAuth
+const cacheApi = () => window.electron ? window.electron.cache : webCache
 
 export interface OfflineSnapshot {
   user: User
@@ -81,7 +87,7 @@ export async function saveOfflineCredentials(
   snapshot: OfflineSnapshot
 ): Promise<void> {
   try {
-    await window.electron?.offlineAuth?.save(email, password, snapshot)
+    await offlineAuthApi()?.save(email, password, snapshot)
   } catch (err) {
     console.warn('No se pudieron guardar las credenciales offline:', err)
   }
@@ -90,7 +96,7 @@ export async function saveOfflineCredentials(
 /** Refresca el perfil cacheado y la fecha del último acceso online. Nunca lanza. */
 export async function touchOfflineSnapshot(email: string, snapshot: OfflineSnapshot): Promise<void> {
   try {
-    await window.electron?.offlineAuth?.touch(email, snapshot)
+    await offlineAuthApi()?.touch(email, snapshot)
   } catch (err) {
     console.warn('No se pudo refrescar el perfil offline:', err)
   }
@@ -99,7 +105,7 @@ export async function touchOfflineSnapshot(email: string, snapshot: OfflineSnaps
 /** Borra el acceso sin conexión guardado para ese email (usuario desactivado, cuenta suspendida). Nunca lanza. */
 export async function clearOfflineCredentials(email: string): Promise<void> {
   try {
-    await window.electron?.offlineAuth?.clear?.(email)
+    await offlineAuthApi()?.clear?.(email)
   } catch (err) {
     console.warn('No se pudo borrar el acceso offline:', err)
   }
@@ -108,7 +114,7 @@ export async function clearOfflineCredentials(email: string): Promise<void> {
 /** Valida email + contraseña contra los datos guardados localmente. Nunca lanza. */
 export async function verifyOfflineCredentials(email: string, password: string) {
   try {
-    const result = await window.electron?.offlineAuth?.verify(email, password)
+    const result = await offlineAuthApi()?.verify(email, password)
     return result ?? { success: false as const, reason: 'no-cache' as const }
   } catch (err) {
     console.error('Error validando credenciales offline:', err)
@@ -119,7 +125,7 @@ export async function verifyOfflineCredentials(email: string, password: string) 
 /** Perfil cacheado sin validar contraseña (solo con sesión de Supabase válida). Nunca lanza. */
 export async function getOfflineSnapshot(email?: string) {
   try {
-    const result = await window.electron?.offlineAuth?.getSnapshot(email)
+    const result = await offlineAuthApi()?.getSnapshot(email)
     return result ?? { success: false as const, reason: 'no-cache' as const }
   } catch (err) {
     console.error('Error leyendo el perfil offline:', err)
@@ -132,7 +138,7 @@ export async function getOfflineSnapshot(email?: string) {
 // ------------------------------------------------------------
 
 export async function saveProductsCache(branchIds: string[], products: any[]): Promise<void> {
-  const cache = window.electron?.cache
+  const cache = cacheApi()
   if (!cache) return
 
   try {
@@ -145,7 +151,7 @@ export async function saveProductsCache(branchIds: string[], products: any[]): P
 export async function loadProductsCache(
   branchIds: string[]
 ): Promise<{ products: any[]; syncedAt: number | null }> {
-  const cache = window.electron?.cache
+  const cache = cacheApi()
   if (!cache) return { products: [], syncedAt: null }
 
   try {
@@ -164,7 +170,7 @@ export async function loadProductsCache(
 
 export async function saveMeta(key: string, value: any): Promise<void> {
   try {
-    await window.electron?.cache?.setMeta(key, value)
+    await cacheApi()?.setMeta(key, value)
   } catch (err) {
     console.warn(`No se pudo guardar meta "${key}":`, err)
   }
@@ -172,7 +178,7 @@ export async function saveMeta(key: string, value: any): Promise<void> {
 
 export async function loadMeta<T = any>(key: string): Promise<T | null> {
   try {
-    const result = await window.electron?.cache?.getMeta(key)
+    const result = await cacheApi()?.getMeta(key)
     return (result?.success ? (result.data as T) : null) ?? null
   } catch (err) {
     console.warn(`No se pudo leer meta "${key}":`, err)
