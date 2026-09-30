@@ -135,8 +135,37 @@ function createWindow() {
 // CICLO DE VIDA DE LA APP
 // ============================================================
 
+// En Mac la actualización reemplaza la app donde está instalada. Si se abre desde el .dmg o
+// desde Descargas (macOS la corre en una carpeta de solo lectura), la actualización se descarga
+// pero nunca se puede instalar y el cartel vuelve a salir en cada inicio.
+function ofrecerMoverAAplicaciones() {
+  if (process.platform !== 'darwin' || !app.isPackaged || app.isInApplicationsFolder()) return false;
+  const respuesta = dialog.showMessageBoxSync({
+    type: 'question',
+    message: 'BG Gestión tiene que estar en la carpeta Aplicaciones para poder actualizarse.',
+    detail: '¿La movemos ahora? La app se va a volver a abrir sola.',
+    buttons: ['Mover a Aplicaciones', 'Ahora no'],
+    defaultId: 0,
+    cancelId: 1,
+  });
+  if (respuesta !== 0) return false;
+  try {
+    // Si sale bien, la app se cierra y se vuelve a abrir desde Aplicaciones
+    return app.moveToApplicationsFolder();
+  } catch (err) {
+    console.error('No se pudo mover a Aplicaciones:', err);
+    dialog.showMessageBoxSync({
+      type: 'warning',
+      message: 'No pudimos mover la app a Aplicaciones.',
+      detail: 'Arrastrá BG Gestión a la carpeta Aplicaciones desde el Finder y abrila desde ahí.',
+    });
+    return false;
+  }
+}
+
 app.whenReady().then(() => {
   console.log('App ready');
+  if (ofrecerMoverAAplicaciones()) return;
   initDatabase();
   createWindow();
 
@@ -176,6 +205,22 @@ autoUpdater.on('update-available', () => {
 });
 
 
+// Sin esto un error al instalar (por ejemplo en Mac) pasaba sin aviso y el cartel de
+// "Actualización lista" volvía a salir en cada inicio.
+let instalandoActualizacion = false;
+autoUpdater.on('error', (err) => {
+  console.error('Error de actualización:', err);
+  if (!instalandoActualizacion || !mainWindow) return;
+  instalandoActualizacion = false;
+  dialog.showMessageBox(mainWindow, {
+    type: 'warning',
+    message: 'No se pudo instalar la actualización.',
+    detail: (process.platform === 'darwin'
+      ? 'Descargá la última versión desde la página de BG Gestión y arrastrala a la carpeta Aplicaciones, reemplazando la anterior.\n\n'
+      : 'Descargá e instalá la última versión desde la página de BG Gestión.\n\n') + String(err && err.message || err),
+  });
+});
+
 autoUpdater.on('update-downloaded', () => {
   console.log('Actualización descargada (update-downloaded)');
   if (mainWindow) {
@@ -188,6 +233,7 @@ autoUpdater.on('update-downloaded', () => {
     }).then(result => {
       if (result.response === 0) {
         console.log('Usuario eligió reiniciar para instalar actualización');
+        instalandoActualizacion = true;
         autoUpdater.quitAndInstall();
       } else {
         console.log('Usuario eligió actualizar después');

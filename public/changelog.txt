@@ -1,3 +1,9 @@
+Versión 1.3.3
+
+Mejoras
+- Mac: si la app no está en la carpeta Aplicaciones, ofrece moverla ahí. Abierta desde el instalador o desde Descargas, las actualizaciones se descargaban pero no se podían instalar.
+- Si una actualización no se puede instalar, ahora avisa con un mensaje en lugar de volver a mostrar el cartel de "Actualización lista".
+
 Versión 1.3.2
 
 Mejoras
