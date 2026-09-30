@@ -1,3 +1,8 @@
+Versión 1.3.4
+
+Mejoras
+- Mac: la app tiene que estar en la carpeta Aplicaciones para abrirse. Si se abre desde el instalador o desde Descargas, ofrece moverla (o salir), porque desde ahí las actualizaciones no se pueden instalar.
+
 Versión 1.3.3
 
 Mejoras
