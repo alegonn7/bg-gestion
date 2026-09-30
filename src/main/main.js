@@ -138,34 +138,54 @@ function createWindow() {
 // En Mac la actualización reemplaza la app donde está instalada. Si se abre desde el .dmg o
 // desde Descargas (macOS la corre en una carpeta de solo lectura), la actualización se descarga
 // pero nunca se puede instalar y el cartel vuelve a salir en cada inicio.
-function ofrecerMoverAAplicaciones() {
+// Obligatorio: fuera de Aplicaciones la app no arranca. Devuelve true si la app se va a cerrar
+// (se movió y se reabre desde Aplicaciones, o el usuario eligió salir).
+let cerrandoPorUbicacion = false;
+function exigirCarpetaAplicaciones() {
   if (process.platform !== 'darwin' || !app.isPackaged || app.isInApplicationsFolder()) return false;
   const respuesta = dialog.showMessageBoxSync({
-    type: 'question',
-    message: 'BG Gestión tiene que estar en la carpeta Aplicaciones para poder actualizarse.',
-    detail: '¿La movemos ahora? La app se va a volver a abrir sola.',
-    buttons: ['Mover a Aplicaciones', 'Ahora no'],
+    type: 'warning',
+    message: 'BG Gestión tiene que estar en la carpeta Aplicaciones.',
+    detail: 'Abierta desde el instalador o desde Descargas no se puede actualizar. La movemos ahora y se vuelve a abrir sola; tus datos no se tocan.',
+    buttons: ['Mover a Aplicaciones', 'Salir'],
     defaultId: 0,
     cancelId: 1,
   });
-  if (respuesta !== 0) return false;
-  try {
-    // Si sale bien, la app se cierra y se vuelve a abrir desde Aplicaciones
-    return app.moveToApplicationsFolder();
-  } catch (err) {
-    console.error('No se pudo mover a Aplicaciones:', err);
-    dialog.showMessageBoxSync({
-      type: 'warning',
-      message: 'No pudimos mover la app a Aplicaciones.',
-      detail: 'Arrastrá BG Gestión a la carpeta Aplicaciones desde el Finder y abrila desde ahí.',
-    });
-    return false;
+  if (respuesta === 0) {
+    try {
+      // Si ya hay una BG Gestión en Aplicaciones, se reemplaza por esta
+      const movida = app.moveToApplicationsFolder({
+        conflictHandler: (tipo) => {
+          if (tipo === 'existsAndRunning') {
+            dialog.showMessageBoxSync({
+              type: 'warning',
+              message: 'Hay otra BG Gestión abierta desde Aplicaciones.',
+              detail: 'Cerrala y volvé a abrir la app.',
+            });
+            return false;
+          }
+          return true;
+        },
+      });
+      // Si sale bien, la app se cierra y se vuelve a abrir desde Aplicaciones
+      if (movida) { cerrandoPorUbicacion = true; return true; }
+    } catch (err) {
+      console.error('No se pudo mover a Aplicaciones:', err);
+      dialog.showMessageBoxSync({
+        type: 'warning',
+        message: 'No pudimos mover la app a Aplicaciones.',
+        detail: 'Arrastrá BG Gestión a la carpeta Aplicaciones desde el Finder y abrila desde ahí.',
+      });
+    }
   }
+  cerrandoPorUbicacion = true;
+  app.quit();
+  return true;
 }
 
 app.whenReady().then(() => {
   console.log('App ready');
-  if (ofrecerMoverAAplicaciones()) return;
+  if (exigirCarpetaAplicaciones()) return;
   initDatabase();
   createWindow();
 
@@ -181,6 +201,7 @@ app.whenReady().then(() => {
 });
 
 app.on('activate', () => {
+  if (cerrandoPorUbicacion) return;
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }
