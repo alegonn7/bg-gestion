@@ -190,9 +190,21 @@ export const usePOSStore = create<POSState>((set, get) => ({
       return { success: false, error: 'Usuario no autenticado' }
     }
 
-    const subtotal = getSubtotal()
-    const discountAmount = getDiscountAmount()
-    const total = getTotal()
+    // Modo "US$ Dólar": la venta se muestra en dólares, pero lo que se GUARDA (contabilidad, caja,
+    // reportes) se convierte a pesos al blue — es lo que representa. Así no se mezclan monedas.
+    // En 'ars' y 'usd_to_ars' los importes ya vienen en pesos, así que el factor es 1.
+    const isUsd = priceMode === 'usd'
+    const rate = (isUsd ? getEffectiveBlueRate() : 1) ?? 0
+    if (isUsd && rate <= 0) {
+      return { success: false, error: 'No hay cotización del dólar cargada. Configurala antes de vender en dólares.' }
+    }
+    const toArs = (n: number) => Math.round((n * rate) * 100) / 100
+
+    const subtotal = toArs(getSubtotal())
+    const discountAmount = toArs(getDiscountAmount())
+    const total = toArs(getTotal())
+    const cardArs = toArs(cardReceived)
+    const transferArs = toArs(transferReceived)
 
     // Montos por método. El vuelto se devuelve, no queda en la caja: lo registrado por método
     // suma el total, no lo que entregó el cliente.
@@ -200,16 +212,16 @@ export const usePOSStore = create<POSState>((set, get) => ({
     if (paymentMethod === 'Efectivo') {
       cash_amount = total
     } else if (paymentMethod === 'Transferencia') {
-      transfer_amount = transferReceived || total
+      transfer_amount = transferArs || total
     } else if (paymentMethod === 'Mixto') {
-      card_amount = cardReceived
-      transfer_amount = transferReceived
+      card_amount = cardArs
+      transfer_amount = transferArs
       cash_amount = Math.max(0, total - card_amount - transfer_amount)
     } else {
       // Cualquier pago con tarjeta: 'Tarjeta', 'Débito' o 'Crédito'. Antes solo se contemplaba
       // 'Tarjeta', así que las ventas con Débito/Crédito quedaban con card_amount = 0 y no
       // figuraban en la cuenta "Tarjeta" ni en el flujo por método.
-      card_amount = cardReceived || total
+      card_amount = cardArs || total
     }
 
     // Un id propio por venta. Si esta llamada se cuelga (sin internet) y hay que reintentar, se
@@ -220,9 +232,9 @@ export const usePOSStore = create<POSState>((set, get) => ({
     const saleItems = items.map(item => ({
       product_branch_id: item.product.id,
       quantity: item.quantity,
-      price: getEffectivePrice(item.product, priceMode),
+      price: toArs(getEffectivePrice(item.product, priceMode)),
       cost: item.product.price_cost,
-      subtotal: item.subtotal,
+      subtotal: toArs(item.subtotal),
     }))
 
     set({ isProcessing: true, error: null, pendingSaleId: clientSaleId })
@@ -242,7 +254,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
           p_card_amount: card_amount,
           p_transfer_amount: transfer_amount,
           p_transfer_account_id: transferAccount && transferAccount.id !== 'generica' ? transferAccount.id : null,
-          p_price_mode: priceMode,
+          p_price_mode: isUsd ? `usd (blue $${rate})` : priceMode,
           p_items: saleItems,
         })),
         SALE_TIMEOUT_MS
