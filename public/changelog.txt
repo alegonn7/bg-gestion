@@ -1,4 +1,6 @@
-Versión 1.2.5
+Versión 1.2.6
 
 Mejoras
-- Contabilidad y Reportes: corregimos cálculos para que el resultado y los ingresos reflejen lo realmente cobrado (antes la compra de mercadería se restaba dos veces y los reportes no descontaban las rebajas).
+- Ventas más seguras: la venta se registra en un solo paso. Si se corta internet al cobrar, ya no queda a medias, y si hay que reintentar no se duplica.
+- Caja: en ventas en efectivo, el vuelto ya no se cuenta como plata en la caja (evita faltantes falsos en el arqueo).
+- Contabilidad: las ventas con débito y crédito ahora suman en la cuenta "Tarjeta", y las ventas de la tienda online ya no cuentan el costo de envío como ingreso.

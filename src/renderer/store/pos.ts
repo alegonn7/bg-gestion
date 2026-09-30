@@ -2,6 +2,11 @@ import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from './auth'
 import { useDollarStore } from './dollar'
+import { withTimeout } from '@/lib/offline'
+
+// Si el servidor no responde en este tiempo (típico sin internet), cortamos y avisamos en vez de
+// dejar el "Cobrando..." colgado para siempre.
+const SALE_TIMEOUT_MS = 15000
 
 // Devuelve el blueRate efectivo según modo manual/auto
 function getEffectiveBlueRate() {
@@ -55,6 +60,8 @@ interface POSState {
   priceMode: PriceMode
   isProcessing: boolean
   error: string | null
+  /** Id propio de la venta en curso. Se reutiliza si hay que reintentar, para no duplicar. */
+  pendingSaleId: string | null
 
   addToCart: (product: Product, quantity?: number) => boolean
   removeFromCart: (productId: string) => void
@@ -84,6 +91,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
   priceMode: 'ars',
   isProcessing: false,
   error: null,
+  pendingSaleId: null,
 
   /**
    * Agrega un producto al carrito solo si hay stock suficiente.
@@ -137,7 +145,7 @@ export const usePOSStore = create<POSState>((set, get) => ({
   },
 
   clearCart: () => {
-    set({ items: [], discount: 0, discountType: 'amount', error: null })
+    set({ items: [], discount: 0, discountType: 'amount', error: null, pendingSaleId: null })
   },
 
   setDiscount: (value, type) => {
@@ -186,117 +194,78 @@ export const usePOSStore = create<POSState>((set, get) => ({
     const discountAmount = getDiscountAmount()
     const total = getTotal()
 
-    set({ isProcessing: true, error: null })
+    // Montos por método. El vuelto se devuelve, no queda en la caja: lo registrado por método
+    // suma el total, no lo que entregó el cliente.
+    let cash_amount = 0, card_amount = 0, transfer_amount = 0
+    if (paymentMethod === 'Efectivo') {
+      cash_amount = total
+    } else if (paymentMethod === 'Transferencia') {
+      transfer_amount = transferReceived || total
+    } else if (paymentMethod === 'Mixto') {
+      card_amount = cardReceived
+      transfer_amount = transferReceived
+      cash_amount = Math.max(0, total - card_amount - transfer_amount)
+    } else {
+      // Cualquier pago con tarjeta: 'Tarjeta', 'Débito' o 'Crédito'. Antes solo se contemplaba
+      // 'Tarjeta', así que las ventas con Débito/Crédito quedaban con card_amount = 0 y no
+      // figuraban en la cuenta "Tarjeta" ni en el flujo por método.
+      card_amount = cardReceived || total
+    }
+
+    // Un id propio por venta. Si esta llamada se cuelga (sin internet) y hay que reintentar, se
+    // reutiliza el mismo id: el servidor detecta el duplicado y devuelve la venta ya hecha en vez
+    // de crear otra. Solo se limpia cuando la venta se confirma bien.
+    const clientSaleId = get().pendingSaleId ?? crypto.randomUUID()
+
+    const saleItems = items.map(item => ({
+      product_branch_id: item.product.id,
+      quantity: item.quantity,
+      price: getEffectivePrice(item.product, priceMode),
+      cost: item.product.price_cost,
+      subtotal: item.subtotal,
+    }))
+
+    set({ isProcessing: true, error: null, pendingSaleId: clientSaleId })
 
     try {
-      // 1. Crear registro de venta principal
-      // Calcular montos según método
-      // Lo que queda REGISTRADO por método debe sumar el total de la venta, no lo que entregó el
-      // cliente: el vuelto se devuelve, no queda en la caja. Antes se guardaba el efectivo recibido
-      // (con el vuelto adentro) y eso inflaba el efectivo en caja.
-      let cash_amount = 0, card_amount = 0, transfer_amount = 0
-      if (paymentMethod === 'Efectivo') {
-        cash_amount = total
-      } else if (paymentMethod === 'Tarjeta') {
-        card_amount = cardReceived || total
-      } else if (paymentMethod === 'Transferencia') {
-        transfer_amount = transferReceived || total
-      } else if (paymentMethod === 'Mixto') {
-        // Tarjeta y transferencia como se ingresaron; el efectivo completa el total (sin el vuelto)
-        card_amount = cardReceived
-        transfer_amount = transferReceived
-        cash_amount = Math.max(0, total - card_amount - transfer_amount)
+      // Toda la venta (cabecera + ítems + descuento de stock + movimientos) en una sola operación
+      // atómica del servidor: o queda todo o no queda nada. Con timeout para no colgar la caja.
+      const response = await withTimeout(
+        Promise.resolve(supabase.rpc('process_pos_sale', {
+          p_client_sale_id: clientSaleId,
+          p_branch_id: items[0].product.branch_id,
+          p_total: total,
+          p_subtotal: subtotal,
+          p_discount: discountAmount,
+          p_payment_method: paymentMethod,
+          p_cash_amount: cash_amount,
+          p_card_amount: card_amount,
+          p_transfer_amount: transfer_amount,
+          p_transfer_account_id: transferAccount && transferAccount.id !== 'generica' ? transferAccount.id : null,
+          p_price_mode: priceMode,
+          p_items: saleItems,
+        })),
+        SALE_TIMEOUT_MS
+      )
+
+      if (response === null) {
+        // Se agotó el tiempo: no sabemos si el servidor la registró. Conservamos pendingSaleId para
+        // que un reintento use el mismo id y no duplique.
+        set({ isProcessing: false, error: 'timeout' })
+        return { success: false, error: 'Sin conexión: no pudimos confirmar la venta. Revisá tu internet y volvé a cobrar — no se va a duplicar.' }
       }
 
-      const { data: sale, error: saleError } = await supabase
-        .from('sales')
-        .insert({
-          branch_id: items[0].product.branch_id,
-          total: total,
-          subtotal: subtotal,
-          discount: discountAmount,
-          payment_method: paymentMethod,
-          cash_amount,
-          card_amount,
-          transfer_amount,
-          created_by: user.id,
-          transfer_account_id: transferAccount && transferAccount.id !== 'generica' ? transferAccount.id : null
-        })
-        .select()
-        .single()
+      const { data, error } = response as { data: any; error: any }
+      if (error) throw error
 
-      if (saleError) throw saleError
-
-      // 2. Crear items de venta y movimientos de inventario
-      for (const item of items) {
-        const { product, quantity } = item
-        const effectivePrice = getEffectivePrice(product, priceMode)
-        // Insertar item de venta con precio efectivo
-        const { error: itemError } = await supabase
-          .from('sale_items')
-          .insert({
-            sale_id: sale.id,
-            product_branch_id: product.id,
-            quantity: quantity,
-            price: effectivePrice,
-            cost: product.price_cost,
-            subtotal: item.subtotal
-          })
-
-        if (itemError) throw itemError
-
-        // Obtener stock actual
-        const { data: currentProduct } = await supabase
-          .from('products_branch')
-          .select('stock_quantity, branch_id')
-          .eq('id', product.id)
-          .single()
-
-        if (!currentProduct) {
-          throw new Error(`Producto ${product.product?.name || 'desconocido'} no encontrado`)
-        }
-
-        const newStock = currentProduct.stock_quantity - quantity
-
-        // Registrar movimiento de inventario vinculado a la venta
-        const { error: movementError } = await supabase
-          .from('inventory_movements')
-          .insert({
-            product_branch_id: product.id,
-            branch_id: currentProduct.branch_id,
-            movement_type: 'exit',
-            transaction_type: 'sale',
-            quantity: quantity,
-            stock_before: currentProduct.stock_quantity,
-            stock_after: newStock,
-            price_at_movement: effectivePrice,
-            cost_at_movement: product.price_cost,
-            sale_id: sale.id,
-            reason: `Venta #${sale.id.slice(0, 8)}`,
-            notes: `Método: ${paymentMethod} | Modo precio: ${priceMode}`,
-            created_by: user.id
-          })
-
-        if (movementError) throw movementError
-
-        // Actualizar stock
-        const { error: updateError } = await supabase
-          .from('products_branch')
-          .update({ 
-            stock_quantity: newStock,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', product.id)
-
-        if (updateError) throw updateError
-      }
-
+      const saleId = Array.isArray(data) ? data[0]?.id : data?.id
       clearCart()
-      set({ isProcessing: false })
-      return { success: true, saleId: sale.id }
+      set({ isProcessing: false, pendingSaleId: null })
+      return { success: true, saleId }
 
     } catch (error: any) {
       console.error('Error processing sale:', error)
+      // Conservamos pendingSaleId: si fue un corte de red, el reintento reutiliza el id y no duplica.
       set({ isProcessing: false, error: error.message })
       return { success: false, error: error.message }
     }
