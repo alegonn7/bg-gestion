@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { Download, Filter, Building2, DollarSign, FileText, XCircle, AlertTriangle, Truck } from 'lucide-react'
 import { useSalesStore } from '@/store/sales'
 import { fetchTransferAccountById } from '@/lib/fetch-transfer-account'
+import { inicioDelDia, finDelDia } from '@/lib/fechas'
 import { useBranchesStore } from '@/store/branches'
 import { useAuthStore } from '@/store/auth'
 import jsPDF from 'jspdf'
@@ -96,8 +97,8 @@ export default function SalesHistory() {
   const handleApplyFilters = () => {
     setFilters({
       branchId: selectedBranchId,
-      startDate: localStartDate ? new Date(localStartDate) : null,
-      endDate: localEndDate ? new Date(localEndDate) : null,
+      startDate: localStartDate ? inicioDelDia(localStartDate) : null,
+      endDate: localEndDate ? finDelDia(localEndDate) : null,
       searchQuery: localSearchQuery,
       userId: selectedUserId || undefined,
       showVoided: localShowVoided,
@@ -295,9 +296,8 @@ export default function SalesHistory() {
   const filteredSales = sales.filter((sale) => {
     // Filtrar por mes (estadísticas SIEMPRE mensuales)
     const saleDate = new Date(sale.created_at)
-    const start = new Date(localStartDate)
-    const end = new Date(localEndDate)
-    if (saleDate < start || saleDate > end) return false
+    if (localStartDate && saleDate < inicioDelDia(localStartDate)) return false
+    if (localEndDate && saleDate > finDelDia(localEndDate)) return false
     if (!searchQuery) return true
     const searchLower = searchQuery.toLowerCase()
     return (

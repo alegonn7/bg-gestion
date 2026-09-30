@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from './auth'
 import { TIPO_COMPROBANTE_LABELS, useFiscalStore } from './fiscal'
+import { fechaLocalISO } from '@/lib/fechas'
 
 export interface ProductStats {
   product_id: string
@@ -1047,8 +1048,8 @@ export const useReportsStore = create<ReportsState>((set) => ({
         .select('tipo_cbte, fecha_emision, importe_total, resultado')
         .in('resultado', ['A', 'O']) // 'O' = aprobado con observaciones: también es válido
         .eq('ambiente', ambiente)
-        .gte('fecha_emision', start.toISOString().split('T')[0])
-        .lte('fecha_emision', end.toISOString().split('T')[0])
+        .gte('fecha_emision', fechaLocalISO(start))
+        .lte('fecha_emision', fechaLocalISO(end))
         .order('fecha_emision', { ascending: true })
 
       if (error) throw error
