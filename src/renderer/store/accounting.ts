@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from './auth'
 import { useFiscalStore, type Ambiente } from './fiscal'
 import { generarLibroIvaVentas, type ComprobanteLibro } from '@/lib/libroIvaDigital'
+import { utcDB, diaLocalDB, fechaLocalISO } from '@/lib/fechas'
 
 // Los archivos viajan al proceso principal en base64; de a pedazos para no desbordar la pila
 function aBase64(bytes: Uint8Array): string {
@@ -270,7 +271,7 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
       }
 
       // ─── Compute P&L ──────────────────────────────────────────────
-      const salesArr = sales || []
+      const salesArr = (sales || []).map((s: any) => ({ ...s, created_at: utcDB(s.created_at) }))
       const totalSalesRevenue = salesArr.reduce((s: number, r: any) => s + (Number(r.total) || 0), 0)
       const salesCount = salesArr.length
       const avgTicket = salesCount > 0 ? totalSalesRevenue / salesCount : 0
@@ -326,14 +327,14 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
         return dayMap.get(date)!
       }
       salesArr.forEach((s: any) => {
-        const d = day(s.created_at.split('T')[0])
+        const d = day(diaLocalDB(s.created_at))
         d.cashSales += Number(s.cash_amount) || 0
         d.cardSales += Number(s.card_amount) || 0
         d.transferSales += Number(s.transfer_amount) || 0
         d.net += Number(s.total) || 0
       })
       extraMovements.forEach(m => {
-        const d = day(m.created_at.split('T')[0])
+        const d = day(diaLocalDB(m.created_at))
         if (m.type === 'ingreso') { d.otherIncome += Number(m.amount) || 0; d.net += Number(m.amount) || 0 }
         else { d.expenses += Number(m.amount) || 0; d.net -= Number(m.amount) || 0 }
       })
@@ -460,8 +461,8 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
         .eq('organization_id', organization.id)
         .in('resultado', ['A', 'O']) // 'O' = aprobado con observaciones: también es válido
         .eq('ambiente', ambiente)
-        .gte('fecha_emision', startDate.toISOString().split('T')[0])
-        .lte('fecha_emision', endDate.toISOString().split('T')[0])
+        .gte('fecha_emision', fechaLocalISO(startDate))
+        .lte('fecha_emision', fechaLocalISO(endDate))
         .order('fecha_emision', { ascending: true })
         .order('numero', { ascending: true })
 
@@ -597,7 +598,7 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
         const supplier = prod?.supplier
         return {
           id: m.id,
-          fecha: m.created_at,
+          fecha: utcDB(m.created_at),
           product_name: prod?.name || 'Sin nombre',
           barcode: pb?.barcode || null,
           supplier_name: supplier?.name || null,

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { Download, Filter, Building2, DollarSign, FileText, XCircle, AlertTriangle, Truck } from 'lucide-react'
 import { useSalesStore } from '@/store/sales'
 import { fetchTransferAccountById } from '@/lib/fetch-transfer-account'
-import { inicioDelDia, finDelDia } from '@/lib/fechas'
+import { inicioDelDia, finDelDia, fechaLocalISO } from '@/lib/fechas'
 import { useBranchesStore } from '@/store/branches'
 import { useAuthStore } from '@/store/auth'
 import jsPDF from 'jspdf'
@@ -42,8 +42,8 @@ export default function SalesHistory() {
   const today = new Date()
   const firstDay = new Date(today.getFullYear(), today.getMonth(), 1)
   const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0)
-  const [localStartDate, setLocalStartDate] = useState(firstDay.toISOString().slice(0, 10))
-  const [localEndDate, setLocalEndDate] = useState(lastDay.toISOString().slice(0, 10))
+  const [localStartDate, setLocalStartDate] = useState(fechaLocalISO(firstDay))
+  const [localEndDate, setLocalEndDate] = useState(fechaLocalISO(lastDay))
   const [localSearchQuery, setLocalSearchQuery] = useState('')
   const [voidConfirmId, setVoidConfirmId] = useState<string | null>(null)
   const [isVoiding, setIsVoiding] = useState(false)

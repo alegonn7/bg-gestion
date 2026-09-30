@@ -6,6 +6,7 @@ import { useUsersStore } from '@/store/users'
 import * as Papa from 'papaparse'
 import { useExtraMovementsStore } from '@/store/extra-movements'
 import { supabase } from '@/lib/supabase'
+import { utcDB, inicioDelDia, finDelDia } from '@/lib/fechas'
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from '@/store/accounting'
 import { useTransferAccounts } from '@/store/transfer-accounts'
 
@@ -386,7 +387,7 @@ function ExtraMovementsViewer({ cashRegisterId, from, to, branchId }: { cashRegi
       kind: 'sale',
       amount: s.total,
       description: `Venta (${s.payment_method})`,
-      created_at: s.created_at,
+      created_at: utcDB(s.created_at),
       user_name: (s.creator && s.creator.full_name) || '',
       subtype: ''
     }))
@@ -565,8 +566,8 @@ export default function CashRegisterPage() {
   const filteredRegisters = registers.filter(reg => {
     let match = true
     if (selectedUserId) match = match && (reg.opened_by === selectedUserId || reg.closed_by === selectedUserId)
-    if (startDate) match = match && reg.opened_at >= startDate
-    if (endDate) match = match && reg.opened_at <= endDate + 'T23:59:59'
+    if (startDate) match = match && new Date(reg.opened_at) >= inicioDelDia(startDate)
+    if (endDate) match = match && new Date(reg.opened_at) <= finDelDia(endDate)
     return match
   });
   const totalPages = Math.ceil(filteredRegisters.length / PAGE_SIZE);
