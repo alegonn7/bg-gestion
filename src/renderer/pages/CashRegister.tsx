@@ -520,18 +520,33 @@ export default function CashRegisterPage() {
     setErrorMsg('')
     const result = await closeRegister(amount, notesClose, retiro > 0 ? retiro : undefined)
     if (result.success) {
-      // Registrar el retiro a caja fuerte como ingreso al pool personal
+      // El retiro a caja fuerte MUEVE plata: sale del efectivo de la caja y entra a la caja fuerte.
+      // Se registran las dos patas para que no quede contada dos veces (antes solo se sumaba a la
+      // caja fuerte y nunca se descontaba del efectivo). Ambas van a nivel organización para no
+      // alterar el arqueo de esta caja (el retiro se hace después de contar).
       if (retiro > 0 && organization) {
-        await supabase.from('extra_movements').insert({
-          organization_id: organization.id,
-          cash_register_id: null,
-          type: 'ingreso',
-          amount: retiro,
-          description: `Retiro a caja fuerte al cierre`,
-          category: 'caja_fuerte',
-          source: 'personal',
-          created_by: user!.id,
-        })
+        await supabase.from('extra_movements').insert([
+          {
+            organization_id: organization.id,
+            cash_register_id: null,
+            type: 'gasto',
+            amount: retiro,
+            description: `Retiro a caja fuerte al cierre (salida de efectivo)`,
+            category: 'caja_fuerte',
+            source: 'cash',
+            created_by: user!.id,
+          },
+          {
+            organization_id: organization.id,
+            cash_register_id: null,
+            type: 'ingreso',
+            amount: retiro,
+            description: `Retiro a caja fuerte al cierre`,
+            category: 'caja_fuerte',
+            source: 'personal',
+            created_by: user!.id,
+          },
+        ])
       }
       setShowCloseModal(false)
       setClosingAmount('')

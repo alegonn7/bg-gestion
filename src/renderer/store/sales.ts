@@ -266,58 +266,16 @@ export const useSalesStore = create<SalesState>((set, get) => ({
         }
       }
 
-      // 1. Restaurar stock de cada producto vendido (SIN dejar registro de movimiento)
-      for (const item of sale.items) {
-        // Obtener stock actual
-        const { data: productBranch, error: fetchError } = await supabase
-          .from('products_branch')
-          .select('id, stock_quantity')
-          .eq('id', item.product_id)
-          .single()
+      // Anular = marcar como anulada y devolver el stock (con movimiento), todo en una sola
+      // operación atómica del servidor. La venta conserva su historia; contabilidad y reportes ya
+      // excluyen las 'voided'. Antes se borraba todo y no quedaba ningún rastro.
+      const { error: voidError } = await supabase.rpc('void_pos_sale', { p_sale_id: saleId })
+      if (voidError) throw voidError
 
-        if (fetchError || !productBranch) continue
-
-        const newStock = productBranch.stock_quantity + item.quantity
-
-        // Actualizar stock SOLO (sin movimiento de inventario)
-        const { error: stockError } = await supabase
-          .from('products_branch')
-          .update({ stock_quantity: newStock })
-          .eq('id', item.product_id)
-
-        if (stockError) {
-          console.error('Error restoring stock for product:', item.product_id, stockError)
-          continue
-        }
-      }
-
-      // 2. Borrar todos los inventory_movements de esta venta
-      const { error: deleteMovementsError } = await supabase
-        .from('inventory_movements')
-        .delete()
-        .eq('sale_id', saleId)
-
-      if (deleteMovementsError) throw deleteMovementsError
-
-      // 3. Borrar todos los sale_items de esta venta
-      const { error: deleteItemsError } = await supabase
-        .from('sale_items')
-        .delete()
-        .eq('sale_id', saleId)
-
-      if (deleteItemsError) throw deleteItemsError
-
-      // 4. Borrar la venta completamente
-      const { error: deleteSaleError } = await supabase
-        .from('sales')
-        .delete()
-        .eq('id', saleId)
-
-      if (deleteSaleError) throw deleteSaleError
-
-      // 5. Actualizar el estado local
+      // Actualizar el estado local: la venta queda marcada como anulada (no se saca de la lista)
       set({
-        sales: get().sales.filter(s => s.id !== saleId)
+        sales: get().sales.map(s => s.id === saleId ? { ...s, status: 'voided' } : s),
+        voidedCount: get().voidedCount + 1,
       })
 
       return { success: true }
