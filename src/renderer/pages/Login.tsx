@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { WifiOff } from 'lucide-react'
 import { useAuthStore } from '@/store/auth'
 import { useNetworkStore } from '@/store/network'
-import { formatSyncDate } from '@/lib/offline'
+import { formatSyncDate, offlineAuthApi } from '@/lib/offline'
 import logoImg from '@/assets/logo.png'
 
 export default function Login() {
@@ -24,7 +24,7 @@ export default function Login() {
   useEffect(() => {
     let cancelled = false
 
-    window.electron?.offlineAuth?.status().then((status) => {
+    offlineAuthApi()?.status().then((status) => {
       if (!cancelled) setOfflineStatus(status)
     }).catch(() => {})
 

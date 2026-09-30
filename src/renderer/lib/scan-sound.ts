@@ -1,6 +1,9 @@
 const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)()
 
 function playTone(frequency: number, duration: number, type: OscillatorType = 'sine') {
+  // En el navegador el audio arranca en pausa hasta que el usuario toca una tecla o hace clic
+  if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {})
+
   const oscillator = audioCtx.createOscillator()
   const gainNode = audioCtx.createGain()
 

@@ -9,8 +9,10 @@
     "dev": "concurrently \"npm run dev:vite\" \"npm run dev:electron\"",
     "dev:vite": "vite",
     "dev:electron": "wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .",
+    "dev:web": "vite",
     "build": "tsc && vite build && electron-builder",
     "build:win": "npm run build",
+    "build:web": "tsc && vite build --outDir ../../dist-web",
     "preview": "vite preview",
     "postinstall": "electron-builder install-app-deps"
   },

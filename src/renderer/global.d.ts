@@ -29,7 +29,8 @@ declare module '*.svg' {
 }
 
 interface Window {
-  electron: {
+  // Solo existe en la aplicación de escritorio; en la versión web es undefined
+  electron?: {
     db: {
       execute: (sql: string, params?: unknown[]) => Promise<{ success: boolean; result?: unknown; error?: string }>;
       query: (sql: string, params?: unknown[]) => Promise<{ success: boolean; data?: unknown[]; error?: string }>;
