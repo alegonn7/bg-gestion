@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from './auth'
 import { TIPO_COMPROBANTE_LABELS, useFiscalStore } from './fiscal'
-import { fechaLocalISO } from '@/lib/fechas'
+import { fechaLocalISO, fechaDB, diaLocalDB } from '@/lib/fechas'
 
 export interface ProductStats {
   product_id: string
@@ -489,7 +489,7 @@ export const useReportsStore = create<ReportsState>((set) => ({
       const summaryMap = new Map<string, MovementSummary>()
 
       movements?.forEach(m => {
-        const date = new Date(m.created_at).toISOString().split('T')[0]
+        const date = diaLocalDB(m.created_at)
 
         if (!summaryMap.has(date)) {
           summaryMap.set(date, {
@@ -677,10 +677,10 @@ export const useReportsStore = create<ReportsState>((set) => ({
       const periodMap = new Map<string, PeriodRevenue>()
 
       sales?.forEach(s => {
-        const date = new Date(s.created_at)
+        const date = fechaDB(s.created_at)
         const period = groupByMonth
           ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-          : date.toISOString().split('T')[0]
+          : fechaLocalISO(date)
 
         if (!periodMap.has(period)) {
           periodMap.set(period, {

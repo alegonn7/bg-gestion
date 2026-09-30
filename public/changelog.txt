@@ -1,3 +1,11 @@
+Versión 1.3.2
+
+Mejoras
+- Contabilidad: las ventas hechas después de las 21 hs ya no aparecen con fecha y hora del día siguiente, y el flujo de caja por día las cuenta en el día correcto. El Libro IVA de "Mes anterior" ya no suma facturas del primer día del mes actual.
+- Reportes: los gráficos por día y por mes ubican bien las ventas de la noche.
+- Caja: el filtro por fechas del historial de arqueos incluye las cajas abiertas a la noche, y las ventas de la caja muestran la hora correcta.
+- Historial de movimientos de un producto: la hora ahora es la correcta.
+
 Versión 1.3.1
 
 Mejoras

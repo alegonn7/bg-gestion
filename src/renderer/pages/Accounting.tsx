@@ -14,6 +14,7 @@ import { useAuthStore } from '@/store/auth'
 import { useFiscalStore } from '@/store/fiscal'
 import { useTransferAccounts } from '@/store/transfer-accounts'
 import * as Papa from 'papaparse'
+import { fechaLocalISO } from '@/lib/fechas'
 
 // Si la facturación está activa se lee de la configuración fiscal: la organización cargada al
 // iniciar sesión no se entera si se activó después
@@ -71,8 +72,8 @@ function DateRangePicker({
   start: Date, end: Date, onApply: (s: Date, e: Date) => void
 }) {
   const [preset, setPreset] = useState<DatePreset>('este-mes')
-  const [customStart, setCustomStart] = useState(start.toISOString().split('T')[0])
-  const [customEnd, setCustomEnd] = useState(end.toISOString().split('T')[0])
+  const [customStart, setCustomStart] = useState(fechaLocalISO(start))
+  const [customEnd, setCustomEnd] = useState(fechaLocalISO(end))
 
   const applyPreset = (p: DatePreset) => {
     setPreset(p)
@@ -261,7 +262,7 @@ function GastosTab() {
 
   const [form, setForm] = useState({
     type: 'gasto' as 'gasto' | 'ingreso',
-    fecha: new Date().toISOString().split('T')[0],
+    fecha: fechaLocalISO(new Date()),
     amount: '',
     description: '',
     category: '',
@@ -333,7 +334,7 @@ function GastosTab() {
         transfer_account_id: form.source === 'bank' ? form.transfer_account_id || null : null,
         fecha: new Date(form.fecha + 'T12:00:00').toISOString(),
       })
-      setForm({ type: 'gasto', fecha: new Date().toISOString().split('T')[0], amount: '', description: '', category: '', source: 'cash', transfer_account_id: '' })
+      setForm({ type: 'gasto', fecha: fechaLocalISO(new Date()), amount: '', description: '', category: '', source: 'cash', transfer_account_id: '' })
       setShowForm(false)
     } catch (e: any) {
       setFormError(e.message)
@@ -1179,7 +1180,7 @@ function LibroIVATab() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `libro_iva_ventas_${startDate.toISOString().split('T')[0]}_${endDate.toISOString().split('T')[0]}.csv`
+    a.download = `libro_iva_ventas_${fechaLocalISO(startDate)}_${fechaLocalISO(endDate)}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -1355,7 +1356,7 @@ function ComprasTab() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `compras_${startDate.toISOString().split('T')[0]}_${endDate.toISOString().split('T')[0]}.csv`
+    a.download = `compras_${fechaLocalISO(startDate)}_${fechaLocalISO(endDate)}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }

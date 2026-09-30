@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { X, TrendingUp, TrendingDown, Clock, User } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { fechaDB } from '@/lib/fechas'
 import type { Product } from '@/store/products'
 
 interface MovementHistoryModalProps {
@@ -150,7 +151,7 @@ export default function MovementHistoryModal({ product, isOpen, onClose }: Movem
                             <div className="flex items-center gap-2 mt-1 text-sm text-gray-500">
                               <Clock className="w-4 h-4" />
                               <span>
-                                {new Date(movement.created_at).toLocaleString('es-AR', {
+                                {fechaDB(movement.created_at).toLocaleString('es-AR', {
                                   day: '2-digit',
                                   month: '2-digit',
                                   year: 'numeric',
