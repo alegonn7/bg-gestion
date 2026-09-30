@@ -172,6 +172,11 @@ function printSheet(sheet: BarcodeSheet) {
 }
 
 async function exportSheetPDF(sheet: BarcodeSheet) {
+  // En el navegador no hay "Guardar como PDF" propio: se abre la impresión, que ofrece guardarlo como PDF
+  if (!window.electron) {
+    printSheet(sheet)
+    return
+  }
   const html = buildSheetHTML(sheet, false)
   const filename = `${sheet.name.replace(/[^a-zA-Z0-9áéíóúñ ]/g, '_')}.pdf`
   await window.electron.exportPdf(html, filename)
