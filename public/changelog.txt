@@ -1,6 +1,8 @@
-Versión 1.2.6
+Versión 1.3.0
 
 Mejoras
-- Ventas más seguras: la venta se registra en un solo paso. Si se corta internet al cobrar, ya no queda a medias, y si hay que reintentar no se duplica.
-- Caja: en ventas en efectivo, el vuelto ya no se cuenta como plata en la caja (evita faltantes falsos en el arqueo).
-- Contabilidad: las ventas con débito y crédito ahora suman en la cuenta "Tarjeta", y las ventas de la tienda online ya no cuentan el costo de envío como ingreso.
+- Punto de venta: la venta en dólares se cobra en dólares pero se guarda en pesos (convertida al blue), así la contabilidad no mezcla monedas.
+- Anular una venta ahora la marca como anulada y devuelve el stock, en vez de borrarla: queda el registro de qué se anuló, quién y cuándo.
+- Compra de mercadería: se guarda el costo realmente pagado y se actualiza el costo del producto; el gasto queda registrado aunque no haya una caja abierta.
+- Caja fuerte: al retirar plata al cierre, se descuenta del efectivo de la caja además de sumarla a la caja fuerte (antes quedaba contada dos veces).
+- Contabilidad: los movimientos internos (caja fuerte, ajustes de saldo) ya no cuentan como ingreso o gasto del resultado, y las ventas de la tienda online ahora se ven en "Cuentas".
