@@ -4,6 +4,7 @@ import { useReportsStore } from '@/store/reports'
 import { useCashRegisterStore } from '@/store/cash-register'
 import { useBranchesStore } from '@/store/branches'
 import { useAuthStore } from '@/store/auth'
+import { inicioDelDia, finDelDia } from '@/lib/fechas'
 import {
   BarChart,
   Bar,
@@ -252,8 +253,8 @@ export default function Reports() {
 
   const handleCustomDateApply = () => {
     if (startDate && endDate) {
-      const start = new Date(startDate)
-      const end = new Date(endDate)
+      const start = inicioDelDia(startDate)
+      const end = finDelDia(endDate)
       const branchId = selectedBranch === 'all' ? undefined : selectedBranch
       fetchSalesData(start, end, branchId)
       fetchPurchasesBySupplier(start, end, branchId)

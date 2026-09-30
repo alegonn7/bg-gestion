@@ -131,6 +131,11 @@ export default function InventoryMovementModal({ product, isOpen, onClose }: Inv
       const transactionType = option?.transactionType || 'adjustment'
       const stockAfter = movementType === 'entry' ? currentStock + qty : currentStock - qty
 
+      // En una compra, purchaseCost es el costo TOTAL pagado; el costo unitario real es total/cantidad.
+      // Ese es el costo que se guarda en el movimiento (antes se usaba el costo viejo del producto).
+      const purchaseTotal = isPurchase ? (parseFloat(purchaseCost) || 0) : 0
+      const purchaseUnitCost = isPurchase && qty > 0 && purchaseTotal > 0 ? purchaseTotal / qty : product.price_cost
+
       // 1. Registrar movimiento de inventario
       const { error: movementError } = await supabase
         .from('inventory_movements')
@@ -143,7 +148,7 @@ export default function InventoryMovementModal({ product, isOpen, onClose }: Inv
           stock_before: currentStock,
           stock_after: stockAfter,
           price_at_movement: product.price_sale,
-          cost_at_movement: product.price_cost,
+          cost_at_movement: purchaseUnitCost,
           reason: option?.label || selectedOption,
           notes: notes.trim() || null,
           created_by: user?.id,
@@ -151,44 +156,41 @@ export default function InventoryMovementModal({ product, isOpen, onClose }: Inv
 
       if (movementError) throw movementError
 
-      // 2. Actualizar stock del producto
-      await updateProduct(product.id, { stock_quantity: stockAfter })
+      // 2. Actualizar stock del producto. En una compra con costo, además se actualiza el costo del
+      // producto al último costo pagado (antes quedaba con el costo viejo).
+      await updateProduct(product.id, {
+        stock_quantity: stockAfter,
+        ...(isPurchase && purchaseTotal > 0 ? { price_cost: purchaseUnitCost } : {}),
+      })
 
       // 3. Registrar egreso de compra
-      if (isPurchase) {
-        const cost = parseFloat(purchaseCost) || 0
-        if (cost > 0) {
-          // Para caja actual requerimos registro abierto
-          if (paymentSource === 'cash' && !currentRegister) {
-            setError('⚠️ No hay caja abierta. El stock fue actualizado pero el egreso no se registró en caja.')
-            setLoading(false)
-            return
-          }
-
-          const sourceLabel = paymentSource === 'cash' ? 'caja' : paymentSource === 'bank' ? 'transferencia' : 'efectivo (fuera)'
-          const movData: any = {
-            type: 'gasto',
-            amount: cost,
-            description: `Compra: ${product.product?.name} x${qty} unid. — pago ${sourceLabel}`,
-            source: paymentSource,
-            category: 'mercaderia',
-            created_by: user?.id,
-            created_by_name: user?.full_name || user?.email || '',
-          }
-
-          if (currentRegister) {
-            movData.cash_register_id = currentRegister.id
-          } else {
-            movData.organization_id = organization?.id
-          }
-
-          if (paymentSource === 'bank' && transferAccountId) {
-            movData.transfer_account_id = transferAccountId
-          }
-
-          const { error: expenseError } = await supabase.from('extra_movements').insert(movData)
-          if (expenseError) throw expenseError
+      if (isPurchase && purchaseTotal > 0) {
+        const sourceLabel = paymentSource === 'cash' ? 'caja' : paymentSource === 'bank' ? 'transferencia' : 'efectivo (fuera)'
+        const movData: any = {
+          type: 'gasto',
+          amount: purchaseTotal,
+          description: `Compra: ${product.product?.name} x${qty} unid. — pago ${sourceLabel}`,
+          source: paymentSource,
+          category: 'mercaderia',
+          created_by: user?.id,
+          created_by_name: user?.full_name || user?.email || '',
         }
+
+        // Solo el pago en efectivo con una caja abierta afecta el arqueo de esa caja. En cualquier
+        // otro caso (banco, efectivo fuera, o caja sin registro abierto) queda como movimiento de la
+        // organización: antes, pagar "de caja" sin caja abierta descartaba el egreso por completo.
+        if (paymentSource === 'cash' && currentRegister) {
+          movData.cash_register_id = currentRegister.id
+        } else {
+          movData.organization_id = organization?.id
+        }
+
+        if (paymentSource === 'bank' && transferAccountId) {
+          movData.transfer_account_id = transferAccountId
+        }
+
+        const { error: expenseError } = await supabase.from('extra_movements').insert(movData)
+        if (expenseError) throw expenseError
       }
 
       // Si la salida lleva remito, se abre con el producto y la cantidad ya cargados
@@ -423,7 +425,7 @@ export default function InventoryMovementModal({ product, isOpen, onClose }: Inv
                 {paymentSource === 'cash' && !currentRegister && (
                   <div className="flex items-start gap-2 bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2">
                     <AlertCircle className="w-4 h-4 text-yellow-600 flex-shrink-0 mt-0.5" />
-                    <p className="text-yellow-700">No hay caja abierta. El stock se actualizará pero el egreso en caja no se registrará.</p>
+                    <p className="text-yellow-700">No hay caja abierta. El egreso igual queda registrado en contabilidad, pero no afecta ningún arqueo de caja.</p>
                   </div>
                 )}
                 {paymentSource === 'cash' && currentRegister && (

@@ -220,7 +220,7 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
       // 1. Sales
       const { data: sales = [] } = await supabase
         .from('sales')
-        .select('id, total, cash_amount, card_amount, transfer_amount, transfer_account_id, status, created_at')
+        .select('id, total, cash_amount, card_amount, transfer_amount, transfer_account_id, payment_method, status, created_at')
         .in('branch_id', branchIds)
         .gte('created_at', startISO)
         .lte('created_at', endISO)
@@ -275,7 +275,11 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
       const salesCount = salesArr.length
       const avgTicket = salesCount > 0 ? totalSalesRevenue / salesCount : 0
 
-      const otherIncomes = extraMovements.filter(m => m.type === 'ingreso')
+      // 'caja_fuerte' y 'ajuste_saldo' son movimientos internos de plata (mover efectivo a la caja
+      // fuerte, ajustar un saldo), no ingresos ni gastos reales: no deben entrar al resultado. Sí
+      // siguen en el flujo de caja y en los saldos de cuentas, que es donde corresponde.
+      const NO_RESULTADO = ['caja_fuerte', 'ajuste_saldo']
+      const otherIncomes = extraMovements.filter(m => m.type === 'ingreso' && !NO_RESULTADO.includes(m.category))
       const totalOtherIncome = otherIncomes.reduce((s, m) => s + (Number(m.amount) || 0), 0)
       const totalIncome = totalSalesRevenue + totalOtherIncome
 
@@ -290,7 +294,7 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
       // lo vendido" (COGS) cuando la mercadería se vende. Si además se restara acá, el costo quedaría
       // contado dos veces y el resultado daría pérdida de más. La compra sí sigue en el flujo de
       // caja y en los saldos, porque ahí realmente salió la plata de la caja.
-      const expenseMovements = extraMovements.filter(m => m.type === 'gasto' && m.category !== 'mercaderia')
+      const expenseMovements = extraMovements.filter(m => m.type === 'gasto' && m.category !== 'mercaderia' && !NO_RESULTADO.includes(m.category))
       const catMap = new Map<string, { total: number; count: number }>()
       expenseMovements.forEach(m => {
         const cat = m.category || 'otro'
@@ -348,6 +352,15 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
       const cardSales = salesArr.reduce((s: number, r: any) => s + (Number(r.card_amount) || 0), 0)
       bankMap.set('__card__', { account_id: '__card__', account_name: 'Tarjeta', salesIn: cardSales, incomesIn: 0, expensesOut: 0, net: 0 })
 
+      // Mercado Pago / Tienda online: las ventas online cobran por fuera de la caja (la plata queda
+      // en Mercado Pago). Antes no figuraban en ninguna cuenta; acá se ven por su total.
+      const onlineSales = salesArr
+        .filter((r: any) => r.payment_method === 'Online')
+        .reduce((s: number, r: any) => s + (Number(r.total) || 0), 0)
+      if (onlineSales > 0) {
+        bankMap.set('__online__', { account_id: '__online__', account_name: 'Mercado Pago (tienda online)', salesIn: onlineSales, incomesIn: 0, expensesOut: 0, net: 0 })
+      }
+
       // Efectivo fuera de caja (personal)
       const personalIngresos = extraMovements.filter(m => m.source === 'personal' && m.type === 'ingreso').reduce((s, m) => s + (Number(m.amount) || 0), 0)
       const personalGastos = extraMovements.filter(m => m.source === 'personal' && m.type === 'gasto').reduce((s, m) => s + (Number(m.amount) || 0), 0)
@@ -389,7 +402,7 @@ export const useAccountingStore = create<AccountingState>((set, get) => ({
       })
       bankMap.forEach(b => { b.net = b.salesIn + b.incomesIn - b.expensesOut })
 
-      const ACCOUNT_ORDER = ['__cash__', '__card__', '__personal__', '__other__']
+      const ACCOUNT_ORDER = ['__cash__', '__card__', '__online__', '__personal__', '__other__']
       const bankBalances = Array.from(bankMap.values())
         .filter(b => b.salesIn > 0 || b.incomesIn > 0 || b.expensesOut > 0)
         .sort((a, b) => {

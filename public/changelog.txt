@@ -1,4 +1,13 @@
-Versión 1.2.5
+Versión 1.3.1
 
 Mejoras
-- Contabilidad y Reportes: corregimos cálculos para que el resultado y los ingresos reflejen lo realmente cobrado (antes la compra de mercadería se restaba dos veces y los reportes no descontaban las rebajas).
+- Historial de ventas: ahora aparecen las ventas del último día del rango elegido (por ejemplo, las de hoy cuando el filtro termina hoy o es el último día del mes). En Reportes, el rango personalizado también incluye el último día completo.
+
+Versión 1.3.0
+
+Mejoras
+- Punto de venta: la venta en dólares se cobra en dólares pero se guarda en pesos (convertida al blue), así la contabilidad no mezcla monedas.
+- Anular una venta ahora la marca como anulada y devuelve el stock, en vez de borrarla: queda el registro de qué se anuló, quién y cuándo.
+- Compra de mercadería: se guarda el costo realmente pagado y se actualiza el costo del producto; el gasto queda registrado aunque no haya una caja abierta.
+- Caja fuerte: al retirar plata al cierre, se descuenta del efectivo de la caja además de sumarla a la caja fuerte (antes quedaba contada dos veces).
+- Contabilidad: los movimientos internos (caja fuerte, ajustes de saldo) ya no cuentan como ingreso o gasto del resultado, y las ventas de la tienda online ahora se ven en "Cuentas".
