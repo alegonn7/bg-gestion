@@ -404,12 +404,22 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
   deleteProduct: async (id) => {
     try {
       assertOnline()
-      const { error } = await supabase
+      const { user } = useAuthStore.getState()
+      if (!user) throw new Error('No user')
+
+      // Baja lógica: un borrado real falla si el producto ya tiene ventas (sale_items lo
+      // referencia) y además se llevaría puesto el historial de movimientos de stock.
+      // Los productos inactivos no aparecen ni en la app ni en bg-tienda.
+      const { data, error } = await supabase
         .from('products_branch')
-        .delete()
+        .update({ is_active: false, updated_by: user.id })
         .eq('id', id)
+        .select('id')
 
       if (error) throw error
+      if (!data || data.length === 0) {
+        throw new Error('No tenés permiso para eliminar este producto.')
+      }
 
       set(state => ({ products: state.products.filter(p => p.id !== id) }))
 
