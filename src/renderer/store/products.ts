@@ -14,6 +14,7 @@ export interface MasterProduct {
   description: string | null
   category_id: string | null
   supplier_id: string | null
+  images?: string[] | null // URLs en el bucket store-product-images (las mismas que muestra bg-tienda)
   is_active: boolean
   created_at: string
   updated_at: string
@@ -110,6 +111,7 @@ interface ProductsState {
     description?: string
     category_id?: string
     supplier_id?: string | null
+    images?: string[]
     price_cost: number
     price_sale: number
     price_cost_usd?: number | null
@@ -251,6 +253,7 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
             description: productData.description || null,
             category_id: productData.category_id || null,
             supplier_id: productData.supplier_id || null,
+            ...(productData.images ? { images: productData.images } : {}),
             created_by: user.id,
             updated_by: user.id,
           })
@@ -356,6 +359,7 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
         if (updates.product.description !== undefined) masterUpdates.description = updates.product.description
         if (updates.product.category_id !== undefined) masterUpdates.category_id = updates.product.category_id
         if (updates.product.supplier_id !== undefined) masterUpdates.supplier_id = updates.product.supplier_id
+        if (updates.product.images !== undefined) masterUpdates.images = updates.product.images
         
         if (Object.keys(masterUpdates).length > 0) {
           const { error: masterError } = await supabase

@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/auth'
 import { useDollarStore } from '@/store/dollar'
 import { gananciaSobreCosto } from '@/lib/ganancia'
+import ProductImagesField, { productImagesEnabled } from './ProductImagesField'
 
 interface EditProductModalProps {
   product: Product | null
@@ -31,6 +32,10 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
   // Proveedores
   const { suppliers, fetchSuppliers, isLoading: loadingSuppliers } = useSuppliersStore()
   const [selectedSupplier, setSelectedSupplier] = useState('')
+  // Imágenes de la tienda online (solo web)
+  const [images, setImages] = useState<string[]>([])
+  const [uploadingImages, setUploadingImages] = useState(false)
+  const showImages = productImagesEnabled()
   // Form state
   const [formData, setFormData] = useState({
     barcode: '',
@@ -67,6 +72,7 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
         expiration_date: product.expiration_date || '',
       })
       setSelectedSupplier(product.product?.supplier_id || '')
+      setImages(product.product?.images || [])
       setAlicuotaIva(product.alicuota_iva ?? 5)
       // Calcular margen ARS inicial
       if (product.price_cost > 0 && product.price_sale > 0) {
@@ -140,6 +146,7 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
           description: formData.description || null,
           category_id: formData.category_id || null,
           supplier_id: selectedSupplier || null,
+          ...(showImages ? { images } : {}),
         },
       }
 
@@ -360,6 +367,11 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
               </select>
             </div>
           </div>
+
+          {/* Imágenes (tienda online) */}
+          {showImages && (
+            <ProductImagesField images={images} onChange={setImages} onUploadingChange={setUploadingImages} />
+          )}
 
           {/* Precios */}
           <div>
@@ -609,7 +621,7 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
             <button
               type="submit"
               className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={loading}
+              disabled={loading || uploadingImages}
             >
               {loading ? 'Guardando...' : 'Guardar Cambios'}
             </button>
