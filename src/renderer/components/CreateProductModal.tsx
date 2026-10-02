@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/auth'
 import { useDollarStore } from '@/store/dollar'
 import { gananciaSobreCosto } from '@/lib/ganancia'
+import ProductImagesField, { productImagesEnabled } from './ProductImagesField'
 
 interface CreateProductModalProps {
   isOpen: boolean
@@ -38,7 +39,10 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
   const effectiveBlueRate = manualMode ? manualBlueRate : blueRate
   const { suppliers, fetchSuppliers, isLoading: loadingSuppliers } = useSuppliersStore()
   const [selectedSupplier, setSelectedSupplier] = useState('')
-  
+  const [images, setImages] = useState<string[]>([])
+  const [uploadingImages, setUploadingImages] = useState(false)
+  const showImages = productImagesEnabled()
+
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [categories, setCategories] = useState<Category[]>([])
@@ -67,12 +71,12 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
     if (isOpen && organization) {
       loadCategories()
       fetchBlueRate()
+      fetchSuppliers()
     }
   }, [isOpen, organization])
 
   useEffect(() => {
     if (isOpen && initialBarcode) {
-        fetchSuppliers()
       setFormData(prev => ({ ...prev, barcode: initialBarcode }))
     }
   }, [isOpen, initialBarcode])
@@ -126,6 +130,8 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
       setMarkupArs('')
       setMarkupUsd('')
       setAlicuotaIva(5)
+      setSelectedSupplier('')
+      setImages([])
       setError('')
     }
   }, [isOpen])
@@ -178,6 +184,8 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
         name: formData.name.trim(),
         description: formData.description.trim() || undefined,
         category_id: formData.category_id || undefined,
+        supplier_id: selectedSupplier || null,
+        ...(showImages ? { images } : {}),
         price_cost: priceCost,
         price_sale: priceSale,
         price_cost_usd: parseFloat(formData.price_cost_usd) || null,
@@ -370,16 +378,33 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
             />
           </div>
 
-          {/* Categoría */}
-          <div>
-            <label htmlFor="category_id" className="block text-sm font-medium text-gray-700 mb-2">Categoría (opcional)</label>
-            <select id="category_id" name="category_id" value={formData.category_id} onChange={handleChange}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-            >
-              <option value="">Sin categoría</option>
-              {categories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
-            </select>
+          {/* Categoría y Proveedor */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="category_id" className="block text-sm font-medium text-gray-700 mb-2">Categoría (opcional)</label>
+              <select id="category_id" name="category_id" value={formData.category_id} onChange={handleChange}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+              >
+                <option value="">Sin categoría</option>
+                {categories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="supplier_id" className="block text-sm font-medium text-gray-700 mb-2">Proveedor (opcional)</label>
+              <select id="supplier_id" name="supplier_id" value={selectedSupplier} onChange={e => setSelectedSupplier(e.target.value)}
+                disabled={loadingSuppliers}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+              >
+                <option value="">Sin proveedor</option>
+                {suppliers.map(sup => <option key={sup.id} value={sup.id}>{sup.name}</option>)}
+              </select>
+            </div>
           </div>
+
+          {/* Imágenes (tienda online) */}
+          {showImages && (
+            <ProductImagesField images={images} onChange={setImages} onUploadingChange={setUploadingImages} />
+          )}
 
           {/* Precios */}
           <div>
@@ -587,7 +612,7 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
               className="flex-1 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition">
               Cancelar
             </button>
-            <button type="submit" disabled={loading}
+            <button type="submit" disabled={loading || uploadingImages}
               className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition disabled:opacity-50 disabled:cursor-not-allowed">
               {loading ? 'Creando...' : 'Crear Producto'}
             </button>

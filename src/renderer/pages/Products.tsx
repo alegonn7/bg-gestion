@@ -40,7 +40,7 @@ export default function Products() {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [isCategoriesOpen, setIsCategoriesOpen] = useState(false)
   const [isBulkPriceOpen, setIsBulkPriceOpen] = useState(false)
-  const [deleteConfirm, setDeleteConfirm] = useState<{ product: Product; inputValue: string } | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<{ product: Product; inputValue: string; error?: string } | null>(null)
 
   // Duplicar producto
   const [duplicateData, setDuplicateData] = useState<any | null>(null)
@@ -144,9 +144,13 @@ export default function Products() {
   const handleDeleteConfirm = async () => {
     // ✅ nombre viene de product.product.name
     if (!deleteConfirm || deleteConfirm.inputValue !== getProductName(deleteConfirm.product)) return
-    await deleteProduct(deleteConfirm.product.id)
-    setDeleteConfirm(null)
-    setSelectedProduct(null)
+    try {
+      await deleteProduct(deleteConfirm.product.id)
+      setDeleteConfirm(null)
+      setSelectedProduct(null)
+    } catch (err: any) {
+      setDeleteConfirm(prev => prev ? { ...prev, error: err?.message || 'No se pudo eliminar el producto' } : null)
+    }
   }
 
   const handleCategoriesClose = () => {
@@ -629,6 +633,9 @@ export default function Products() {
               onChange={(e) => setDeleteConfirm(prev => prev ? { ...prev, inputValue: e.target.value } : null)}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 mb-4"
             />
+            {deleteConfirm.error && (
+              <p className="text-sm text-red-600 mb-4">{deleteConfirm.error}</p>
+            )}
             <div className="flex gap-3">
               <button
                 onClick={() => { setDeleteConfirm(null); setIsDetailOpen(true) }}

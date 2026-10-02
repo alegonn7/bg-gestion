@@ -14,6 +14,7 @@ export interface MasterProduct {
   description: string | null
   category_id: string | null
   supplier_id: string | null
+  images?: string[] | null // URLs en el bucket store-product-images (las mismas que muestra bg-tienda)
   is_active: boolean
   created_at: string
   updated_at: string
@@ -110,6 +111,7 @@ interface ProductsState {
     description?: string
     category_id?: string
     supplier_id?: string | null
+    images?: string[]
     price_cost: number
     price_sale: number
     price_cost_usd?: number | null
@@ -251,6 +253,7 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
             description: productData.description || null,
             category_id: productData.category_id || null,
             supplier_id: productData.supplier_id || null,
+            ...(productData.images ? { images: productData.images } : {}),
             created_by: user.id,
             updated_by: user.id,
           })
@@ -356,6 +359,7 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
         if (updates.product.description !== undefined) masterUpdates.description = updates.product.description
         if (updates.product.category_id !== undefined) masterUpdates.category_id = updates.product.category_id
         if (updates.product.supplier_id !== undefined) masterUpdates.supplier_id = updates.product.supplier_id
+        if (updates.product.images !== undefined) masterUpdates.images = updates.product.images
         
         if (Object.keys(masterUpdates).length > 0) {
           const { error: masterError } = await supabase
@@ -400,12 +404,22 @@ export const useProductsStore = create<ProductsState>((set, get) => ({
   deleteProduct: async (id) => {
     try {
       assertOnline()
-      const { error } = await supabase
+      const { user } = useAuthStore.getState()
+      if (!user) throw new Error('No user')
+
+      // Baja lógica: un borrado real falla si el producto ya tiene ventas (sale_items lo
+      // referencia) y además se llevaría puesto el historial de movimientos de stock.
+      // Los productos inactivos no aparecen ni en la app ni en bg-tienda.
+      const { data, error } = await supabase
         .from('products_branch')
-        .delete()
+        .update({ is_active: false, updated_by: user.id })
         .eq('id', id)
+        .select('id')
 
       if (error) throw error
+      if (!data || data.length === 0) {
+        throw new Error('No tenés permiso para eliminar este producto.')
+      }
 
       set(state => ({ products: state.products.filter(p => p.id !== id) }))
 
