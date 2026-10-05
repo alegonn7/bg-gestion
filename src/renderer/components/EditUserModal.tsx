@@ -116,14 +116,14 @@ export default function EditUserModal({ user, isOpen, onClose, onSuccess }: Edit
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-lg max-w-lg w-full max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+        <div className="flex items-center justify-between p-4 md:p-6 border-b border-gray-200">
           <h2 className="text-xl font-bold text-gray-900">Editar Usuario</h2>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition">
             <X className="w-6 h-6" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-4 md:p-6 space-y-4">
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
               {error}

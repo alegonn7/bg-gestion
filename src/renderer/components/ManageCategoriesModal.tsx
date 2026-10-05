@@ -126,7 +126,7 @@ export default function ManageCategoriesModal({ isOpen, onClose }: ManageCategor
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+        <div className="flex items-center justify-between p-4 md:p-6 border-b border-gray-200">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
               <Tag className="w-5 h-5 text-purple-600" />
@@ -149,7 +149,7 @@ export default function ManageCategoriesModal({ isOpen, onClose }: ManageCategor
         </div>
 
         {/* Content */}
-        <div className="p-6">
+        <div className="p-4 md:p-6">
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm mb-4">
               {error}
@@ -329,7 +329,7 @@ export default function ManageCategoriesModal({ isOpen, onClose }: ManageCategor
 
         {/* Footer */}
         {mode === 'list' && (
-          <div className="p-6 border-t border-gray-200 bg-gray-50">
+          <div className="p-4 md:p-6 border-t border-gray-200 bg-gray-50">
             <button
               onClick={onClose}
               className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition"

@@ -367,8 +367,8 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, c
         const saleChange = lastSaleData?.paymentMethod === 'cash' ? Math.max(0, saleCashAmount - saleTotal) : 0
 
         return (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                <div className="bg-white rounded-lg p-8 max-w-md w-full mx-4">
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-lg p-5 md:p-8 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
                     <div className="text-center">
                         <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-green-100 mb-4">
                             <svg className="h-6 w-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -406,7 +406,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, c
     }
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b">
@@ -420,7 +420,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, c
                 </div>
 
                 {/* Content */}
-                <div className="p-6 space-y-6">
+                <div className="p-4 md:p-6 space-y-6">
                     {/* Summary */}
                     <div className="bg-gray-50 rounded-lg p-4 space-y-2">
                         {priceMode !== 'ars' && (
@@ -455,7 +455,7 @@ export default function CheckoutModal({ isOpen, onClose, cartItems, cartTotal, c
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                             Método de Pago
                         </label>
-                        <div className="grid grid-cols-5 gap-2">
+                        <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
                             <button
                                 onClick={() => setPaymentMethod('cash')}
                                 className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-colors ${paymentMethod === 'cash'

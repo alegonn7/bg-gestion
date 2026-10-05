@@ -288,7 +288,7 @@ export default function Reports() {
     switch (selectedChart) {
       case 'revenue-period':
         return (
-          <div className="bg-white rounded-lg p-6 shadow-sm">
+          <div className="bg-white rounded-lg p-4 md:p-6 shadow-sm">
             <h3 className="text-lg font-semibold mb-4">Ingresos, Costos y Ganancias en el Tiempo</h3>
             {revenueByPeriod.length === 0 ? (
               <div className="text-center py-12 text-gray-500">No hay datos de ventas en el período seleccionado.</div>
@@ -312,7 +312,7 @@ export default function Reports() {
       case 'sales-count-per-day': {
         const salesCountData = revenueByPeriod.map(p => ({ period: p.period, quantity: p.quantity_sold }))
         return (
-          <div className="bg-white rounded-lg p-6 shadow-sm">
+          <div className="bg-white rounded-lg p-4 md:p-6 shadow-sm">
             <h3 className="text-lg font-semibold mb-1">Unidades Vendidas por Período</h3>
             <p className="text-sm text-gray-500 mb-4">Total: {formatNumber(totalQuantitySold)} unidades · {formatNumber(totalSalesCount)} transacciones</p>
             {salesCountData.length === 0 ? (
@@ -335,7 +335,7 @@ export default function Reports() {
 
       case 'revenue-payment-method':
         return (
-          <div className="bg-white rounded-lg p-6 shadow-sm">
+          <div className="bg-white rounded-lg p-4 md:p-6 shadow-sm">
             <h3 className="text-lg font-semibold mb-4">Ingresos por Método de Pago</h3>
             {revenueByPaymentMethod.length === 0 ? (
               <div className="text-center py-12 text-gray-500">No hay datos de ventas en el período seleccionado.</div>
@@ -359,7 +359,7 @@ export default function Reports() {
 
       case 'revenue-branch':
         return (
-          <div className="bg-white rounded-lg p-6 shadow-sm">
+          <div className="bg-white rounded-lg p-4 md:p-6 shadow-sm">
             <h3 className="text-lg font-semibold mb-4">Comparativa de Ingresos por Sucursal</h3>
             {revenueByBranch.length === 0 ? (
               <div className="text-center py-12 text-gray-500">No hay datos de ventas en el período seleccionado.</div>
@@ -381,7 +381,7 @@ export default function Reports() {
 
       case 'revenue-category':
         return (
-          <div className="bg-white rounded-lg p-6 shadow-sm">
+          <div className="bg-white rounded-lg p-4 md:p-6 shadow-sm">
             <h3 className="text-lg font-semibold mb-4">Distribución de Ingresos por Categoría</h3>
             {revenueByCategory.length === 0 ? (
               <div className="text-center py-12 text-gray-500">No hay datos de ventas en el período seleccionado.</div>
@@ -418,7 +418,7 @@ export default function Reports() {
           : topProductsByProfit
 
         return (
-          <div className="bg-white rounded-lg p-6 shadow-sm">
+          <div className="bg-white rounded-lg p-4 md:p-6 shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">Top 10 Productos</h3>
               <div className="flex gap-2">
@@ -437,39 +437,39 @@ export default function Reports() {
               <div className="text-center py-12 text-gray-500">No hay datos de ventas en el período seleccionado.</div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b text-gray-600">
-                      <th className="text-left py-3 px-3">#</th>
-                      <th className="text-left py-3 px-3">Producto</th>
-                      <th className="text-left py-3 px-3">Categoría</th>
-                      <th className="text-right py-3 px-3">Unidades</th>
-                      <th className="text-right py-3 px-3">Ingresos</th>
-                      <th className="text-right py-3 px-3">Ganancia</th>
-                      <th className="text-right py-3 px-3">Margen</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sortedProducts.map((p, i) => (
-                      <tr key={p.product_id} className="border-b last:border-0 hover:bg-gray-50">
-                        <td className="py-3 px-3 text-gray-400">{i + 1}</td>
-                        <td className="py-3 px-3">
-                          <p className="font-medium">{p.product_name}</p>
-                          {p.barcode && <p className="text-xs text-gray-400">{p.barcode}</p>}
-                        </td>
-                        <td className="py-3 px-3 text-gray-600">{p.category_name || '—'}</td>
-                        <td className="text-right py-3 px-3">{formatNumber(p.total_quantity_sold)}</td>
-                        <td className="text-right py-3 px-3 font-medium text-green-700">{formatCurrency(p.total_revenue)}</td>
-                        <td className="text-right py-3 px-3 font-medium text-blue-700">{formatCurrency(p.total_profit)}</td>
-                        <td className="text-right py-3 px-3">
-                          <span className={`font-medium ${p.profit_margin >= 30 ? 'text-green-600' : p.profit_margin >= 15 ? 'text-yellow-600' : 'text-red-600'}`}>
-                            {p.profit_margin.toFixed(1)}%
-                          </span>
-                        </td>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-gray-600">
+                        <th className="text-left py-3 px-3">#</th>
+                        <th className="text-left py-3 px-3">Producto</th>
+                        <th className="text-left py-3 px-3">Categoría</th>
+                        <th className="text-right py-3 px-3">Unidades</th>
+                        <th className="text-right py-3 px-3">Ingresos</th>
+                        <th className="text-right py-3 px-3">Ganancia</th>
+                        <th className="text-right py-3 px-3">Margen</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {sortedProducts.map((p, i) => (
+                        <tr key={p.product_id} className="border-b last:border-0 hover:bg-gray-50">
+                          <td className="py-3 px-3 text-gray-400">{i + 1}</td>
+                          <td className="py-3 px-3">
+                            <p className="font-medium">{p.product_name}</p>
+                            {p.barcode && <p className="text-xs text-gray-400">{p.barcode}</p>}
+                          </td>
+                          <td className="py-3 px-3 text-gray-600">{p.category_name || '—'}</td>
+                          <td className="text-right py-3 px-3">{formatNumber(p.total_quantity_sold)}</td>
+                          <td className="text-right py-3 px-3 font-medium text-green-700">{formatCurrency(p.total_revenue)}</td>
+                          <td className="text-right py-3 px-3 font-medium text-blue-700">{formatCurrency(p.total_profit)}</td>
+                          <td className="text-right py-3 px-3">
+                            <span className={`font-medium ${p.profit_margin >= 30 ? 'text-green-600' : p.profit_margin >= 15 ? 'text-yellow-600' : 'text-red-600'}`}>
+                              {p.profit_margin.toFixed(1)}%
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
               </div>
             )}
           </div>
@@ -478,7 +478,7 @@ export default function Reports() {
 
       case 'profit-margin-category':
         return (
-          <div className="bg-white rounded-lg p-6 shadow-sm">
+          <div className="bg-white rounded-lg p-4 md:p-6 shadow-sm">
             <h3 className="text-lg font-semibold mb-4">Margen de Ganancia por Categoría</h3>
             {revenueByCategory.length === 0 ? (
               <div className="text-center py-12 text-gray-500">No hay datos de ventas en el período seleccionado.</div>
@@ -512,7 +512,7 @@ export default function Reports() {
           })
         const resumenArray = Object.values(resumenPorUsuario).sort((a, b) => b.ventas - a.ventas)
         return (
-          <div className="bg-white rounded-lg p-6 shadow-sm">
+          <div className="bg-white rounded-lg p-4 md:p-6 shadow-sm">
             <h3 className="text-lg font-semibold mb-4">Arqueo de Caja por Usuario</h3>
             {isLoadingCashRegisters ? (
               <div className="text-center py-12 text-gray-500">Cargando arqueos...</div>
@@ -520,28 +520,28 @@ export default function Reports() {
               <div className="text-center py-12 text-gray-500">No hay datos de arqueos cerrados.</div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-3 px-4">Empleado</th>
-                      <th className="text-right py-3 px-4">Arqueos</th>
-                      <th className="text-right py-3 px-4">Ventas</th>
-                      <th className="text-right py-3 px-4">Neto Faltante/Sobrante</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {resumenArray.map((u) => (
-                      <tr key={u.nombre}>
-                        <td className="py-3 px-4 font-medium">{u.nombre}</td>
-                        <td className="text-right py-3 px-4">{u.arqueos}</td>
-                        <td className="text-right py-3 px-4">{u.ventas}</td>
-                        <td className={`text-right py-3 px-4 font-semibold ${u.diferencia < 0 ? 'text-red-600' : u.diferencia > 0 ? 'text-blue-600' : 'text-gray-700'}`}>
-                          {formatCurrency(u.diferencia)}
-                        </td>
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-3 px-4">Empleado</th>
+                        <th className="text-right py-3 px-4">Arqueos</th>
+                        <th className="text-right py-3 px-4">Ventas</th>
+                        <th className="text-right py-3 px-4">Neto Faltante/Sobrante</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {resumenArray.map((u) => (
+                        <tr key={u.nombre}>
+                          <td className="py-3 px-4 font-medium">{u.nombre}</td>
+                          <td className="text-right py-3 px-4">{u.arqueos}</td>
+                          <td className="text-right py-3 px-4">{u.ventas}</td>
+                          <td className={`text-right py-3 px-4 font-semibold ${u.diferencia < 0 ? 'text-red-600' : u.diferencia > 0 ? 'text-blue-600' : 'text-gray-700'}`}>
+                            {formatCurrency(u.diferencia)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
               </div>
             )}
           </div>
@@ -550,7 +550,7 @@ export default function Reports() {
 
       case 'purchases-by-supplier':
         return (
-          <div className="bg-white rounded-lg p-6 shadow-sm">
+          <div className="bg-white rounded-lg p-4 md:p-6 shadow-sm">
             <h3 className="text-lg font-semibold mb-4">Compras por Proveedor</h3>
             {purchasesBySupplier.length === 0 ? (
               <div className="text-center py-12 text-gray-500">No hay compras registradas en el período seleccionado.</div>
@@ -594,43 +594,43 @@ export default function Reports() {
 
       case 'stock-alerts':
         return (
-          <div className="bg-white rounded-lg p-6 shadow-sm">
+          <div className="bg-white rounded-lg p-4 md:p-6 shadow-sm">
             <h3 className="text-lg font-semibold mb-4">Productos que Requieren Atención</h3>
             {stockAlerts.length === 0 ? (
               <div className="text-center py-12 text-gray-500">No hay productos con alertas de stock.</div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="text-left py-3 px-4">Producto</th>
-                      <th className="text-left py-3 px-4">Sucursal</th>
-                      <th className="text-right py-3 px-4">Stock</th>
-                      <th className="text-right py-3 px-4">Mínimo</th>
-                      <th className="text-right py-3 px-4">Faltante</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {stockAlerts.map((alert) => (
-                      <tr key={alert.product_id} className={alert.stock_quantity === 0 ? 'bg-red-50' : 'bg-yellow-50'}>
-                        <td className="py-3 px-4">
-                          <div>
-                            <p className="font-medium">{alert.product_name}</p>
-                            {alert.barcode && <p className="text-sm text-gray-500">{alert.barcode}</p>}
-                          </div>
-                        </td>
-                        <td className="py-3 px-4">{alert.branch_name}</td>
-                        <td className="text-right py-3 px-4">
-                          <span className={alert.stock_quantity === 0 ? 'text-red-600 font-semibold' : 'text-yellow-600'}>
-                            {alert.stock_quantity}
-                          </span>
-                        </td>
-                        <td className="text-right py-3 px-4">{alert.stock_min}</td>
-                        <td className="text-right py-3 px-4 font-semibold text-red-600">{alert.shortage}</td>
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-3 px-4">Producto</th>
+                        <th className="text-left py-3 px-4">Sucursal</th>
+                        <th className="text-right py-3 px-4">Stock</th>
+                        <th className="text-right py-3 px-4">Mínimo</th>
+                        <th className="text-right py-3 px-4">Faltante</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {stockAlerts.map((alert) => (
+                        <tr key={alert.product_id} className={alert.stock_quantity === 0 ? 'bg-red-50' : 'bg-yellow-50'}>
+                          <td className="py-3 px-4">
+                            <div>
+                              <p className="font-medium">{alert.product_name}</p>
+                              {alert.barcode && <p className="text-sm text-gray-500">{alert.barcode}</p>}
+                            </div>
+                          </td>
+                          <td className="py-3 px-4">{alert.branch_name}</td>
+                          <td className="text-right py-3 px-4">
+                            <span className={alert.stock_quantity === 0 ? 'text-red-600 font-semibold' : 'text-yellow-600'}>
+                              {alert.stock_quantity}
+                            </span>
+                          </td>
+                          <td className="text-right py-3 px-4">{alert.stock_min}</td>
+                          <td className="text-right py-3 px-4 font-semibold text-red-600">{alert.shortage}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
               </div>
             )}
           </div>
@@ -641,7 +641,7 @@ export default function Reports() {
         const inventoryValueByCategory = categoryStats.map(c => ({ category: c.category_name, total: c.stock_value }))
 
         return (
-          <div className="bg-white rounded-lg p-6 shadow-sm">
+          <div className="bg-white rounded-lg p-4 md:p-6 shadow-sm">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-lg font-semibold">Valor del Inventario</h3>
               <div className="flex gap-2">
@@ -691,7 +691,7 @@ export default function Reports() {
 
       case 'dead-stock':
         return (
-          <div className="bg-white rounded-lg p-6 shadow-sm">
+          <div className="bg-white rounded-lg p-4 md:p-6 shadow-sm">
             <h3 className="text-lg font-semibold mb-1">Productos Sin Movimiento</h3>
             <p className="text-sm text-gray-500 mb-4">Tienen stock pero no registraron ventas en el período seleccionado</p>
             {deadStock.length === 0 ? (
@@ -700,39 +700,39 @@ export default function Reports() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b text-gray-600">
-                      <th className="text-left py-3 px-3">Producto</th>
-                      <th className="text-left py-3 px-3">Categoría</th>
-                      <th className="text-left py-3 px-3">Sucursal</th>
-                      <th className="text-right py-3 px-3">Stock</th>
-                      <th className="text-right py-3 px-3">Valor Inmovilizado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {deadStock.map((p) => (
-                      <tr key={p.product_id} className="border-b last:border-0 hover:bg-gray-50">
-                        <td className="py-3 px-3">
-                          <p className="font-medium">{p.product_name}</p>
-                          {p.barcode && <p className="text-xs text-gray-400">{p.barcode}</p>}
-                        </td>
-                        <td className="py-3 px-3 text-gray-600">{p.category_name || '—'}</td>
-                        <td className="py-3 px-3 text-gray-600">{p.branch_name}</td>
-                        <td className="text-right py-3 px-3">{p.stock_quantity}</td>
-                        <td className="text-right py-3 px-3 font-medium text-orange-600">{formatCurrency(p.stock_value)}</td>
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-gray-600">
+                        <th className="text-left py-3 px-3">Producto</th>
+                        <th className="text-left py-3 px-3">Categoría</th>
+                        <th className="text-left py-3 px-3">Sucursal</th>
+                        <th className="text-right py-3 px-3">Stock</th>
+                        <th className="text-right py-3 px-3">Valor Inmovilizado</th>
                       </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="border-t bg-gray-50">
-                      <td colSpan={4} className="py-3 px-3 font-semibold text-gray-700">{deadStock.length} productos · Capital inmovilizado:</td>
-                      <td className="text-right py-3 px-3 font-bold text-orange-700">
-                        {formatCurrency(deadStock.reduce((sum, p) => sum + p.stock_value, 0))}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
+                    </thead>
+                    <tbody>
+                      {deadStock.map((p) => (
+                        <tr key={p.product_id} className="border-b last:border-0 hover:bg-gray-50">
+                          <td className="py-3 px-3">
+                            <p className="font-medium">{p.product_name}</p>
+                            {p.barcode && <p className="text-xs text-gray-400">{p.barcode}</p>}
+                          </td>
+                          <td className="py-3 px-3 text-gray-600">{p.category_name || '—'}</td>
+                          <td className="py-3 px-3 text-gray-600">{p.branch_name}</td>
+                          <td className="text-right py-3 px-3">{p.stock_quantity}</td>
+                          <td className="text-right py-3 px-3 font-medium text-orange-600">{formatCurrency(p.stock_value)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t bg-gray-50">
+                        <td colSpan={4} className="py-3 px-3 font-semibold text-gray-700">{deadStock.length} productos · Capital inmovilizado:</td>
+                        <td className="text-right py-3 px-3 font-bold text-orange-700">
+                          {formatCurrency(deadStock.reduce((sum, p) => sum + p.stock_value, 0))}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
               </div>
             )}
           </div>
@@ -751,7 +751,7 @@ export default function Reports() {
           .slice(0, 10)
 
         return (
-          <div className="bg-white rounded-lg p-6 shadow-sm">
+          <div className="bg-white rounded-lg p-4 md:p-6 shadow-sm">
             <h3 className="text-lg font-semibold mb-1">Gastos de Caja</h3>
             <p className="text-sm text-gray-500 mb-4">Gastos registrados en cajas durante el período</p>
             {cashExpenses.length === 0 ? (
@@ -800,7 +800,7 @@ export default function Reports() {
 
       case 'fiscal-period':
         return (
-          <div className="bg-white rounded-lg p-6 shadow-sm space-y-6">
+          <div className="bg-white rounded-lg p-4 md:p-6 shadow-sm space-y-6">
             <div>
               <h3 className="text-lg font-semibold mb-1">Facturación por Período</h3>
               <p className="text-sm text-gray-500">Comprobantes aprobados en el período (solo ARCA)</p>
@@ -850,7 +850,7 @@ export default function Reports() {
         const NC_TIPOS = new Set([3, 8, 13])
         const ND_TIPOS = new Set([2, 7, 12])
         return (
-          <div className="bg-white rounded-lg p-6 shadow-sm space-y-5">
+          <div className="bg-white rounded-lg p-4 md:p-6 shadow-sm space-y-5">
             <div>
               <h3 className="text-lg font-semibold mb-1">Comprobantes por Tipo</h3>
               <p className="text-sm text-gray-500">Distribución de comprobantes aprobados por tipo ARCA</p>
@@ -883,26 +883,28 @@ export default function Reports() {
                   </BarChart>
                 </ResponsiveContainer>
 
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b text-gray-500 text-xs uppercase">
-                      <th className="text-left py-2 px-3">Tipo</th>
-                      <th className="text-right py-2 px-3">Cantidad</th>
-                      <th className="text-right py-2 px-3">Total</th>
-                      <th className="text-right py-2 px-3">Promedio</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {fiscalByType.map(t => (
-                      <tr key={t.tipo} className="border-b last:border-0 hover:bg-gray-50">
-                        <td className="py-2 px-3 font-medium">{t.label}</td>
-                        <td className="text-right py-2 px-3 text-gray-600">{t.count}</td>
-                        <td className="text-right py-2 px-3 font-medium">{formatCurrency(t.total)}</td>
-                        <td className="text-right py-2 px-3 text-gray-600">{t.count > 0 ? formatCurrency(t.total / t.count) : '-'}</td>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-gray-500 text-xs uppercase">
+                        <th className="text-left py-2 px-3">Tipo</th>
+                        <th className="text-right py-2 px-3">Cantidad</th>
+                        <th className="text-right py-2 px-3">Total</th>
+                        <th className="text-right py-2 px-3">Promedio</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {fiscalByType.map(t => (
+                        <tr key={t.tipo} className="border-b last:border-0 hover:bg-gray-50">
+                          <td className="py-2 px-3 font-medium">{t.label}</td>
+                          <td className="text-right py-2 px-3 text-gray-600">{t.count}</td>
+                          <td className="text-right py-2 px-3 font-medium">{formatCurrency(t.total)}</td>
+                          <td className="text-right py-2 px-3 text-gray-600">{t.count > 0 ? formatCurrency(t.total / t.count) : '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </>
             )}
           </div>
@@ -915,9 +917,9 @@ export default function Reports() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 md:p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col items-start md:flex-row md:items-center md:justify-between gap-3 md:gap-0">
         <div>
           <h1 className="text-2xl font-bold">Reportes y Estadísticas</h1>
           <p className="text-gray-500 mt-1">Análisis detallado del negocio</p>
@@ -935,10 +937,10 @@ export default function Reports() {
       {/* Filtros */}
       <div className="bg-white rounded-lg p-4 shadow-sm">
         <div className="flex items-center gap-4 flex-wrap">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap md:flex-nowrap items-center gap-2">
             <Calendar className="h-5 w-5 text-gray-400" />
             <span className="text-sm font-medium text-gray-700">Período:</span>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               {(['7d', '30d', '90d', 'custom'] as const).map((period) => (
                 <button
                   key={period}
@@ -956,7 +958,7 @@ export default function Reports() {
           </div>
 
           {selectedPeriod === 'custom' && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap md:flex-nowrap items-center gap-2">
               <input
                 type="date"
                 value={startDate}

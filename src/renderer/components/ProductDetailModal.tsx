@@ -48,7 +48,7 @@ export default function ProductDetailModal({ product, isOpen, onClose, onEdit, o
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-start justify-between p-6 border-b border-gray-200">
+        <div className="flex items-start justify-between p-4 md:p-6 border-b border-gray-200">
           <div className="flex-1">
             <h2 className="text-2xl font-bold text-gray-900 mb-2">
               {displayName}
@@ -69,7 +69,7 @@ export default function ProductDetailModal({ product, isOpen, onClose, onEdit, o
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-6">
+        <div className="p-4 md:p-6 space-y-6">
           {/* Descripción */}
           {displayDescription && (
             <div>
@@ -160,7 +160,7 @@ export default function ProductDetailModal({ product, isOpen, onClose, onEdit, o
           {/* Precios y Margen */}
           <div>
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Precios</h3>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
               {/* Precio de Costo */}
               <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
                 <div className="flex items-center gap-2 text-orange-600 mb-2">
@@ -309,10 +309,10 @@ export default function ProductDetailModal({ product, isOpen, onClose, onEdit, o
         </div>
 
         {/* Footer Actions */}
-        <div className="flex gap-3 p-6 border-t border-gray-200">
+        <div className="flex gap-3 p-4 md:p-6 border-t border-gray-200">
           <button
             onClick={onClose}
-            className="px-6 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition"
+            className="px-4 md:px-6 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition"
           >
             Cerrar
           </button>
@@ -348,7 +348,7 @@ export default function ProductDetailModal({ product, isOpen, onClose, onEdit, o
           {onDelete && (
             <button
               onClick={onDelete}
-              className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition"
+              className="px-4 md:px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition"
             >
               Eliminar
             </button>

@@ -108,7 +108,7 @@ export default function FiscalSetupSection() {
     : 'No configurado — opcional'
 
   return (
-    <section className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+    <section className="bg-white rounded-xl border border-gray-200 p-4 md:p-6 mb-6">
       {/* Header */}
       <button className="w-full flex items-center justify-between" onClick={() => setExpanded(v => !v)}>
         <div className="flex items-center gap-3">

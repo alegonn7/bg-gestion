@@ -353,8 +353,8 @@ export default function SalesHistory() {
   return (
     <div className="h-full flex flex-col bg-gray-50">
       {/* Header */}
-      <div className="bg-white border-b px-6 py-4">
-        <div className="flex items-center justify-between mb-4">
+      <div className="bg-white border-b px-4 md:px-6 py-4">
+        <div className="flex flex-col items-start md:flex-row md:items-center md:justify-between gap-3 md:gap-0 mb-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Historial de Ventas</h1>
             <p className="text-sm text-gray-500 mt-1">Consulta y descarga comprobantes de ventas realizadas</p>
@@ -420,7 +420,7 @@ export default function SalesHistory() {
 
       {/* Filters Panel */}
       {showFilters && (
-        <div className="bg-white border-b px-6 py-4">
+        <div className="bg-white border-b px-4 md:px-6 py-4">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             {isOwnerOrAdmin && (
               <div>
@@ -512,7 +512,7 @@ export default function SalesHistory() {
       )}
 
       {/* Sales List */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-4 md:p-6">
         {/* Paginación arriba */}
         {totalPages > 1 && (
           <div className="flex justify-end mb-4 gap-2">

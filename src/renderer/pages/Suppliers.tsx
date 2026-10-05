@@ -88,8 +88,8 @@ export default function SuppliersPage() {
     <div className="h-full flex flex-col bg-gray-50">
 
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 p-6">
-        <div className="flex items-center justify-between mb-4">
+      <div className="bg-white border-b border-gray-200 p-4 md:p-6">
+        <div className="flex flex-col items-start md:flex-row md:items-center md:justify-between gap-3 md:gap-0 mb-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
               <Truck className="w-7 h-7 text-blue-600" />
@@ -98,7 +98,7 @@ export default function SuppliersPage() {
             <p className="text-gray-600 mt-1">Gestioná tus proveedores y los productos asociados</p>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex flex-wrap md:flex-nowrap gap-2 md:gap-3">
             <button
               onClick={fetchSuppliers}
               disabled={isLoading}
@@ -166,7 +166,7 @@ export default function SuppliersPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto p-4 md:p-6">
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
             {error}
@@ -175,7 +175,7 @@ export default function SuppliersPage() {
 
         {/* Form */}
         {showForm && (
-          <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-6 mb-6">
+          <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4 md:p-6 mb-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                 <Truck className="w-5 h-5 text-blue-600" />

@@ -10,7 +10,7 @@ const UpdateChangelogModal: React.FC<UpdateChangelogModalProps> = ({ isOpen, cha
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
-      <div className="bg-white rounded-lg shadow-lg max-w-lg w-full p-6 relative">
+      <div className="bg-white rounded-lg shadow-lg max-w-lg w-full max-h-[90vh] overflow-y-auto p-4 md:p-6 relative">
         <h2 className="text-xl font-bold mb-2 text-blue-700">¡La app se actualizó!</h2>
         <div className="mb-4 text-gray-700 whitespace-pre-line" style={{ maxHeight: 300, overflowY: 'auto' }}>{changelog}</div>
         <button

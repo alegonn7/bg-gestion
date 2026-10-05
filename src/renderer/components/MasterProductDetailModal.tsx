@@ -19,7 +19,7 @@ export default function MasterProductDetailModal({ product, isOpen, onClose }: M
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-start justify-between p-6 border-b border-gray-200">
+        <div className="flex items-start justify-between p-4 md:p-6 border-b border-gray-200">
           <div className="flex-1">
             <div className="flex items-center gap-3 mb-2">
               <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
@@ -60,7 +60,7 @@ export default function MasterProductDetailModal({ product, isOpen, onClose }: M
         </div>
 
         {/* Stats Overview */}
-        <div className="grid grid-cols-4 gap-4 p-6 bg-gray-50">
+        <div className="grid grid-cols-4 gap-4 p-4 md:p-6 bg-gray-50">
           <div className="text-center">
             <div className="flex items-center justify-center gap-2 text-blue-600 mb-2">
               <Package className="w-5 h-5" />
@@ -99,7 +99,7 @@ export default function MasterProductDetailModal({ product, isOpen, onClose }: M
         </div>
 
         {/* Branches Detail */}
-        <div className="p-6">
+        <div className="p-4 md:p-6">
           <div className="flex items-center gap-2 mb-4">
             <BarChart className="w-5 h-5 text-gray-600" />
             <h3 className="text-lg font-semibold text-gray-900">
@@ -181,7 +181,7 @@ export default function MasterProductDetailModal({ product, isOpen, onClose }: M
         </div>
 
         {/* Footer */}
-        <div className="p-6 border-t border-gray-200 bg-gray-50">
+        <div className="p-4 md:p-6 border-t border-gray-200 bg-gray-50">
           <button
             onClick={onClose}
             className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition"

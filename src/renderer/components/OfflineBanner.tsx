@@ -19,7 +19,7 @@ export default function OfflineBanner() {
 
   if (needsRelogin && isOnline) {
     return (
-      <div className="flex items-center gap-3 px-6 py-2.5 bg-blue-50 border-b border-blue-200 text-blue-800">
+      <div className="flex items-center gap-3 px-4 md:px-6 py-2.5 bg-blue-50 border-b border-blue-200 text-blue-800">
         <Wifi className="w-4 h-4 flex-shrink-0" />
         <p className="text-sm flex-1">
           <span className="font-semibold">Conexión restablecida.</span>{' '}
@@ -39,7 +39,7 @@ export default function OfflineBanner() {
   if (!showOffline) return null
 
   return (
-    <div className="flex items-center gap-3 px-6 py-2.5 bg-amber-50 border-b border-amber-200 text-amber-900">
+    <div className="flex items-center gap-3 px-4 md:px-6 py-2.5 bg-amber-50 border-b border-amber-200 text-amber-900">
       <WifiOff className="w-4 h-4 flex-shrink-0" />
       <p className="text-sm flex-1">
         <span className="font-semibold">Sin conexión.</span>{' '}

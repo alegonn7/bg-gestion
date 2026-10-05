@@ -53,8 +53,8 @@ export default function Branches() {
   return (
     <div className="h-full flex flex-col bg-gray-50">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 p-6">
-        <div className="flex items-center justify-between mb-4">
+      <div className="bg-white border-b border-gray-200 p-4 md:p-6">
+        <div className="flex flex-col items-start md:flex-row md:items-center md:justify-between gap-3 md:gap-0 mb-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
               <Building2 className="w-7 h-7 text-blue-600" />
@@ -65,7 +65,7 @@ export default function Branches() {
             </p>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex flex-wrap md:flex-nowrap gap-2 md:gap-3">
             <button
               onClick={handleRefresh}
               disabled={isLoading}
@@ -98,7 +98,7 @@ export default function Branches() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-4 gap-4 mt-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mt-4">
           <div className="bg-blue-50 rounded-lg p-4">
             <div className="flex items-center gap-2 text-blue-600 mb-1">
               <Building2 className="w-4 h-4" />
@@ -138,7 +138,7 @@ export default function Branches() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto p-4 md:p-6">
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
             {error}

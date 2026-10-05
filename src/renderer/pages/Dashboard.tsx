@@ -2,7 +2,7 @@ import SuppliersPage from './Suppliers'
 import { useAuthStore } from '@/store/auth'
 import { useReportsStore } from '@/store/reports'
 import { useSalesStore } from '@/store/sales'
-import { Package, LayoutDashboard, Building2, Users, Settings, LogOut, BarChart3, BookOpen, CreditCard, Receipt, ChevronLeft, ChevronRight, AlertTriangle, TrendingUp, DollarSign, ShoppingCart, ArrowUp, ArrowDown, Wallet, ScanLine, FileText, Sparkles, Calculator, WifiOff, Truck } from 'lucide-react'
+import { Package, LayoutDashboard, Building2, Users, Settings, LogOut, BarChart3, BookOpen, CreditCard, Receipt, ChevronLeft, ChevronRight, Menu, X, AlertTriangle, TrendingUp, DollarSign, ShoppingCart, ArrowUp, ArrowDown, Wallet, ScanLine, FileText, Sparkles, Calculator, WifiOff, Truck } from 'lucide-react'
 import { useState, useEffect, useMemo } from 'react'
 import Products from './Products'
 import MasterCatalog from './MasterCatalog'
@@ -36,7 +36,19 @@ export default function Dashboard() {
   const { isOnline } = useNetworkStore()
   const { lowStockCount, outOfStockCount, fetchReports } = useReportsStore()
   const [currentPage, setCurrentPage] = useState<Page>('dashboard')
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [sidebarCollapsedPref, setSidebarCollapsed] = useState(false)
+  // En celular el menú es un panel que se abre con el botón ☰ y tapa el contenido
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  // Colapsado solo aplica en pantallas grandes: el panel del celular siempre va completo
+  const sidebarCollapsed = sidebarCollapsedPref && !mobileMenuOpen
+
+  // Si la ventana se agranda con el panel abierto, se cierra
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 768px)')
+    const onChange = () => { if (mq.matches) setMobileMenuOpen(false) }
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
 
   const stockAlertTotal = lowStockCount + outOfStockCount
   const offlineMode = isOffline || !isOnline
@@ -133,13 +145,30 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen h-[100dvh] bg-gray-50">
+      {/* Fondo oscuro detrás del menú en celular */}
+      {mobileMenuOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 z-40 md:hidden"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className={`${sidebarCollapsed ? 'w-[68px]' : 'w-64'} bg-white border-r border-gray-200 flex flex-col transition-all duration-200 relative flex-shrink-0`}>
+      <aside className={`fixed inset-y-0 left-0 z-50 w-72 max-w-[85vw] transform ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:max-w-none md:translate-x-0 md:z-auto ${sidebarCollapsed ? 'md:w-[68px]' : 'md:w-64'} bg-white border-r border-gray-200 flex flex-col transition-all duration-200 flex-shrink-0`}>
+        {/* Cerrar menú (celular) */}
+        <button
+          onClick={() => setMobileMenuOpen(false)}
+          className="md:hidden absolute right-2 top-2 z-10 p-2 text-gray-400 hover:text-gray-600"
+          aria-label="Cerrar menú"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
         {/* Collapse Toggle */}
         <button
-          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          className="absolute -right-3 top-20 z-10 w-6 h-6 bg-white border border-gray-200 rounded-full flex items-center justify-center hover:bg-gray-50 shadow-sm"
+          onClick={() => setSidebarCollapsed(!sidebarCollapsedPref)}
+          className="hidden md:flex absolute -right-3 top-20 z-10 w-6 h-6 bg-white border border-gray-200 rounded-full items-center justify-center hover:bg-gray-50 shadow-sm"
           title={sidebarCollapsed ? 'Expandir menú' : 'Colapsar menú'}
         >
           {sidebarCollapsed
@@ -204,7 +233,7 @@ export default function Dashboard() {
             return (
               <button
                 key={item.id}
-                onClick={() => setCurrentPage(item.id)}
+                onClick={() => { setCurrentPage(item.id); setMobileMenuOpen(false) }}
                 disabled={isBlocked}
                 title={isBlocked ? `${item.label} · no disponible sin conexión` : (sidebarCollapsed ? item.label : undefined)}
                 className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : ''} gap-3 ${sidebarCollapsed ? 'px-2 py-3' : 'px-4 py-3'} rounded-lg transition relative ${
@@ -256,7 +285,33 @@ export default function Dashboard() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col overflow-hidden">
+      <main className="flex-1 min-w-0 flex flex-col overflow-hidden">
+        {/* Barra superior (solo celular) */}
+        <header className="md:hidden flex items-center gap-3 px-3 h-14 bg-white border-b border-gray-200 flex-shrink-0">
+          <button
+            onClick={() => setMobileMenuOpen(true)}
+            className="relative p-2 -ml-1 text-gray-700 rounded-lg hover:bg-gray-100"
+            aria-label="Abrir menú"
+          >
+            <Menu className="w-6 h-6" />
+            {stockAlertTotal > 0 && (
+              <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full" />
+            )}
+          </button>
+          <img
+            src={organization?.logo_url || logoImg}
+            alt=""
+            className="w-8 h-8 rounded-full object-cover bg-white border flex-shrink-0"
+          />
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-gray-900 truncate leading-tight">
+              {menuItems.find(m => m.id === currentPage)?.label}
+            </p>
+            <p className="text-xs text-gray-500 truncate leading-tight">
+              {organization?.name || 'BG Gestión'}{selectedBranch && branches.length > 1 ? ` · ${selectedBranch.name}` : ''}
+            </p>
+          </div>
+        </header>
         <OfflineBanner />
         <div className="flex-1 overflow-auto">
           {renderContent()}
@@ -307,7 +362,7 @@ function DashboardHome() {
   const isLoading = reportsLoading || salesLoading
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 md:p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -452,7 +507,7 @@ function DashboardHome() {
           </div>
           <div className="max-h-[320px] overflow-y-auto">
             {stockAlerts.length === 0 ? (
-              <div className="p-6 text-center text-gray-400">
+              <div className="p-4 md:p-6 text-center text-gray-400">
                 <Package className="w-10 h-10 mx-auto mb-2 opacity-30" />
                 <p className="text-sm">Todo el stock está en orden</p>
               </div>
@@ -495,7 +550,7 @@ function DashboardHome() {
           </div>
           <div className="max-h-[320px] overflow-y-auto">
             {recentSales.length === 0 ? (
-              <div className="p-6 text-center text-gray-400">
+              <div className="p-4 md:p-6 text-center text-gray-400">
                 <Receipt className="w-10 h-10 mx-auto mb-2 opacity-30" />
                 <p className="text-sm">Sin ventas registradas</p>
               </div>
@@ -528,7 +583,7 @@ function DashboardHome() {
 
       {/* Info Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="bg-white rounded-lg border border-gray-200 p-4 md:p-6">
           <h3 className="text-lg font-semibold mb-4">Información del Plan</h3>
           <div className="space-y-3">
             <div className="flex justify-between">
@@ -556,7 +611,7 @@ function DashboardHome() {
           </div>
         </div>
 
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <div className="bg-white rounded-lg border border-gray-200 p-4 md:p-6">
           <h3 className="text-lg font-semibold mb-4">Información del Sistema</h3>
           <div className="space-y-3">
             <div className="flex justify-between">

@@ -90,7 +90,7 @@ export default function MovementHistoryModal({ product, isOpen, onClose }: Movem
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+        <div className="flex items-center justify-between p-4 md:p-6 border-b border-gray-200">
           <div>
             <h2 className="text-xl font-bold text-gray-900">Historial de Movimientos</h2>
             <p className="text-sm text-gray-600 mt-1">{productName}</p>
@@ -104,7 +104,7 @@ export default function MovementHistoryModal({ product, isOpen, onClose }: Movem
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-4 md:p-6">
           {loading && (
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -217,7 +217,7 @@ export default function MovementHistoryModal({ product, isOpen, onClose }: Movem
         </div>
 
         {/* Footer */}
-        <div className="p-6 border-t border-gray-200">
+        <div className="p-4 md:p-6 border-t border-gray-200">
           <div className="flex items-center justify-between mb-4">
             <div className="text-sm text-gray-600">
               Total de movimientos: <span className="font-semibold text-gray-900">{movements.length}</span>

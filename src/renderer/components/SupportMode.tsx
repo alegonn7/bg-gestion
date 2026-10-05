@@ -32,7 +32,7 @@ export function SupportOrgPicker() {
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden">
-        <div className="bg-indigo-600 px-6 py-5 text-white flex items-center gap-3">
+        <div className="bg-indigo-600 px-4 md:px-6 py-5 text-white flex items-center gap-3">
           <LifeBuoy className="w-6 h-6" />
           <div>
             <h1 className="text-lg font-semibold">Modo soporte</h1>

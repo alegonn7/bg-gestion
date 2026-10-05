@@ -63,7 +63,7 @@ export default function ScannerPage() {
   return (
     <div className="h-full flex flex-col bg-gray-50">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
+      <div className="bg-white border-b border-gray-200 px-4 md:px-6 py-4">
         <div className="flex items-center gap-3">
           <ScanLine className="h-6 w-6 text-blue-600" />
           <div>
@@ -82,7 +82,7 @@ export default function ScannerPage() {
 
       <div className="flex-1 flex overflow-hidden">
         {/* Panel principal */}
-        <div className="flex-1 p-6 overflow-y-auto">
+        <div className="flex-1 p-4 md:p-6 overflow-y-auto">
           {scanStatus === 'waiting' && (
             <div className="flex flex-col items-center justify-center h-full text-gray-400">
               <ScanLine className="h-24 w-24 mb-6 animate-pulse" />
@@ -108,7 +108,7 @@ export default function ScannerPage() {
           {scanStatus === 'found' && scannedProduct && (
             <div className="max-w-3xl mx-auto space-y-6">
               {/* Nombre y código */}
-              <div className="bg-white rounded-xl shadow-sm border p-6">
+              <div className="bg-white rounded-xl shadow-sm border p-4 md:p-6">
                 <div className="flex items-start justify-between">
                   <div>
                     <h2 className="text-2xl font-bold text-gray-900">
@@ -236,7 +236,7 @@ export default function ScannerPage() {
         </div>
 
         {/* Historial lateral */}
-        <div className="w-72 bg-white border-l border-gray-200 flex flex-col">
+        <div className="hidden md:flex w-72 bg-white border-l border-gray-200 flex-col">
           <div className="px-4 py-3 border-b border-gray-200">
             <h3 className="font-semibold text-gray-900 text-sm">Historial de escaneos</h3>
           </div>

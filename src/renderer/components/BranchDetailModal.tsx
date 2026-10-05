@@ -22,7 +22,7 @@ export default function BranchDetailModal({ branch, isOpen, onClose }: BranchDet
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-start justify-between p-6 border-b border-gray-200">
+        <div className="flex items-start justify-between p-4 md:p-6 border-b border-gray-200">
           <div className="flex items-center gap-4">
             <div className={`w-14 h-14 rounded-lg flex items-center justify-center ${
               branch.is_active ? 'bg-blue-100' : 'bg-gray-100'
@@ -52,7 +52,7 @@ export default function BranchDetailModal({ branch, isOpen, onClose }: BranchDet
         </div>
 
         {/* Stats Overview */}
-        <div className="grid grid-cols-3 gap-4 p-6 bg-gray-50">
+        <div className="grid grid-cols-3 gap-4 p-4 md:p-6 bg-gray-50">
           <div className="text-center">
             <div className="flex items-center justify-center gap-2 text-purple-600 mb-2">
               <Package className="w-5 h-5" />
@@ -82,7 +82,7 @@ export default function BranchDetailModal({ branch, isOpen, onClose }: BranchDet
         </div>
 
         {/* Information */}
-        <div className="p-6 space-y-6">
+        <div className="p-4 md:p-6 space-y-6">
           {/* Contact Info */}
           <div>
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Información de Contacto</h3>
@@ -165,7 +165,7 @@ export default function BranchDetailModal({ branch, isOpen, onClose }: BranchDet
         </div>
 
         {/* Footer */}
-        <div className="p-6 border-t border-gray-200 bg-gray-50">
+        <div className="p-4 md:p-6 border-t border-gray-200 bg-gray-50">
           <button
             onClick={onClose}
             className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition"
