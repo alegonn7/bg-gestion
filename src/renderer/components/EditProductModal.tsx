@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/auth'
 import { useDollarStore } from '@/store/dollar'
 import { gananciaSobreCosto } from '@/lib/ganancia'
-import ProductImagesField, { productImagesEnabled } from './ProductImagesField'
+import ProductImagesField from './ProductImagesField'
 
 interface EditProductModalProps {
   product: Product | null
@@ -35,7 +35,6 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
   // Imágenes de la tienda online (solo web)
   const [images, setImages] = useState<string[]>([])
   const [uploadingImages, setUploadingImages] = useState(false)
-  const showImages = productImagesEnabled()
   // Form state
   const [formData, setFormData] = useState({
     barcode: '',
@@ -146,7 +145,7 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
           description: formData.description || null,
           category_id: formData.category_id || null,
           supplier_id: selectedSupplier || null,
-          ...(showImages ? { images } : {}),
+          images,
         },
       }
 
@@ -369,9 +368,7 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
           </div>
 
           {/* Imágenes (tienda online) */}
-          {showImages && (
-            <ProductImagesField images={images} onChange={setImages} onUploadingChange={setUploadingImages} />
-          )}
+          <ProductImagesField images={images} onChange={setImages} onUploadingChange={setUploadingImages} />
 
           {/* Precios */}
           <div>

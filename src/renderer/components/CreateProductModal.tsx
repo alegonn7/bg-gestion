@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/auth'
 import { useDollarStore } from '@/store/dollar'
 import { gananciaSobreCosto } from '@/lib/ganancia'
-import ProductImagesField, { productImagesEnabled } from './ProductImagesField'
+import ProductImagesField from './ProductImagesField'
 
 interface CreateProductModalProps {
   isOpen: boolean
@@ -41,7 +41,6 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
   const [selectedSupplier, setSelectedSupplier] = useState('')
   const [images, setImages] = useState<string[]>([])
   const [uploadingImages, setUploadingImages] = useState(false)
-  const showImages = productImagesEnabled()
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -185,7 +184,7 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
         description: formData.description.trim() || undefined,
         category_id: formData.category_id || undefined,
         supplier_id: selectedSupplier || null,
-        ...(showImages ? { images } : {}),
+        images,
         price_cost: priceCost,
         price_sale: priceSale,
         price_cost_usd: parseFloat(formData.price_cost_usd) || null,
@@ -402,9 +401,7 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
           </div>
 
           {/* Imágenes (tienda online) */}
-          {showImages && (
-            <ProductImagesField images={images} onChange={setImages} onUploadingChange={setUploadingImages} />
-          )}
+          <ProductImagesField images={images} onChange={setImages} onUploadingChange={setUploadingImages} />
 
           {/* Precios */}
           <div>
