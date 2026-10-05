@@ -170,7 +170,7 @@ export default function RemitoCaiModal({ onClose }: Props) {
 
           {/* CAI */}
           {cais.length > 0 && (
-            <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <div className="border border-gray-200 rounded-lg overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 text-left text-xs text-gray-500 uppercase">

@@ -33,13 +33,13 @@ export default function RemitosPage() {
   const filtrar = (cambios: Partial<FiltrosRemitos>) => setFiltros(f => ({ ...f, ...cambios, pagina: 1 }))
 
   return (
-    <div className="h-full overflow-y-auto bg-gray-50 p-6 space-y-5">
-      <div className="flex items-center justify-between">
+    <div className="h-full overflow-y-auto bg-gray-50 p-4 md:p-6 space-y-5">
+      <div className="flex flex-col items-start md:flex-row md:items-center md:justify-between gap-3 md:gap-0">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Remitos</h1>
           <p className="text-sm text-gray-500 mt-1">Entregas y traslados de mercadería · documento no válido como factura</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap md:flex-nowrap gap-2">
           {esDueño && (
             <button
               onClick={() => setGestionarCai(true)}

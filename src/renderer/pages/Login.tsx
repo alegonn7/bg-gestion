@@ -91,7 +91,7 @@ export default function Login() {
         )}
 
         {/* Login Form */}
-        <div className="bg-white rounded-2xl shadow-xl p-8">
+        <div className="bg-white rounded-2xl shadow-xl p-5 md:p-8">
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Email */}
             <div>

@@ -41,7 +41,7 @@ export default function UserDetailModal({ user, isOpen, onClose }: UserDetailMod
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="flex items-start justify-between p-6 border-b border-gray-200">
+        <div className="flex items-start justify-between p-4 md:p-6 border-b border-gray-200">
           <div className="flex items-center gap-4">
             <div className="w-14 h-14 bg-blue-100 rounded-lg flex items-center justify-center">
               <UserIcon className="w-7 h-7 text-blue-600" />
@@ -58,7 +58,7 @@ export default function UserDetailModal({ user, isOpen, onClose }: UserDetailMod
           </button>
         </div>
 
-        <div className="p-6 space-y-6">
+        <div className="p-4 md:p-6 space-y-6">
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-blue-50 rounded-lg p-4">
               <div className="flex items-center gap-2 text-blue-600 mb-2">
@@ -129,7 +129,7 @@ export default function UserDetailModal({ user, isOpen, onClose }: UserDetailMod
           </div>
         </div>
 
-        <div className="p-6 border-t border-gray-200 bg-gray-50">
+        <div className="p-4 md:p-6 border-t border-gray-200 bg-gray-50">
           <button
             onClick={onClose}
             className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition"

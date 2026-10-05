@@ -616,8 +616,8 @@ export default function CashRegisterPage() {
   return (
     <div className="h-full flex flex-col bg-gray-50">
       {/* Header */}
-      <div className="bg-white border-b px-6 py-4">
-        <div className="flex items-center justify-between mb-4">
+      <div className="bg-white border-b px-4 md:px-6 py-4">
+        <div className="flex flex-col items-start md:flex-row md:items-center md:justify-between gap-3 md:gap-0 mb-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Arqueo de Caja</h1>
             <p className="text-sm text-gray-500 mt-1">Controla la apertura y cierre de caja de tu sucursal</p>
@@ -656,8 +656,8 @@ export default function CashRegisterPage() {
               </button>
             </div>
             {showExtraModal && (
-              <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-                <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-lg relative">
+              <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-lg shadow-lg p-4 md:p-6 w-full max-w-lg relative max-h-[90vh] overflow-y-auto">
                   <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><ListPlus className="w-5 h-5" /> Movimientos Extraordinarios</h3>
                   <ExtraMovementForm cashRegisterId={currentRegister.id} onClose={() => setShowExtraModal(false)} />
                 </div>
@@ -676,7 +676,7 @@ export default function CashRegisterPage() {
       </div>
 
       {/* Filtros y exportación */}
-      <div className="w-full flex flex-row items-center gap-2 mb-10 px-6 pt-4">
+      <div className="w-full flex flex-row items-center gap-2 mb-10 px-4 md:px-6 pt-4">
         <button onClick={() => setShowFiltersModal(true)} className="flex items-center gap-1 px-3 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-xs font-semibold">
           <SlidersHorizontal className="w-4 h-4" /> Filtros
         </button>
@@ -687,8 +687,8 @@ export default function CashRegisterPage() {
 
       {/* Modal de filtros */}
       {showFiltersModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md relative">
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-lg p-4 md:p-6 w-full max-w-md relative max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><SlidersHorizontal className="w-5 h-5" /> Filtros de búsqueda</h3>
             <div className="flex flex-col gap-4">
               <div>
@@ -715,7 +715,7 @@ export default function CashRegisterPage() {
       )}
 
       {/* Historial */}
-      <div className="flex-1 overflow-y-auto p-6 mt-2">
+      <div className="flex-1 overflow-y-auto p-4 md:p-6 mt-2">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Historial de Arqueos</h2>
         {isLoading ? (
           <div className="text-center py-12">
@@ -815,7 +815,7 @@ export default function CashRegisterPage() {
       {/* Modal: Abrir Caja */}
       {showOpenModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
+          <div className="bg-white rounded-lg max-w-md w-full p-4 md:p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center"><ArrowUpCircle className="w-6 h-6 text-green-600" /></div>
               <div><h3 className="text-xl font-bold text-gray-900">Abrir Caja</h3><p className="text-sm text-gray-500">Ingresa el monto inicial en efectivo</p></div>
@@ -869,7 +869,7 @@ export default function CashRegisterPage() {
       {/* Modal: Cerrar Caja */}
       {showCloseModal && currentRegister && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-lg w-full p-6">
+          <div className="bg-white rounded-lg max-w-lg w-full p-4 md:p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center gap-3 mb-6">
               <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center"><ArrowDownCircle className="w-6 h-6 text-red-600" /></div>
               <div><h3 className="text-xl font-bold text-gray-900">Cerrar Caja</h3><p className="text-sm text-gray-500">Contá el efectivo y registrá el cierre</p></div>
@@ -926,7 +926,7 @@ export default function CashRegisterPage() {
       {/* Modal: Detalle de Arqueo */}
       {showDetailModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-[700px] w-full p-6" style={{ maxHeight: '95vh', overflowY: 'auto' }}>
+          <div className="bg-white rounded-lg max-w-[700px] w-full p-4 md:p-6" style={{ maxHeight: '95vh', overflowY: 'auto' }}>
             <div className="flex items-center justify-between mb-6">
               <h3 className="text-xl font-bold text-gray-900">Detalle del Arqueo</h3>
               <div className="flex items-center gap-2">
@@ -1019,7 +1019,7 @@ export default function CashRegisterPage() {
       {/* Modal: Movimientos del Arqueo */}
       {showMovementsModal && showDetailModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-[60]">
-          <div className="bg-white rounded-lg max-w-lg w-full p-6" style={{ maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+          <div className="bg-white rounded-lg max-w-lg w-full p-4 md:p-6" style={{ maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold">Movimientos - {formatDate(showDetailModal.opened_at)}</h3>
               <button onClick={() => setShowMovementsModal(false)} className="text-gray-400 hover:text-gray-600"><XCircle className="w-6 h-6" /></button>

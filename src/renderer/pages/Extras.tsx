@@ -219,7 +219,7 @@ function SheetCreator({ organizationId, onSave, onCancel }: {
 
   return (
     <div className="h-full flex flex-col items-center justify-center bg-gray-50">
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 w-full max-w-md">
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 md:p-8 w-full max-w-md">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-xl font-bold text-gray-900">Nueva hoja</h2>
           <button onClick={onCancel} className="p-1.5 hover:bg-gray-100 rounded-lg">
@@ -343,7 +343,7 @@ export default function ExtrasPage() {
 
   return (
     <div className="h-full flex flex-col bg-gray-50">
-      <div className="bg-white border-b px-6 py-4 flex items-center justify-between">
+      <div className="bg-white border-b px-4 md:px-6 py-4 flex flex-col items-start md:flex-row md:items-center md:justify-between gap-3 md:gap-0">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <Tag className="w-6 h-6 text-blue-600" /> Etiquetas de códigos de barra
@@ -358,7 +358,7 @@ export default function ExtrasPage() {
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-4 md:p-6">
         {loading ? (
           <div className="flex justify-center py-20">
             <Loader2 className="w-6 h-6 animate-spin text-gray-300" />

@@ -169,7 +169,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="p-6 max-w-3xl mx-auto">
+    <div className="p-4 md:p-6 max-w-3xl mx-auto">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-gray-900">Configuración</h1>
         <p className="text-gray-500 mt-1">Ajustes generales de la empresa</p>
@@ -177,7 +177,7 @@ export default function SettingsPage() {
 
       {/* Datos de la Empresa: solo owner/admin */}
       {isOwnerOrAdmin && (
-        <section className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+        <section className="bg-white rounded-xl border border-gray-200 p-4 md:p-6 mb-6">
           <div className="flex items-center gap-3 mb-5">
             <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
               <Building2 className="w-5 h-5 text-blue-600" />
@@ -326,7 +326,7 @@ export default function SettingsPage() {
       )}
 
       {/* Cotización Dólar */}
-      <section className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+      <section className="bg-white rounded-xl border border-gray-200 p-4 md:p-6 mb-6">
         <div className="flex items-center gap-3 mb-5">
           <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
             <DollarSign className="w-5 h-5 text-green-600" />

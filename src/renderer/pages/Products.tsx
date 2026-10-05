@@ -248,8 +248,8 @@ export default function Products() {
       )}
 
       <div className="bg-white border-b border-gray-200">
-        <div className="px-6 py-4">
-          <div className="flex items-center justify-between mb-4">
+        <div className="px-4 md:px-6 py-4">
+          <div className="flex flex-col items-start md:flex-row md:items-center md:justify-between gap-3 md:gap-0 mb-4">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Productos</h1>
               <p className="text-sm text-gray-500 mt-1">
@@ -262,7 +262,7 @@ export default function Products() {
                 )}
               </p>
             </div>
-            <div className="flex gap-3">
+            <div className="flex flex-wrap md:flex-nowrap gap-2 md:gap-3">
               {!offlineMode && (
                 <button
                   onClick={() => setIsCategoriesOpen(true)}
@@ -335,7 +335,7 @@ export default function Products() {
           </div>
 
 
-          <div className="flex gap-3 mb-3">
+          <div className="flex flex-col md:flex-row gap-3 mb-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input
@@ -425,7 +425,7 @@ export default function Products() {
         </div>
       </div>
 
-      <div className="p-6">
+      <div className="p-4 md:p-6">
         {error && (
           <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 flex items-center gap-2">
             <AlertTriangle className="w-5 h-5" /><span>{error}</span>
@@ -450,7 +450,7 @@ export default function Products() {
             {!searchQuery && selectedCategories.length === 0 && !offlineMode && (
               <button
                 onClick={() => setIsCreateOpen(true)}
-                className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium"
+                className="flex items-center gap-2 px-4 md:px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium"
               >
                 <Plus className="w-5 h-5" />Crear primer producto
               </button>
@@ -541,7 +541,7 @@ export default function Products() {
       {/* Import Progress */}
       {isImporting && importProgress && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
+          <div className="bg-white rounded-lg max-w-md w-full p-4 md:p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center gap-3 mb-4">
               <Loader2 className="w-6 h-6 text-blue-600 animate-spin" />
               <h3 className="text-lg font-bold text-gray-900">Importando productos...</h3>
@@ -562,7 +562,7 @@ export default function Products() {
       {/* Import Result */}
       {importResult && !isImporting && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-lg w-full p-6 max-h-[80vh] overflow-y-auto">
+          <div className="bg-white rounded-lg max-w-lg w-full p-4 md:p-6 max-h-[80vh] overflow-y-auto">
             <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
               <FileText className="w-5 h-5" />
               Resultado de importacion
@@ -620,7 +620,7 @@ export default function Products() {
 
       {deleteConfirm && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
+          <div className="bg-white rounded-lg max-w-md w-full p-4 md:p-6 max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-bold text-gray-900 mb-2">Eliminar producto</h3>
             <p className="text-gray-600 mb-4">Para confirmar, escribí el nombre exacto:</p>
             {/* ✅ nombre viene de product.product.name */}

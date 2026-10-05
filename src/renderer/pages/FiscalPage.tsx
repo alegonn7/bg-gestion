@@ -95,7 +95,7 @@ export default function FiscalPage() {
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-gray-50 p-6 space-y-6">
+    <div className="h-full overflow-y-auto bg-gray-50 p-4 md:p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -118,7 +118,7 @@ export default function FiscalPage() {
       {esDueño && <FiscalSetupSection />}
 
       {!config?.fiscal_enabled ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-400">
+        <div className="bg-white rounded-xl border border-gray-200 p-5 md:p-8 text-center text-gray-400">
           <FileText className="w-12 h-12 mx-auto mb-3 opacity-30" />
           <p className="text-sm">
             {esDueño

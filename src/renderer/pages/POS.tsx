@@ -32,6 +32,7 @@ export default function POS() {
   const [barcodeInput, setBarcodeInput] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [showCheckout, setShowCheckout] = useState(false)
+  const [mobilePanel, setMobilePanel] = useState<'products' | 'cart'>('products')
   const [discountInput, setDiscountInput] = useState('')
   const [discountTypeInput, setDiscountTypeInput] = useState(discountType)
   const [discountError, setDiscountError] = useState('')
@@ -144,7 +145,7 @@ export default function POS() {
   const totalItems = getTotalItems()
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50" onClick={(e) => {
+    <div className="h-full md:h-screen flex flex-col bg-gray-50" onClick={(e) => {
       const target = e.target as HTMLElement
       // Evitar que el input de código de barras reciba foco si el click fue en un select
       if (target.tagName !== 'INPUT' && target.tagName !== 'BUTTON' && target.tagName !== 'TEXTAREA' && target.tagName !== 'SELECT') {
@@ -161,16 +162,16 @@ export default function POS() {
       )}
 
       {/* Header */}
-      <div className="bg-white border-b px-6 py-4">
+      <div className="bg-white border-b px-4 md:px-6 py-3 md:py-4">
         <div className="flex items-center justify-between">
-          <div>
+          <div className="hidden md:block">
             <h1 className="text-2xl font-bold text-gray-900">Punto de Venta</h1>
             <p className="text-sm text-gray-500 mt-1">Escanea o busca productos para agregar al carrito</p>
           </div>
 
-          <div className="flex items-center gap-3">
-            <form onSubmit={handleBarcodeSubmit} className="flex items-center gap-3">
-              <div className="relative">
+          <div className="flex items-center gap-3 w-full md:w-auto">
+            <form onSubmit={handleBarcodeSubmit} className="flex items-center gap-3 w-full md:w-auto">
+              <div className="relative flex-1 md:flex-none">
                 <Hash className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <input
                   ref={barcodeRef}
@@ -178,7 +179,7 @@ export default function POS() {
                   value={barcodeInput}
                   onChange={(e) => setBarcodeInput(e.target.value)}
                   placeholder="Código de barras..."
-                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg w-56 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg w-full md:w-56 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
               <button
@@ -192,11 +193,27 @@ export default function POS() {
         </div>
       </div>
 
+      {/* Pestañas Productos / Carrito (solo celular: no entran los dos paneles) */}
+      <div className="md:hidden flex bg-white border-b">
+        <button
+          onClick={() => setMobilePanel('products')}
+          className={`flex-1 py-2.5 text-sm font-medium border-b-2 ${mobilePanel === 'products' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500'}`}
+        >
+          Productos
+        </button>
+        <button
+          onClick={() => setMobilePanel('cart')}
+          className={`flex-1 py-2.5 text-sm font-medium border-b-2 ${mobilePanel === 'cart' ? 'border-blue-600 text-blue-700' : 'border-transparent text-gray-500'}`}
+        >
+          Carrito ({totalItems})
+        </button>
+      </div>
+
       <div className="flex-1 flex overflow-hidden">
         {/* Products Grid */}
-        <div className="flex-1 p-6 overflow-y-auto">
-          <div className="mb-4 flex items-center gap-4">
-            <div className="relative flex-1 max-w-md">
+        <div className={`flex-1 p-4 md:p-6 overflow-y-auto ${mobilePanel === 'cart' ? 'hidden md:block' : ''}`}>
+          <div className="mb-4 flex flex-wrap md:flex-nowrap items-center gap-3 md:gap-4">
+            <div className="relative flex-1 min-w-full md:min-w-0 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
               <input
                 type="text"
@@ -347,10 +364,23 @@ export default function POS() {
               >Siguiente</button>
             </div>
           )}
+          {/* Acceso rápido al carrito (solo celular) */}
+          {items.length > 0 && (
+            <button
+              onClick={() => setMobilePanel('cart')}
+              className="md:hidden sticky bottom-0 mt-4 w-full py-3 px-4 bg-blue-600 text-white font-semibold rounded-lg shadow-lg flex items-center justify-between"
+            >
+              <span className="flex items-center gap-2">
+                <ShoppingCart className="h-5 w-5" />
+                Ver carrito ({totalItems})
+              </span>
+              <span>{priceMode === 'usd' ? `US$ ${total.toFixed(2)}` : formatCurrency(total)}</span>
+            </button>
+          )}
         </div>
 
         {/* Cart Sidebar */}
-        <div className="w-96 bg-white border-l flex flex-col">
+        <div className={`w-full md:w-96 bg-white md:border-l flex-col ${mobilePanel === 'products' ? 'hidden md:flex' : 'flex'}`}>
           <div className="p-4 border-b">
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-lg font-bold flex items-center gap-2">
