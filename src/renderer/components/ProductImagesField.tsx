@@ -8,9 +8,6 @@ import { compressImage } from '@/lib/compressImage'
 // así las imágenes cargadas acá se ven en la tienda y viceversa (columna products.images).
 const BUCKET = 'store-product-images'
 
-/** Por ahora solo en la versión web; la app de escritorio sigue igual. */
-export const productImagesEnabled = () => !window.electron
-
 interface ProductImagesFieldProps {
   images: string[]
   onChange: (images: string[]) => void
