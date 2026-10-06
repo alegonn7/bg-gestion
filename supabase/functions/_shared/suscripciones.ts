@@ -75,6 +75,21 @@ export async function mpFetch(path: string, init: RequestInit = {}): Promise<{ o
   return { ok: res.ok, status: res.status, data }
 }
 
+// Código de acceso al panel después de pagar (ver alta-tienda y estado-alta). Se guarda solo el
+// hash: el código queda en el navegador de quien hizo el alta.
+const ACCESO_VALIDO_MS = 24 * 60 * 60 * 1000
+
+export async function generarAcceso(): Promise<{ codigo: string; hash: string; venceAt: string }> {
+  const bytes = crypto.getRandomValues(new Uint8Array(32))
+  const codigo = btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
+  return { codigo, hash: await hashAcceso(codigo), venceAt: new Date(Date.now() + ACCESO_VALIDO_MS).toISOString() }
+}
+
+export async function hashAcceso(codigo: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(codigo))
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("")
+}
+
 export function storeSiteUrl(): string {
   return (Deno.env.get("ECOMERSE_SITE_URL") ?? "https://bg-tienda.vercel.app").replace(/\/$/, "")
 }

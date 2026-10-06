@@ -4,9 +4,11 @@
 // tienda, y una suscripción de Mercado Pago por el primer mes al 50%. Devuelve el link de pago.
 // La cuenta queda sin acceso y la tienda sin publicar hasta que sincronizarSuscripcion() ve la
 // tarjeta autorizada o el primer cobro aprobado. Si algo falla a mitad de camino se deshace todo.
+// También devuelve un código de acceso de un solo uso (ver estado-alta) para que, al volver de
+// Mercado Pago, el cliente entre al panel sin volver a escribir la contraseña.
 
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2"
-import { mpFetch, precioPrimerMes } from "../_shared/suscripciones.ts"
+import { generarAcceso, mpFetch, precioPrimerMes } from "../_shared/suscripciones.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -21,7 +23,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const SLUGS_RESERVADOS = new Set([
   "admin", "api", "www", "app", "login", "logout", "registro", "signup", "empezar", "bienvenida", "tienda", "tiendas",
   "bg-tienda", "bgtienda", "binarygoats", "binary-goats", "soporte", "ayuda", "help", "static", "assets", "_next",
-  "robots", "sitemap", "favicon", "pedido", "pedidos", "checkout", "carrito", "mercadopago",
+  "robots", "sitemap", "favicon", "pedido", "pedidos", "checkout", "carrito", "mercadopago", "auth",
 ])
 const MAX_ALTAS_POR_HORA = 5
 
@@ -114,12 +116,18 @@ Deno.serve(async (req) => {
       return errorResponse(mensajeMercadoPago(preapproval.data), 502)
     }
 
+    const acceso = await generarAcceso()
     await admin
       .from("platform_subscriptions")
-      .update({ mp_preapproval_id: String(preapproval.data.id), mp_status: preapproval.data.status ?? "pending" })
+      .update({
+        mp_preapproval_id: String(preapproval.data.id),
+        mp_status: preapproval.data.status ?? "pending",
+        acceso_hash: acceso.hash,
+        acceso_vence_at: acceso.venceAt,
+      })
       .eq("organization_id", creado.organizationId)
 
-    return jsonResponse({ ok: true, cuenta: creado.organizationId, init_point: preapproval.data.init_point })
+    return jsonResponse({ ok: true, cuenta: creado.organizationId, init_point: preapproval.data.init_point, acceso: acceso.codigo })
   } catch (err: any) {
     console.error("alta-tienda error:", err)
     return errorResponse("No pudimos crear tu cuenta. Probá de nuevo en unos minutos.", 500)
