@@ -202,15 +202,28 @@ export async function sincronizarSuscripcion(
     last_synced_at: ahora,
     updated_at: ahora,
   }
-  if (aprobados.length > 0) {
-    cambiosSub.last_paid_at = ultimoAprobado?.debit_date ?? ahora
-    if (!sub.first_paid_at) cambiosSub.first_paid_at = aprobados[aprobados.length - 1]?.debit_date ?? ahora
-  }
+  if (ultimoAprobado) cambiosSub.last_paid_at = ultimoAprobado.debit_date ?? ahora
   await admin.from("platform_subscriptions").update(cambiosSub).eq("id", sub.id)
   const subActual = { ...sub, ...cambiosSub } as Suscripcion
 
+  // Primer cobro aprobado: recién ahí se sube la suscripción al precio completo, así el primer mes
+  // siempre se cobra al 50% aunque Mercado Pago lo debite un rato después de autorizar la tarjeta.
+  if (aprobados.length > 0 && !sub.first_paid_at) {
+    const { data: primero } = await admin
+      .from("platform_subscriptions")
+      .update({ first_paid_at: aprobados[aprobados.length - 1]?.debit_date ?? ahora })
+      .eq("id", sub.id)
+      .is("first_paid_at", null)
+      .select("id")
+    if (primero?.length) await subirAPrecioCompleto(admin, subActual)
+  }
+
   // 3. Transiciones de la organización, cada una con un UPDATE condicional (solo una corrida gana).
-  if (aprobados.length > 0 && !atrasado) {
+  //    La cuenta se activa apenas Mercado Pago autoriza la tarjeta (o aprueba un cobro): el cliente
+  //    empieza a usarla en el momento, y si el primer cobro después falla pasa a atrasada.
+  const reportados = new Set<string>()
+  const pagoValido = (aprobados.length > 0 || mpStatus === "authorized") && !atrasado && mpStatus !== "cancelled"
+  if (pagoValido) {
     const { data: activada } = await admin
       .from("organizations")
       .update({ subscription_status: "active", subscription_started_at: ahora, trial_ends_at: null, updated_at: ahora })
@@ -218,10 +231,11 @@ export async function sincronizarSuscripcion(
       .eq("subscription_status", "pending")
       .select("id")
     if (activada?.length) {
-      await subirAPrecioCompleto(admin, subActual)
+      const cobro = nuevosAprobados[0] ?? null
+      if (cobro) reportados.add(String(cobro.id))
       await mandarBienvenida(subActual, org)
-      await avisarDueno(`Nueva venta: BG Tienda para ${org.name}`, detalleVenta(subActual, org, nuevosAprobados[0] ?? null, "Compra nueva"))
-    } else {
+      await avisarDueno(`Nueva venta: BG Tienda para ${org.name}`, detalleVenta(subActual, org, cobro, "Compra nueva"))
+    } else if (aprobados.length > 0) {
       const { data: regularizada } = await admin
         .from("organizations")
         .update({ subscription_status: "active", updated_at: ahora })
@@ -229,15 +243,13 @@ export async function sincronizarSuscripcion(
         .in("subscription_status", ["past_due", "suspended"])
         .select("id")
       if (regularizada?.length) {
+        const cobro = nuevosAprobados[0] ?? null
+        if (cobro) reportados.add(String(cobro.id))
         await admin.from("platform_subscriptions").update({ past_due_since: null }).eq("id", sub.id)
-        await avisarDueno(`Regularizó el pago: ${org.name}`, detalleVenta(subActual, org, nuevosAprobados[0] ?? null, "Volvió a pagar"))
-      } else {
-        for (const cobro of nuevosAprobados) {
-          await avisarDueno(`Cobro mensual: ${org.name}`, detalleVenta(subActual, org, cobro, "Cobro mensual aprobado"))
-        }
+        await avisarDueno(`Regularizó el pago: ${org.name}`, detalleVenta(subActual, org, cobro, "Volvió a pagar"))
       }
     }
-  } else if (aprobados.length > 0 && atrasado) {
+  } else if (atrasado) {
     const { data: marcada } = await admin
       .from("organizations")
       .update({ subscription_status: "past_due", updated_at: ahora })
@@ -247,12 +259,21 @@ export async function sincronizarSuscripcion(
     if (marcada?.length) {
       await admin.from("platform_subscriptions").update({ past_due_since: ahora }).eq("id", sub.id)
       await avisarPagoRechazado(subActual, org)
-      await avisarDueno(`Pago rechazado: ${org.name}`, detalleVenta(subActual, org, nuevosRechazados[0] ?? null, "Cobro mensual rechazado"))
     }
   }
 
-  // 4. Cancelación (la hizo el cliente, o Mercado Pago después de 3 cobros rechazados): sigue
-  //    usando lo que ya pagó y el cron la suspende al vencer.
+  // Aviso al dueño por cada cobro nuevo que no salió ya en el mail de compra o de regularización.
+  for (const cobro of nuevosAprobados) {
+    if (reportados.has(String(cobro.id))) continue
+    await avisarDueno(`Cobro aprobado: ${org.name}`, detalleVenta(subActual, org, cobro, "Cobro mensual aprobado"))
+  }
+  for (const cobro of nuevosRechazados) {
+    await avisarDueno(`Pago rechazado: ${org.name}`, detalleVenta(subActual, org, cobro, "Cobro rechazado (Mercado Pago lo reintenta)"))
+  }
+
+  // 4. Cancelación (la hizo el cliente, o Mercado Pago después de 3 cobros rechazados). Si ya pagó,
+  //    sigue usando lo que pagó y el cron la suspende al vencer. Si canceló antes del primer cobro,
+  //    se suspende ya: si no, autorizar la tarjeta y cancelar dejaría una tienda gratis.
   if (mpStatus === "cancelled") {
     const { data: cancelada } = await admin
       .from("platform_subscriptions")
@@ -260,14 +281,26 @@ export async function sincronizarSuscripcion(
       .eq("id", sub.id)
       .is("cancelled_at", null)
       .select("id")
-    if (cancelada?.length && aprobados.length > 0) {
-      const hasta = new Date(ultimoAprobado?.debit_date ?? ahora)
-      hasta.setMonth(hasta.getMonth() + 1)
-      await admin.from("organizations").update({ subscription_ends_at: hasta.toISOString(), updated_at: ahora }).eq("id", org.id)
-      await avisarDueno(
-        `Canceló la suscripción: ${org.name}`,
-        detalleVenta(subActual, org, null, `Suscripción cancelada. La tienda sigue activa hasta el ${fecha(hasta.toISOString())} y después se suspende sola.`),
-      )
+    if (cancelada?.length) {
+      if (ultimoAprobado) {
+        const hasta = new Date(ultimoAprobado.debit_date ?? ahora)
+        hasta.setMonth(hasta.getMonth() + 1)
+        await admin.from("organizations").update({ subscription_ends_at: hasta.toISOString(), updated_at: ahora }).eq("id", org.id)
+        await avisarDueno(
+          `Canceló la suscripción: ${org.name}`,
+          detalleVenta(subActual, org, null, `Suscripción cancelada. La tienda sigue activa hasta el ${fecha(hasta.toISOString())} y después se suspende sola.`),
+        )
+      } else {
+        await admin
+          .from("organizations")
+          .update({ subscription_status: "suspended", updated_at: ahora })
+          .eq("id", org.id)
+          .in("subscription_status", ["active", "past_due"])
+        await avisarDueno(
+          `Canceló antes del primer cobro: ${org.name}`,
+          detalleVenta(subActual, org, null, "Suscripción cancelada antes de cobrar el primer mes. Si la cuenta estaba activa, quedó suspendida."),
+        )
+      }
     }
   }
 
@@ -346,7 +379,7 @@ async function mandarBienvenida(sub: Suscripcion, org: Organizacion): Promise<vo
     html:
       `<div style="font-family:sans-serif; max-width:520px;">` +
       `<h2>¡Bienvenido a BG Tienda${sub.contact_name ? `, ${escapeHtml(sub.contact_name.split(" ")[0])}` : ""}!</h2>` +
-      `<p>Recibimos tu pago y tu tienda ya está activa.</p>` +
+      `<p>Tu suscripción quedó confirmada y tu tienda ya está activa.</p>` +
       `<p><strong>Tu panel:</strong> <a href="${panel}">${panel}</a><br/>Entrás con <strong>${escapeHtml(sub.contact_email)}</strong> y la contraseña que elegiste.</p>` +
       `<p><strong>Tu tienda:</strong> <a href="${tienda}">${tienda}</a></p>` +
       `<p>Primeros pasos: cargá tu logo y colores en Personalización, sumá tus productos con fotos y precios, y compartí el link de tu tienda.</p>` +
