@@ -14,7 +14,9 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+// Sin anclas a propósito: Mercado Pago le pega sus parámetros al back_url con otro "?", así que
+// la página puede mandar "<uuid>?preapproval_id=...". Se toma el primer uuid que aparezca.
+const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
 const RELEER_CADA_MS = 8_000
 
 Deno.serve(async (req) => {
@@ -22,8 +24,8 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json().catch(() => ({}) as any)
-    const cuenta = String(body?.cuenta ?? "")
-    if (!UUID_RE.test(cuenta)) return errorResponse("Cuenta inválida", 400)
+    const cuenta = String(body?.cuenta ?? "").match(UUID_RE)?.[0]?.toLowerCase()
+    if (!cuenta) return errorResponse("Cuenta inválida", 400)
 
     const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!)
 
