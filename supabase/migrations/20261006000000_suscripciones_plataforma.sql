@@ -4,10 +4,11 @@
 -- Todo aditivo: las organizaciones existentes (plan enterprise) no cambian.
 -- =====================================================
 
--- 1. Plan nuevo "tienda" ($10.000/mes, 1 sucursal). El primer mes se cobra al 50% desde la
+-- 1. Plan nuevo "tienda" ($10.000/mes, 1 sucursal; productos sin tope práctico porque la landing
+--    promete "productos y pedidos ilimitados"). El primer mes se cobra al 50% desde la
 --    Edge Function alta-tienda; acá vive solo el precio de lista.
 INSERT INTO plan_config (plan_name, display_name, price_per_branch, max_branches, max_products_per_branch, max_users_per_branch, features, is_active)
-VALUES ('tienda', 'BG Tienda', 10000, 1, 1000, 2, '{"soporte": "estandar"}'::jsonb, true)
+VALUES ('tienda', 'BG Tienda', 10000, 1, 100000, 2, '{"soporte": "estandar"}'::jsonb, true)
 ON CONFLICT (plan_name) DO NOTHING;
 
 -- 2. Estados de suscripción. organizations.subscription_status no tiene CHECK: se suma "pending"
