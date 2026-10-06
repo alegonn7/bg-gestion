@@ -139,6 +139,16 @@ export async function sincronizarSuscripcion(
     }
   }
   if (!sub) {
+    // Suscripción vieja de una cuenta que se reactivó con una nueva (reactivar-suscripcion): sus
+    // avisos ya no cambian nada, no es un pago huérfano.
+    if (pre.data?.external_reference) {
+      const { data: actual } = await admin
+        .from("platform_subscriptions")
+        .select("id")
+        .eq("organization_id", pre.data.external_reference)
+        .maybeSingle()
+      if (actual) return null
+    }
     await avisarSuscripcionHuerfana(preapprovalId, pre.data)
     return null
   }
@@ -206,7 +216,13 @@ export async function sincronizarSuscripcion(
     .order("debit_date", { ascending: false })
   const aprobados = (pagos ?? []).filter((p) => p.status === "approved")
   const ultimoAprobado = aprobados[0] ?? null
-  const ultimo = (pagos ?? [])[0] ?? null
+  // Para el estado solo cuentan los cobros de la suscripción de Mercado Pago actual. Después de una
+  // reactivación los del preapproval anterior quedan en el historial, pero un rechazo viejo no
+  // marca atrasada la cuenta nueva y un cobro viejo aprobado no la reactiva sin pagar.
+  const desde = pre.data?.date_created ? Date.parse(pre.data.date_created) : 0
+  const pagosActuales = (pagos ?? []).filter((p) => !p.debit_date || Date.parse(p.debit_date) >= desde)
+  const aprobadosActuales = pagosActuales.filter((p) => p.status === "approved")
+  const ultimo = pagosActuales[0] ?? null
   const atrasado = !!ultimo && (ultimo.status === "rejected" || ultimo.status === "cancelled")
 
   const mpStatus: string = pre.data?.status ?? null
@@ -237,7 +253,7 @@ export async function sincronizarSuscripcion(
   //    La cuenta se activa apenas Mercado Pago autoriza la tarjeta (o aprueba un cobro): el cliente
   //    empieza a usarla en el momento, y si el primer cobro después falla pasa a atrasada.
   const reportados = new Set<string>()
-  const pagoValido = (aprobados.length > 0 || mpStatus === "authorized") && !atrasado && mpStatus !== "cancelled"
+  const pagoValido = (aprobadosActuales.length > 0 || mpStatus === "authorized") && !atrasado && mpStatus !== "cancelled"
   if (pagoValido) {
     const { data: activada } = await admin
       .from("organizations")
@@ -250,7 +266,26 @@ export async function sincronizarSuscripcion(
       if (cobro) reportados.add(String(cobro.id))
       await mandarBienvenida(subActual, org)
       await avisarDueno(`Nueva venta: BG Tienda para ${org.name}`, detalleVenta(subActual, org, cobro, "Compra nueva"))
-    } else if (aprobados.length > 0) {
+    } else if (sub.cancelled_at && mpStatus === "authorized") {
+      // Reactivación (reactivar-suscripcion): el dueño se volvió a suscribir después de cancelar o
+      // de quedar suspendido. Vuelve a active y deja de tener fecha de corte.
+      const { data: reactivada } = await admin
+        .from("platform_subscriptions")
+        .update({ cancelled_at: null, past_due_since: null })
+        .eq("id", sub.id)
+        .not("cancelled_at", "is", null)
+        .select("id")
+      if (reactivada?.length) {
+        await admin
+          .from("organizations")
+          .update({ subscription_status: "active", subscription_ends_at: null, updated_at: ahora })
+          .eq("id", org.id)
+          .in("subscription_status", ["active", "past_due", "suspended"])
+        const cobro = nuevosAprobados[0] ?? null
+        if (cobro) reportados.add(String(cobro.id))
+        await avisarDueno(`Reactivó la suscripción: ${org.name}`, detalleVenta(subActual, org, cobro, "Suscripción reactivada"))
+      }
+    } else if (aprobadosActuales.length > 0) {
       const { data: regularizada } = await admin
         .from("organizations")
         .update({ subscription_status: "active", updated_at: ahora })
