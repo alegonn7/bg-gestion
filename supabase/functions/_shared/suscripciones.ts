@@ -1,4 +1,4 @@
-// Suscripciones de los clientes a Binary Goats (hoy: plan BG Tienda). Distinto de
+// Suscripciones de los clientes a Binary Goats (BG Tienda y BG Gestión). Distinto de
 // _shared/mercadopago.ts, que maneja la cuenta de Mercado Pago de cada tienda para cobrarle a SUS
 // compradores: acá se usa la cuenta de Binary Goats (MP_SUBS_ACCESS_TOKEN) y la plata entra ahí.
 //
@@ -88,6 +88,20 @@ export async function generarAcceso(): Promise<{ codigo: string; hash: string; v
 export async function hashAcceso(codigo: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(codigo))
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("")
+}
+
+export function landingSiteUrl(): string {
+  return (Deno.env.get("LANDING_SITE_URL") ?? "https://www.binarygoats.com.ar").replace(/\/$/, "")
+}
+
+// Producto de la suscripción ("tienda" o "gestion", columna platform_subscriptions.product).
+export function nombreProducto(product: string): string {
+  return product === "gestion" ? "BG Gestión" : "BG Tienda"
+}
+
+function nombrePlan(sub: Suscripcion): string {
+  if (sub.product !== "gestion") return nombreProducto(sub.product)
+  return `${nombreProducto(sub.product)} ${sub.plan.charAt(0).toUpperCase()}${sub.plan.slice(1)}`
 }
 
 export function storeSiteUrl(): string {
@@ -265,7 +279,7 @@ export async function sincronizarSuscripcion(
       const cobro = nuevosAprobados[0] ?? null
       if (cobro) reportados.add(String(cobro.id))
       await mandarBienvenida(subActual, org)
-      await avisarDueno(`Nueva venta: BG Tienda para ${org.name}`, detalleVenta(subActual, org, cobro, "Compra nueva"))
+      await avisarDueno(`Nueva venta: ${nombrePlan(subActual)} para ${org.name}`, detalleVenta(subActual, org, cobro, "Compra nueva"))
     } else if (sub.cancelled_at && mpStatus === "authorized") {
       // Reactivación (reactivar-suscripcion): el dueño se volvió a suscribir después de cancelar o
       // de quedar suspendido. Vuelve a active y deja de tener fecha de corte.
@@ -323,7 +337,7 @@ export async function sincronizarSuscripcion(
 
   // 4. Cancelación (la hizo el cliente, o Mercado Pago después de 3 cobros rechazados). Si ya pagó,
   //    sigue usando lo que pagó y el cron la suspende al vencer. Si canceló antes del primer cobro,
-  //    se suspende ya: si no, autorizar la tarjeta y cancelar dejaría una tienda gratis.
+  //    se suspende ya: si no, autorizar la tarjeta y cancelar dejaría la cuenta gratis.
   if (mpStatus === "cancelled") {
     const { data: cancelada } = await admin
       .from("platform_subscriptions")
@@ -338,7 +352,7 @@ export async function sincronizarSuscripcion(
         await admin.from("organizations").update({ subscription_ends_at: hasta.toISOString(), updated_at: ahora }).eq("id", org.id)
         await avisarDueno(
           `Canceló la suscripción: ${org.name}`,
-          detalleVenta(subActual, org, null, `Suscripción cancelada. La tienda sigue activa hasta el ${fecha(hasta.toISOString())} y después se suspende sola.`),
+          detalleVenta(subActual, org, null, `Suscripción cancelada. La cuenta sigue activa hasta el ${fecha(hasta.toISOString())} y después se suspende sola.`),
         )
       } else {
         await admin
@@ -391,7 +405,8 @@ function detalleVenta(sub: Suscripcion, org: Organizacion, cobro: CobroMP | null
   const superadmin = Deno.env.get("SUPERADMIN_URL")
   const filas: [string, string][] = [
     ["Negocio", org.name],
-    ["Tienda", `<a href="${tienda}">${tienda}</a>`],
+    ["Producto", nombreProducto(sub.product)],
+    ...(sub.product === "gestion" ? [] : [["Tienda", `<a href="${tienda}">${tienda}</a>`] as [string, string]]),
     ["Cliente", sub.contact_name ?? "-"],
     ["Email", sub.contact_email ?? "-"],
     ["WhatsApp", sub.contact_phone ?? "-"],
@@ -420,6 +435,7 @@ function detalleVenta(sub: Suscripcion, org: Organizacion, cobro: CobroMP | null
 
 async function mandarBienvenida(sub: Suscripcion, org: Organizacion): Promise<void> {
   if (!sub.contact_email) return
+  if (sub.product === "gestion") return mandarBienvenidaGestion(sub, org)
   const tienda = `${storeSiteUrl()}/${org.slug}`
   const panel = `${storeSiteUrl()}/admin/login`
   await sendEmail({
@@ -440,16 +456,42 @@ async function mandarBienvenida(sub: Suscripcion, org: Organizacion): Promise<vo
   })
 }
 
-async function avisarPagoRechazado(sub: Suscripcion, org: Organizacion): Promise<void> {
+// Bienvenida de BG Gestión: es un programa que se instala, así que el mail lleva las descargas y
+// los datos para entrar (no hay panel web como en BG Tienda).
+async function mandarBienvenidaGestion(sub: Suscripcion, org: Organizacion): Promise<void> {
   if (!sub.contact_email) return
+  const descargas = `${landingSiteUrl()}/bg-gestion/descargar`
   await sendEmail({
     to: sub.contact_email,
-    subject: `No pudimos cobrar tu suscripción de BG Tienda`,
-    fromName: "BG Tienda",
+    subject: `¡Tu cuenta de BG Gestión para ${org.name} ya está lista!`,
+    fromName: "BG Gestión",
+    html:
+      `<div style="font-family:sans-serif; max-width:520px;">` +
+      `<h2>¡Bienvenido a BG Gestión${sub.contact_name ? `, ${escapeHtml(sub.contact_name.split(" ")[0])}` : ""}!</h2>` +
+      `<p>Tu suscripción al plan ${escapeHtml(nombrePlan(sub))} quedó confirmada y tu cuenta ya está activa.</p>` +
+      `<p><strong>1. Descargá el programa:</strong><br/>` +
+      `<a href="${descargas}?so=windows">Descargar para Windows</a> · <a href="${descargas}?so=mac">Descargar para Mac</a></p>` +
+      `<p><strong>2. Instalalo y entrá</strong> con <strong>${escapeHtml(sub.contact_email)}</strong> y la contraseña que elegiste.</p>` +
+      `<p>Primeros pasos: revisá los datos de tu sucursal, importá tus productos desde Excel (CSV) o cargalos a mano, y sumá a tu equipo desde Usuarios.</p>` +
+      `<p>Tu suscripción se renueva sola cada mes por ${formatArs(sub.full_amount)}. Podés cambiar la tarjeta o cancelarla cuando quieras desde ` +
+      `<a href="https://www.mercadopago.com.ar/subscriptions">tus suscripciones de Mercado Pago</a>.</p>` +
+      `<p>¿Dudas? Respondé este mail o escribinos por WhatsApp.</p>` +
+      `<p style="color:#6b6b6b;">Binary Goats</p>` +
+      `</div>`,
+  })
+}
+
+async function avisarPagoRechazado(sub: Suscripcion, org: Organizacion): Promise<void> {
+  if (!sub.contact_email) return
+  const producto = nombreProducto(sub.product)
+  await sendEmail({
+    to: sub.contact_email,
+    subject: `No pudimos cobrar tu suscripción de ${producto}`,
+    fromName: producto,
     html:
       `<div style="font-family:sans-serif; max-width:520px;">` +
       `<h2>Hubo un problema con el cobro de ${escapeHtml(org.name)}</h2>` +
-      `<p>Mercado Pago no pudo cobrar la cuota de este mes. Tu tienda sigue online mientras Mercado Pago reintenta el cobro durante los próximos días.</p>` +
+      `<p>Mercado Pago no pudo cobrar la cuota de este mes. ${sub.product === "gestion" ? "Podés seguir usando BG Gestión" : "Tu tienda sigue online"} mientras Mercado Pago reintenta el cobro durante los próximos días.</p>` +
       `<p>Para evitar que se suspenda, revisá que tu tarjeta tenga fondos o cambiala desde tu cuenta de Mercado Pago (Suscripciones).</p>` +
       `<p style="color:#6b6b6b;">Binary Goats</p>` +
       `</div>`,

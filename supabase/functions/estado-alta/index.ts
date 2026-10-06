@@ -1,5 +1,6 @@
 // Edge Function: estado-alta
-// La consulta la página de bienvenida de la landing (binarygoats.com.ar/bg-tienda/bienvenida)
+// La consulta la página de bienvenida de la landing (binarygoats.com.ar/bg-tienda/bienvenida y
+// /bg-gestion/bienvenida)
 // cuando el cliente vuelve de Mercado Pago, hasta que la cuenta queda activa. Pública: recibe el
 // id de la organización (un uuid que solo conoce quien hizo el alta) y devuelve lo mínimo para
 // mostrar la pantalla. Si la cuenta sigue en pending, relee el estado de Mercado Pago: así se
@@ -38,7 +39,7 @@ Deno.serve(async (req) => {
 
     const { data: sub } = await admin
       .from("platform_subscriptions")
-      .select("organization_id, contact_email, last_synced_at, organizations(slug, name, subscription_status)")
+      .select("organization_id, product, plan, contact_email, last_synced_at, organizations(slug, name, subscription_status)")
       .eq("organization_id", cuenta)
       .maybeSingle()
     if (!sub) return jsonResponse({ estado: "inexistente" })
@@ -58,6 +59,8 @@ Deno.serve(async (req) => {
     const site = storeSiteUrl()
     return jsonResponse({
       estado,
+      producto: sub.product,
+      plan: sub.plan,
       negocio: org.name,
       email: enmascarar(sub.contact_email),
       tienda: `${site}/${org.slug}`,

@@ -1,7 +1,9 @@
 // Edge Function: alta-tienda
-// Alta automática desde la landing (binarygoats.com.ar/bg-tienda/empezar). Pública, sin sesión:
-// crea el usuario dueño, la organización con plan "tienda" en estado pending, su sucursal y su
-// tienda, y una suscripción de Mercado Pago por el primer mes al 50%. Devuelve el link de pago.
+// Alta automática desde la landing (binarygoats.com.ar/bg-tienda/empezar y /bg-gestion/empezar).
+// Pública, sin sesión: crea el usuario dueño, la organización en estado pending, su sucursal (y su
+// tienda, si es BG Tienda) y una suscripción de Mercado Pago por el primer mes al 50%. Devuelve el
+// link de pago. Con producto "gestion" el plan es "profesional" o "premium" (plan_config) y la
+// dirección de la organización se genera sola a partir del nombre del negocio.
 // La cuenta queda sin acceso y la tienda sin publicar hasta que sincronizarSuscripcion() ve la
 // tarjeta autorizada o el primer cobro aprobado. Si algo falla a mitad de camino se deshace todo.
 // También devuelve un código de acceso de un solo uso (ver estado-alta) para que, al volver de
@@ -26,6 +28,9 @@ const SLUGS_RESERVADOS = new Set([
   "robots", "sitemap", "favicon", "pedido", "pedidos", "checkout", "carrito", "mercadopago", "auth",
 ])
 const MAX_ALTAS_POR_HORA = 5
+// Planes de BG Gestión que se venden solos desde la landing. "inicial" ya no se ofrece y
+// "enterprise" es a medida, por WhatsApp.
+const PLANES_GESTION = new Set(["profesional", "premium"])
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders })
@@ -43,8 +48,12 @@ Deno.serve(async (req) => {
       return jsonResponse({ slugLibre })
     }
 
+    const producto: "tienda" | "gestion" = body.producto === "gestion" ? "gestion" : "tienda"
+    const planPedido = producto === "gestion" ? String(body.plan ?? "").trim().toLowerCase() : "tienda"
+    if (producto === "gestion" && !PLANES_GESTION.has(planPedido)) return errorResponse("Elegí un plan")
+
     const negocio = String(body.negocio ?? "").trim()
-    const slug = String(body.slug ?? "").trim().toLowerCase()
+    let slug = String(body.slug ?? "").trim().toLowerCase()
     const nombre = String(body.nombre ?? "").trim()
     const email = String(body.email ?? "").trim().toLowerCase()
     const whatsapp = String(body.whatsapp ?? "").replace(/[^\d+]/g, "")
@@ -52,6 +61,7 @@ Deno.serve(async (req) => {
     const emailMP = String(body.email_mercadopago ?? "").trim().toLowerCase() || null
 
     if (negocio.length < 2 || negocio.length > 80) return errorResponse("Escribí el nombre de tu negocio")
+    if (producto === "gestion") slug = await slugLibreDesde(admin, negocio)
     if (!SLUG_RE.test(slug) || slug.length < 3 || slug.length > 40)
       return errorResponse("La dirección de la tienda solo puede tener minúsculas, números y guiones (entre 3 y 40 caracteres)")
     if (SLUGS_RESERVADOS.has(slug)) return errorResponse("Esa dirección no está disponible, probá con otra")
@@ -76,19 +86,19 @@ Deno.serve(async (req) => {
 
     const disponible = await verificarDisponibilidad(admin, slug, email)
     if (!disponible.slugLibre) return errorResponse("Esa dirección de tienda ya está en uso, probá con otra", 409)
-    if (!disponible.emailLibre) return errorResponse("Ya hay una cuenta con ese email. Si es tuya, entrá desde el panel de tu tienda.", 409)
+    if (!disponible.emailLibre) return errorResponse(mensajeEmailUsado(producto), 409)
 
     const { data: plan } = await admin
       .from("plan_config")
       .select("plan_name, price_per_branch, max_branches, max_products_per_branch, max_users_per_branch, is_active")
-      .eq("plan_name", "tienda")
+      .eq("plan_name", planPedido)
       .maybeSingle()
     if (!plan?.is_active) return errorResponse("El plan no está disponible en este momento", 503)
 
     const precio = Number(plan.price_per_branch)
     const primerMes = precioPrimerMes(precio)
 
-    const creado = await crearCuenta(admin, { negocio, slug, nombre, email, whatsapp, password, emailMP, plan, precio, primerMes })
+    const creado = await crearCuenta(admin, { producto, negocio, slug, nombre, email, whatsapp, password, emailMP, plan, precio, primerMes })
     if ("error" in creado) return errorResponse(creado.error, creado.status)
 
     const siteUrl = (Deno.env.get("LANDING_SITE_URL") ?? "https://www.binarygoats.com.ar").replace(/\/$/, "")
@@ -97,11 +107,11 @@ Deno.serve(async (req) => {
     const preapproval = await mpFetch("/preapproval", {
       method: "POST",
       body: JSON.stringify({
-        reason: `BG Tienda — ${negocio}`,
+        reason: producto === "gestion" ? `BG Gestión ${tituloPlan(planPedido)} — ${negocio}` : `BG Tienda — ${negocio}`,
         external_reference: creado.organizationId,
         payer_email: emailMP ?? email,
         auto_recurring: { frequency: 1, frequency_type: "months", transaction_amount: primerMes, currency_id: "ARS" },
-        back_url: `${siteUrl}/bg-tienda/bienvenida?cuenta=${creado.organizationId}`,
+        back_url: `${siteUrl}/${producto === "gestion" ? "bg-gestion" : "bg-tienda"}/bienvenida?cuenta=${creado.organizationId}`,
         notification_url: `${Deno.env.get("SUPABASE_URL")}/functions/v1/suscripciones-webhook`,
         status: "pending",
       }),
@@ -116,18 +126,20 @@ Deno.serve(async (req) => {
       return errorResponse(mensajeMercadoPago(preapproval.data), 502)
     }
 
-    const acceso = await generarAcceso()
+    // El código para entrar al panel sin contraseña es solo de BG Tienda (panel web). BG Gestión
+    // se instala y se entra desde el programa.
+    const acceso = producto === "tienda" ? await generarAcceso() : null
     await admin
       .from("platform_subscriptions")
       .update({
         mp_preapproval_id: String(preapproval.data.id),
         mp_status: preapproval.data.status ?? "pending",
-        acceso_hash: acceso.hash,
-        acceso_vence_at: acceso.venceAt,
+        acceso_hash: acceso?.hash ?? null,
+        acceso_vence_at: acceso?.venceAt ?? null,
       })
       .eq("organization_id", creado.organizationId)
 
-    return jsonResponse({ ok: true, cuenta: creado.organizationId, init_point: preapproval.data.init_point, acceso: acceso.codigo })
+    return jsonResponse({ ok: true, cuenta: creado.organizationId, init_point: preapproval.data.init_point, acceso: acceso?.codigo ?? null })
   } catch (err: any) {
     console.error("alta-tienda error:", err)
     return errorResponse("No pudimos crear tu cuenta. Probá de nuevo en unos minutos.", 500)
@@ -163,6 +175,7 @@ async function crearCuenta(
     whatsapp: string
     password: string
     emailMP: string | null
+    producto: "tienda" | "gestion"
     plan: { plan_name: string; max_branches: number; max_products_per_branch: number; max_users_per_branch: number }
     precio: number
     primerMes: number
@@ -177,7 +190,7 @@ async function crearCuenta(
   if (authError || !auth.user) {
     const yaExiste = /already|registered|exists/i.test(authError?.message ?? "")
     return yaExiste
-      ? { error: "Ya hay una cuenta con ese email. Si es tuya, entrá desde el panel de tu tienda.", status: 409 }
+      ? { error: mensajeEmailUsado(d.producto), status: 409 }
       : { error: "No pudimos crear tu usuario. Revisá los datos y probá de nuevo.", status: 400 }
   }
   const authId = auth.user.id
@@ -207,7 +220,13 @@ async function crearCuenta(
 
     const { data: branch, error: branchError } = await admin
       .from("branches")
-      .insert({ organization_id: org.id, name: "Tienda online", email: d.email, phone: d.whatsapp, is_active: true })
+      .insert({
+        organization_id: org.id,
+        name: d.producto === "gestion" ? "Casa central" : "Tienda online",
+        email: d.email,
+        phone: d.whatsapp,
+        is_active: true,
+      })
       .select("id")
       .single()
     if (branchError || !branch) throw branchError ?? new Error("branches insert sin fila")
@@ -223,7 +242,7 @@ async function crearCuenta(
     })
     if (userError) throw userError
 
-    const { error: storeError } = await admin.from("store_settings").insert({
+    const { error: storeError } = d.producto === "gestion" ? { error: null } : await admin.from("store_settings").insert({
       organization_id: org.id,
       branch_id: branch.id,
       store_name: d.negocio,
@@ -236,7 +255,7 @@ async function crearCuenta(
 
     const { error: subError } = await admin.from("platform_subscriptions").insert({
       organization_id: org.id,
-      product: "tienda",
+      product: d.producto,
       plan: d.plan.plan_name,
       first_amount: d.primerMes,
       full_amount: d.precio,
@@ -279,6 +298,36 @@ async function captchaValido(token: unknown, ip: string): Promise<boolean> {
   const res = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", { method: "POST", body: form })
   const data = await res.json().catch(() => null)
   return data?.success === true
+}
+
+// Dirección interna de una organización de BG Gestión (no se ve en ningún lado, pero es única):
+// el nombre del negocio en minúsculas y, si ya está tomada, con un sufijo al azar.
+async function slugLibreDesde(admin: SupabaseClient, negocio: string): Promise<string> {
+  let base = negocio
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 30)
+    .replace(/-+$/g, "")
+  if (base.length < 3) base = `negocio${base ? `-${base}` : ""}`
+  for (let i = 0; i < 5; i++) {
+    const slug = i === 0 && !SLUGS_RESERVADOS.has(base) ? base : `${base}-${crypto.randomUUID().slice(0, 4)}`
+    const { slugLibre } = await verificarDisponibilidad(admin, slug, null)
+    if (slugLibre) return slug
+  }
+  return `${base}-${crypto.randomUUID().slice(0, 8)}`
+}
+
+function tituloPlan(plan: string): string {
+  return plan.charAt(0).toUpperCase() + plan.slice(1)
+}
+
+function mensajeEmailUsado(producto: "tienda" | "gestion"): string {
+  return producto === "gestion"
+    ? "Ya hay una cuenta con ese email. Si es tuya, entrá desde el programa de BG Gestión."
+    : "Ya hay una cuenta con ese email. Si es tuya, entrá desde el panel de tu tienda."
 }
 
 function mensajeMercadoPago(data: any): string {
