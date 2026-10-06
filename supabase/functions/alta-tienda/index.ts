@@ -2,8 +2,8 @@
 // Alta automática desde la landing (binarygoats.com.ar/bg-tienda/empezar). Pública, sin sesión:
 // crea el usuario dueño, la organización con plan "tienda" en estado pending, su sucursal y su
 // tienda, y una suscripción de Mercado Pago por el primer mes al 50%. Devuelve el link de pago.
-// La cuenta queda sin acceso y la tienda sin publicar hasta que sincronizarSuscripcion() ve el
-// primer cobro aprobado. Si algo falla a mitad de camino se deshace todo lo creado.
+// La cuenta queda sin acceso y la tienda sin publicar hasta que sincronizarSuscripcion() ve la
+// tarjeta autorizada o el primer cobro aprobado. Si algo falla a mitad de camino se deshace todo.
 
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2"
 import { mpFetch, precioPrimerMes } from "../_shared/suscripciones.ts"
@@ -90,6 +90,8 @@ Deno.serve(async (req) => {
     if ("error" in creado) return errorResponse(creado.error, creado.status)
 
     const siteUrl = (Deno.env.get("LANDING_SITE_URL") ?? "https://www.binarygoats.com.ar").replace(/\/$/, "")
+    // Si Mercado Pago no responde (o falta el token) también se deshace el alta: si no, la cuenta
+    // quedaría ocupando el email y la dirección hasta que la limpie el cron.
     const preapproval = await mpFetch("/preapproval", {
       method: "POST",
       body: JSON.stringify({
@@ -101,6 +103,9 @@ Deno.serve(async (req) => {
         notification_url: `${Deno.env.get("SUPABASE_URL")}/functions/v1/suscripciones-webhook`,
         status: "pending",
       }),
+    }).catch((err) => {
+      console.error("alta-tienda: falló la llamada a Mercado Pago", err)
+      return { ok: false, status: 0, data: null }
     })
 
     if (!preapproval.ok || !preapproval.data?.id || !preapproval.data?.init_point) {
