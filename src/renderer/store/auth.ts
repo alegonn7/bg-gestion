@@ -91,7 +91,12 @@ async function loadProfile(authId: string) {
     ? 'Tu usuario está desactivado. Pedile al dueño del negocio que lo vuelva a activar.'
     : org.subscription_status === 'suspended'
       ? 'Tu cuenta está suspendida. Contacta al administrador.'
-      : null
+      : org.subscription_status === 'pending'
+        ? 'Tu cuenta todavía no tiene un pago confirmado.'
+        : org.plan === 'tienda'
+          // Las cuentas que compran solo BG Tienda (alta automática) comparten la base con BG Gestión
+          ? 'Tu plan incluye solo BG Tienda. Entrá desde el panel de tu tienda o escribinos para sumar BG Gestión.'
+          : null
   if (sinAcceso) {
     await clearOfflineCredentials(userData.email)
     await supabase.auth.signOut().catch(() => {})
