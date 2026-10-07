@@ -10,9 +10,17 @@ export interface Detector {
   detect: (source: HTMLVideoElement) => Promise<{ rawValue: string }[]>
 }
 
-/** La cámara como lector existe solo en la web; en escritorio se usa el lector físico. */
+/**
+ * La cámara como lector se ofrece solo en la web abierta desde el celular (o tablet).
+ * En la compu (web o escritorio) no aparece: ahí se usa el lector físico.
+ */
 export function canUseCameraScanner(): boolean {
-  return !window.electron && typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia
+  return isMobileWeb() && !!navigator.mediaDevices?.getUserMedia
+}
+
+/** Web abierta desde un celular o tablet (pantalla táctil, sin mouse). Nunca en escritorio. */
+export function isMobileWeb(): boolean {
+  return !window.electron && isTouchDevice()
 }
 
 let detectorPromise: Promise<Detector> | null = null

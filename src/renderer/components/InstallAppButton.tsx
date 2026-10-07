@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Download, Share, PlusSquare, X } from 'lucide-react'
 import { canPromptInstall, isIOS, isRunningInstalled, promptInstall, subscribeInstallPrompt } from '@/lib/installApp'
+import { isMobileWeb } from '@/lib/cameraScanner'
 
-/** "Instalar app" en el menú de la versión web. No aparece en escritorio ni si ya está instalada. */
+/** "Instalar app" en el menú, solo en la web desde el celular y si todavía no está instalada. */
 export function InstallAppButton({ collapsed = false }: { collapsed?: boolean }) {
   const [canPrompt, setCanPrompt] = useState(canPromptInstall)
   const [showIOSHelp, setShowIOSHelp] = useState(false)
 
   useEffect(() => subscribeInstallPrompt(() => setCanPrompt(canPromptInstall())), [])
 
-  if (window.electron || isRunningInstalled()) return null
+  if (!isMobileWeb() || isRunningInstalled()) return null
   const ios = isIOS()
   if (!canPrompt && !ios) return null
 
