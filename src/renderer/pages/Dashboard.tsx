@@ -24,6 +24,7 @@ import { useProductsStore } from '@/store/products'
 import { useCategoriesStore } from '@/store/categories'
 import { useSuppliersStore } from '@/store/suppliers'
 import { useDollarStore } from '@/store/dollar'
+import { InstallAppButton } from '@/components/InstallAppButton'
 import logoImg from '@/assets/logo.png'
 
 type Page = 'dashboard' | 'products' | 'master-catalog' | 'branches' | 'users' | 'reports' | 'pos' | 'sales-history' | 'settings' | 'cash-register' | 'scanner' | 'suppliers' | 'fiscal' | 'extras' | 'accounting' | 'remitos'
@@ -268,6 +269,7 @@ export default function Dashboard() {
               <p className="text-xs text-gray-500 capitalize">{user?.role}</p>
             </div>
           )}
+          <InstallAppButton collapsed={sidebarCollapsed} />
           <button
             onClick={logout}
             title={sidebarCollapsed ? 'Cerrar Sesión' : undefined}

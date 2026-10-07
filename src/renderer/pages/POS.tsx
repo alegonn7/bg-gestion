@@ -6,6 +6,8 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/auth'
 import { useDollarStore } from '@/store/dollar'
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner'
+import { CameraScanButton, type CameraScanResult } from '@/components/CameraScanner'
+import { isTouchDevice } from '@/lib/cameraScanner'
 import { playScanSuccess, playScanError } from '@/lib/scan-sound'
 import CheckoutModal from '@/components/CheckoutModal'
 
@@ -42,26 +44,34 @@ export default function POS() {
   const effectiveBlueRate = manualMode && manualBlueRate ? manualBlueRate : blueRate;
   const [scanFeedback, setScanFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null)
 
-  // Escáner físico: captura cuando ningún input tiene foco
-  const handleBarcodeScan = useCallback((barcode: string) => {
+  // Busca el código y lo suma al carrito (lo usan el escáner físico y la cámara)
+  const addBarcodeToCart = useCallback((barcode: string): CameraScanResult => {
     const normalizedBarcode = barcode.trim()
     const product = products.find(p => p.barcode?.trim() === normalizedBarcode)
+    let feedback: CameraScanResult
     if (product) {
       const ok = addToCart(product, 1)
       if (ok) {
-        setScanFeedback({ type: 'success', message: `✓ ${product.product?.name || barcode}` })
+        feedback = { type: 'success', message: `✓ ${product.product?.name || barcode}` }
         playScanSuccess()
       } else {
-        setScanFeedback({ type: 'error', message: `Sin stock suficiente: ${product.product?.name || barcode}` })
+        feedback = { type: 'error', message: `Sin stock suficiente: ${product.product?.name || barcode}` }
         playScanError()
       }
     } else {
-      setScanFeedback({ type: 'error', message: `Producto no encontrado: ${barcode}` })
+      feedback = { type: 'error', message: `Producto no encontrado: ${barcode}` }
       playScanError()
     }
+    setScanFeedback(feedback as { type: 'success' | 'error'; message: string })
+    return feedback
+  }, [products, addToCart])
+
+  // Escáner físico: captura cuando ningún input tiene foco
+  const handleBarcodeScan = useCallback((barcode: string) => {
+    addBarcodeToCart(barcode)
     // Re-enfocar el input de código de barras
     barcodeRef.current?.focus()
-  }, [products, addToCart])
+  }, [addBarcodeToCart])
 
   useBarcodeScanner(handleBarcodeScan)
 
@@ -72,6 +82,8 @@ export default function POS() {
   }, [selectedBranch?.id])
 
   useEffect(() => {
+    // En el celular no: abriría el teclado cada vez que cambia el carrito
+    if (isTouchDevice()) return
     barcodeRef.current?.focus()
   }, [items])
 
@@ -146,6 +158,8 @@ export default function POS() {
 
   return (
     <div className="h-full md:h-screen flex flex-col bg-gray-50" onClick={(e) => {
+      // En el celular no: cada toque abriría el teclado
+      if (isTouchDevice()) return
       const target = e.target as HTMLElement
       // Evitar que el input de código de barras reciba foco si el click fue en un select
       if (target.tagName !== 'INPUT' && target.tagName !== 'BUTTON' && target.tagName !== 'TEXTAREA' && target.tagName !== 'SELECT') {
@@ -189,6 +203,7 @@ export default function POS() {
                 Buscar
               </button>
             </form>
+            <CameraScanButton onScan={addBarcodeToCart} continuous title="Agregar al carrito" />
           </div>
         </div>
       </div>

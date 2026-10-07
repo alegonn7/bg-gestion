@@ -11,6 +11,7 @@ import { formatSyncAge } from '@/lib/offline'
 import { parseCSV, importProductsFromCSV, type ImportResult } from '@/lib/csv'
 import { exportProductsToExcel } from '@/lib/excelExport'
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner'
+import { CameraScanButton } from '@/components/CameraScanner'
 import { playScanSuccess, playScanError } from '@/lib/scan-sound'
 import ProductCard from '@/components/ProductCard'
 import ProductDetailModal from '@/components/ProductDetailModal'
@@ -263,6 +264,12 @@ export default function Products() {
               </p>
             </div>
             <div className="flex flex-wrap md:flex-nowrap gap-2 md:gap-3">
+              <CameraScanButton
+                onScan={handleBarcodeScan}
+                label="Escanear"
+                title="Buscar o cargar un producto"
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition font-medium"
+              />
               {!offlineMode && (
                 <button
                   onClick={() => setIsCategoriesOpen(true)}

@@ -3,6 +3,8 @@ import { ScanLine, Package, AlertTriangle, DollarSign, Hash, Tag, Building2, Tre
 import { useProductsStore, type Product } from '@/store/products'
 import { useDollarStore } from '@/store/dollar'
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner'
+import { CameraScanButton } from '@/components/CameraScanner'
+import { canUseCameraScanner } from '@/lib/cameraScanner'
 import { playScanSuccess, playScanError } from '@/lib/scan-sound'
 import { formatSyncAge } from '@/lib/offline'
 
@@ -66,7 +68,7 @@ export default function ScannerPage() {
       <div className="bg-white border-b border-gray-200 px-4 md:px-6 py-4">
         <div className="flex items-center gap-3">
           <ScanLine className="h-6 w-6 text-blue-600" />
-          <div>
+          <div className="flex-1 min-w-0">
             <h1 className="text-2xl font-bold text-gray-900">Escáner</h1>
             <p className="text-sm text-gray-500">
               Escaneá un producto para ver su información detallada
@@ -77,6 +79,7 @@ export default function ScannerPage() {
               )}
             </p>
           </div>
+          <CameraScanButton onScan={handleBarcodeScan} label="Cámara" title="Consultar producto" />
         </div>
       </div>
 
@@ -87,7 +90,11 @@ export default function ScannerPage() {
             <div className="flex flex-col items-center justify-center h-full text-gray-400">
               <ScanLine className="h-24 w-24 mb-6 animate-pulse" />
               <h2 className="text-2xl font-semibold mb-2">Esperando escaneo...</h2>
-              <p className="text-gray-500">Usá el escáner físico para leer un código de barras</p>
+              <p className="text-gray-500">
+                {canUseCameraScanner()
+                  ? 'Usá el lector o el botón Cámara para leer un código de barras'
+                  : 'Usá el escáner físico para leer un código de barras'}
+              </p>
             </div>
           )}
 
