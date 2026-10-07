@@ -3,6 +3,8 @@ import { Truck, X, Plus, Trash2, Loader2, CheckCircle, AlertTriangle, Download, 
 import { useAuthStore } from '@/store/auth'
 import { useProductsStore } from '@/store/products'
 import { useRemitosStore, descargarRemitoPdf, type DisponibilidadR, type NuevoRemito } from '@/store/remitos'
+import { CameraScanButton, type CameraScanResult } from './CameraScanner'
+import { playScanSuccess, playScanError } from '@/lib/scan-sound'
 import { MOTIVOS_REMITO, numeroRemito, type ItemRemito, type MotivoRemito, type Remito } from '@/lib/remitos'
 
 interface Props {
@@ -57,6 +59,18 @@ export default function RemitoModal({ inicial, onClose, onCreado }: Props) {
       setDestinatarioNombre(`Sucursal ${destino.name}`)
       if (destino.address) setDomicilio(destino.address)
     }
+  }
+
+  // Cámara del celular: cada código leído suma una unidad al remito
+  const agregarPorCodigo = (codigo: string): CameraScanResult => {
+    const p = products.find(p => p.barcode?.trim() === codigo)
+    if (!p) {
+      playScanError()
+      return { type: 'error', message: `Producto no encontrado: ${codigo}` }
+    }
+    agregarProducto(p.barcode || '', p.product?.name || '', p.price_sale ?? null)
+    playScanSuccess()
+    return { type: 'success', message: `✓ ${p.product?.name || codigo}` }
   }
 
   const agregarProducto = (codigo: string, descripcion: string, precio: number | null) => {
@@ -225,7 +239,8 @@ export default function RemitoModal({ inicial, onClose, onCreado }: Props) {
               {/* Mercadería */}
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700">Mercadería *</label>
-                <div className="relative">
+                <div className="flex gap-2">
+                <div className="relative flex-1">
                   <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
                   <input
                     value={busqueda}
@@ -247,6 +262,8 @@ export default function RemitoModal({ inicial, onClose, onCreado }: Props) {
                       ))}
                     </div>
                   )}
+                </div>
+                <CameraScanButton onScan={agregarPorCodigo} continuous title="Agregar al remito" />
                 </div>
 
                 <div className="flex gap-2 px-2 text-xs text-gray-500">

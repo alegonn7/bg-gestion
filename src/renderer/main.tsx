@@ -1,6 +1,9 @@
 import "./index.css";
 import { createRoot } from "react-dom/client";
 import App from "./App";
+import { initInstallPrompt } from "./lib/installApp";
+
+initInstallPrompt();
 
 const root = createRoot(document.getElementById("root")!);
 root.render(<App />);

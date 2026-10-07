@@ -7,6 +7,8 @@ import { useAuthStore } from '@/store/auth'
 import { useDollarStore } from '@/store/dollar'
 import { gananciaSobreCosto } from '@/lib/ganancia'
 import ProductImagesField from './ProductImagesField'
+import { CameraScanButton } from './CameraScanner'
+import { playScanSuccess } from '@/lib/scan-sound'
 
 interface CreateProductModalProps {
   isOpen: boolean
@@ -337,17 +339,28 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
             <label htmlFor="barcode" className="block text-sm font-medium text-gray-700 mb-2">
               Código de Barras
             </label>
-            <input
-              type="text" id="barcode" name="barcode"
-              value={formData.barcode} onChange={handleChange}
-              placeholder="7790123456789"
-              autoFocus={!initialBarcode}
-              readOnly={!!initialBarcode}
-              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
-                initialBarcode ? 'border-green-300 bg-green-50 text-green-800 font-mono' : 'border-gray-300'
-              }`}
-              pattern="[0-9]*" maxLength={13}
-            />
+            <div className="flex gap-2">
+              <input
+                type="text" id="barcode" name="barcode"
+                value={formData.barcode} onChange={handleChange}
+                placeholder="7790123456789"
+                autoFocus={!initialBarcode}
+                readOnly={!!initialBarcode}
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none ${
+                  initialBarcode ? 'border-green-300 bg-green-50 text-green-800 font-mono' : 'border-gray-300'
+                }`}
+                pattern="[0-9]*" maxLength={13}
+              />
+              {!initialBarcode && (
+                <CameraScanButton
+                  title="Leer código del producto"
+                  onScan={(code) => {
+                    setFormData(prev => ({ ...prev, barcode: code }))
+                    playScanSuccess()
+                  }}
+                />
+              )}
+            </div>
             <p className="mt-1 text-xs text-gray-500">
               {initialBarcode ? 'Código prellenado desde el scanner' : 'Mínimo 1 dígito, máximo 13.'}
             </p>
