@@ -636,7 +636,7 @@ export default function CashRegisterPage() {
         {currentRegister && (
           <>
             <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse" />
                   <div>
@@ -755,7 +755,7 @@ export default function CashRegisterPage() {
                   onClick={() => isClosed && setShowDetailModal(reg)}
                   className={`bg-white rounded-lg border overflow-hidden ${isClosed ? 'cursor-pointer hover:shadow-md' : ''} ${!isClosed ? 'border-green-200' : hasDiff ? 'border-orange-200' : 'border-gray-200'}`}
                 >
-                  <div className="px-5 py-4 flex items-center justify-between">
+                  <div className="px-4 md:px-5 py-4 flex flex-col items-start gap-3 md:flex-row md:items-center md:justify-between md:gap-0">
                     <div className="flex items-center gap-4">
                       <div className={`w-10 h-10 rounded-full flex items-center justify-center ${!isClosed ? 'bg-green-100' : hasDiff ? 'bg-orange-100' : 'bg-blue-100'}`}>
                         {!isClosed ? <Clock className="w-5 h-5 text-green-600" /> : hasDiff ? <AlertTriangle className="w-5 h-5 text-orange-600" /> : <CheckCircle className="w-5 h-5 text-blue-600" />}
@@ -771,13 +771,13 @@ export default function CashRegisterPage() {
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-6">
+                    <div className="w-full md:w-auto grid grid-cols-2 gap-x-4 gap-y-2 md:flex md:items-center md:gap-6">
                       {isClosed && (
                         <>
-                          <div className="text-right"><p className="text-xs text-gray-400">Ventas</p><p className="font-semibold text-gray-900">{reg.sales_count || 0}</p></div>
-                          <div className="text-right"><p className="text-xs text-gray-400">Esperado</p><p className="font-semibold text-gray-900">{formatCurrency(reg.expected_amount || 0)}</p></div>
-                          <div className="text-right"><p className="text-xs text-gray-400">Contado</p><p className="font-semibold text-gray-900">{formatCurrency(reg.closing_amount || 0)}</p></div>
-                          <div className="text-right">
+                          <div className="md:text-right"><p className="text-xs text-gray-400">Ventas</p><p className="font-semibold text-gray-900">{reg.sales_count || 0}</p></div>
+                          <div className="md:text-right"><p className="text-xs text-gray-400">Esperado</p><p className="font-semibold text-gray-900">{formatCurrency(reg.expected_amount || 0)}</p></div>
+                          <div className="md:text-right"><p className="text-xs text-gray-400">Contado</p><p className="font-semibold text-gray-900">{formatCurrency(reg.closing_amount || 0)}</p></div>
+                          <div className="md:text-right">
                             <p className="text-xs text-gray-400">Diferencia</p>
                             <p className={`font-bold ${(reg.difference || 0) > 0 ? 'text-green-600' : (reg.difference || 0) < 0 ? 'text-red-600' : 'text-gray-600'}`}>
                               {(reg.difference || 0) > 0 ? '+' : ''}{formatCurrency(reg.difference || 0)}
