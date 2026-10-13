@@ -370,7 +370,7 @@ export default function SalesHistory() {
         </div>
 
         {/* Stats Cards */}
-        <div className="mb-2 flex items-center gap-2">
+        <div className="mb-2 flex flex-wrap md:flex-nowrap items-center gap-2">
           <span className="inline-block bg-blue-100 text-blue-700 text-xs font-semibold px-3 py-1 rounded">Estadísticas del mes seleccionado</span>
           {voidedCount > 0 && (
             <span className="inline-flex items-center gap-1 bg-red-100 text-red-700 text-xs font-semibold px-3 py-1 rounded">
@@ -379,39 +379,39 @@ export default function SalesHistory() {
             </span>
           )}
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-blue-50 rounded-lg p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-100 rounded-lg">
+        <div className="grid grid-cols-3 gap-2 md:gap-4">
+          <div className="bg-blue-50 rounded-lg p-2.5 md:p-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="hidden md:block p-2 bg-blue-100 rounded-lg">
                 <FileText className="h-6 w-6 text-blue-600" />
               </div>
-              <div>
-                <p className="text-sm text-gray-600">Total Ventas</p>
-                <p className="text-2xl font-bold text-gray-900">{totalSales}</p>
+              <div className="min-w-0">
+                <p className="text-xs md:text-sm text-gray-600 leading-tight">Total Ventas</p>
+                <p className="text-base md:text-2xl font-bold text-gray-900 truncate">{totalSales}</p>
               </div>
             </div>
           </div>
 
-          <div className="bg-green-50 rounded-lg p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-green-100 rounded-lg">
+          <div className="bg-green-50 rounded-lg p-2.5 md:p-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="hidden md:block p-2 bg-green-100 rounded-lg">
                 <DollarSign className="h-6 w-6 text-green-600" />
               </div>
-              <div>
-                <p className="text-sm text-gray-600">Ingresos Totales</p>
-                <p className="text-2xl font-bold text-gray-900">{formatCurrency(totalRevenue)}</p>
+              <div className="min-w-0">
+                <p className="text-xs md:text-sm text-gray-600 leading-tight">Ingresos Totales</p>
+                <p className="text-base md:text-2xl font-bold text-gray-900 truncate">{formatCurrency(totalRevenue)}</p>
               </div>
             </div>
           </div>
 
-          <div className="bg-purple-50 rounded-lg p-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-purple-100 rounded-lg">
+          <div className="bg-purple-50 rounded-lg p-2.5 md:p-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="hidden md:block p-2 bg-purple-100 rounded-lg">
                 <DollarSign className="h-6 w-6 text-purple-600" />
               </div>
-              <div>
-                <p className="text-sm text-gray-600">Venta Promedio</p>
-                <p className="text-2xl font-bold text-gray-900">{formatCurrency(averageSale)}</p>
+              <div className="min-w-0">
+                <p className="text-xs md:text-sm text-gray-600 leading-tight">Venta Promedio</p>
+                <p className="text-base md:text-2xl font-bold text-gray-900 truncate">{formatCurrency(averageSale)}</p>
               </div>
             </div>
           </div>
