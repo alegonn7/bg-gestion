@@ -554,8 +554,8 @@ export default function SalesHistory() {
               return (
                 <div key={sale.id} className={`bg-white rounded-lg shadow-sm border overflow-hidden ${isVoided ? 'border-red-200 opacity-70' : 'border-gray-200'}`}>
                   {/* Sale Header */}
-                  <div className={`px-4 py-3 border-b flex items-center justify-between ${isVoided ? 'bg-red-50' : 'bg-gray-50'}`}>
-                    <div className="flex items-center gap-4">
+                  <div className={`px-4 py-3 border-b flex flex-col items-start gap-3 md:flex-row md:items-center md:justify-between md:gap-0 ${isVoided ? 'bg-red-50' : 'bg-gray-50'}`}>
+                    <div className="flex flex-wrap md:flex-nowrap items-center gap-x-4 gap-y-1">
                       <div>
                         <p className="text-sm font-medium text-gray-900">
                           {formatDate(sale.created_at)}
@@ -575,12 +575,12 @@ export default function SalesHistory() {
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap md:flex-nowrap items-center gap-2">
                       {!isVoided && canVoidSale && (
                         <>
                           {voidConfirmId === sale.id && facturaVigente ? (
                             // Anular borra la venta: con factura, primero va la nota de crédito
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-wrap md:flex-nowrap items-center gap-2">
                               <span className="text-xs text-red-600 font-medium">Tiene factura: primero hacé una nota de crédito por el total</span>
                               <button
                                 onClick={() => setVoidConfirmId(null)}
@@ -590,7 +590,7 @@ export default function SalesHistory() {
                               </button>
                             </div>
                           ) : voidConfirmId === sale.id ? (
-                            <div className="flex items-center gap-2">
+                            <div className="flex flex-wrap md:flex-nowrap items-center gap-2">
                               <span className="text-xs text-red-600 font-medium">¿Anular?</span>
                               <button
                                 onClick={() => handleVoidSale(sale.id)}
