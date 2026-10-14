@@ -140,6 +140,10 @@ export async function sincronizarSuscripcion(
 
   // La suscripción se guarda apenas Mercado Pago la crea; si igual no está (el alta se cortó
   // justo entre crearla y guardarla), se busca por external_reference = id de la organización.
+  // Las suscripciones de TurnoMio usan la misma cuenta de Mercado Pago (y por eso llegan a este
+  // webhook), pero las maneja el backend de TurnoMio: acá se ignoran.
+  if (!sub && String(pre.data?.external_reference ?? "").startsWith("turnomio-")) return null
+
   if (!sub && pre.data?.external_reference) {
     const { data } = await admin
       .from("platform_subscriptions")
