@@ -22,6 +22,8 @@ const corsHeaders = {
 // Sin anclas a propósito: Mercado Pago le pega sus parámetros al back_url con otro "?", así que
 // la página puede mandar "<uuid>?preapproval_id=...". Se toma el primer uuid que aparezca.
 const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+// Mercado Pago agrega ?preapproval_id= al volver: es la suscripción que creó al pagar el plan.
+const PREAPPROVAL_RE = /preapproval_id=([\w-]{1,64})/
 const RELEER_CADA_MS = 8_000
 const ESTADOS_CON_PANEL = ["active", "past_due"]
 
@@ -32,6 +34,8 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}) as any)
     const cuenta = String(body?.cuenta ?? "").match(UUID_RE)?.[0]?.toLowerCase()
     if (!cuenta) return errorResponse("Cuenta inválida", 400)
+    const sugerida =
+      String(body?.preapproval_id ?? "").match(/^[\w-]{1,64}$/)?.[0] ?? String(body?.cuenta ?? "").match(PREAPPROVAL_RE)?.[1] ?? null
 
     const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!)
 
@@ -50,7 +54,7 @@ Deno.serve(async (req) => {
     const ultima = sub.last_synced_at ? Date.parse(sub.last_synced_at) : 0
     if (estado === "pending" && Date.now() - ultima > RELEER_CADA_MS) {
       try {
-        estado = (await sincronizarSuscripcion(admin, { organizationId: cuenta }))?.status ?? estado
+        estado = (await sincronizarSuscripcion(admin, { organizationId: cuenta, sugerida }))?.status ?? estado
       } catch (err) {
         console.error("estado-alta: no se pudo sincronizar", cuenta, err)
       }
