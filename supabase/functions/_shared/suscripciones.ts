@@ -19,6 +19,7 @@ export interface Suscripcion {
   product: string
   plan: string
   mp_preapproval_id: string | null
+  mp_plan_id: string | null
   mp_status: string | null
   first_amount: number
   full_amount: number
@@ -75,6 +76,116 @@ export async function mpFetch(path: string, init: RequestInit = {}): Promise<{ o
   return { ok: res.ok, status: res.status, data }
 }
 
+// ─── Planes de Mercado Pago ──────────────────────────────────────────────────
+// Cada compra (y cada reactivación) crea su propio plan (preapproval_plan) y el cliente paga desde
+// el link del plan con la cuenta de Mercado Pago que quiera: no hace falta que el email coincida
+// con nada. Mercado Pago crea la suscripción recién cuando paga, y vincularPorPlan() la encuentra.
+// Los planes no tienen external_reference: el "BG Tienda"/"BG Gestión" del principio del motivo
+// es lo que distingue estas suscripciones de las de TurnoMio y BG Gym, que llegan al mismo webhook.
+
+export async function crearPlanMP(opciones: {
+  motivo: string
+  monto: number
+  backUrl: string
+  diasGratis?: number
+}): Promise<{ id: string; init_point: string } | null> {
+  const r = await mpFetch("/preapproval_plan", {
+    method: "POST",
+    body: JSON.stringify({
+      reason: opciones.motivo.slice(0, 250),
+      auto_recurring: {
+        frequency: 1,
+        frequency_type: "months",
+        transaction_amount: opciones.monto,
+        currency_id: "ARS",
+        ...(opciones.diasGratis && opciones.diasGratis > 0
+          ? { free_trial: { frequency: opciones.diasGratis, frequency_type: "days" } }
+          : {}),
+      },
+      back_url: opciones.backUrl,
+    }),
+  }).catch((err) => {
+    console.error("crearPlanMP: falló la llamada a Mercado Pago", err)
+    return { ok: false, status: 0, data: null }
+  })
+  if (!r.ok || !r.data?.id || !r.data?.init_point) {
+    console.error("crearPlanMP: Mercado Pago no creó el plan", r.status, r.data)
+    return null
+  }
+  return { id: String(r.data.id), init_point: String(r.data.init_point) }
+}
+
+// Da de baja un plan para que su link ya no cobre (alta abandonada). Nunca lanza.
+export async function cancelarPlanMP(planId: string): Promise<void> {
+  const r = await mpFetch(`/preapproval_plan/${encodeURIComponent(planId)}`, {
+    method: "PUT",
+    body: JSON.stringify({ status: "cancelled" }),
+  }).catch(() => null)
+  if (!r?.ok) console.error("cancelarPlanMP: no se pudo dar de baja el plan", planId, r?.status, r?.data)
+}
+
+async function cancelarPreapprovalMP(preapprovalId: string): Promise<void> {
+  const r = await mpFetch(`/preapproval/${encodeURIComponent(preapprovalId)}`, {
+    method: "PUT",
+    body: JSON.stringify({ status: "cancelled" }),
+  }).catch(() => null)
+  if (!r?.ok) console.error("cancelarPreapprovalMP: no se pudo cancelar", preapprovalId, r?.status, r?.data)
+}
+
+// Encuentra la suscripción que creó el cliente al pagar el plan de `sub` y la guarda.
+// `sugerida` es la que llegó por el webhook o la que Mercado Pago agrega al volver a la bienvenida
+// (?preapproval_id=): solo se acepta si es de este plan. Si pagó dos veces el mismo link, queda
+// una y se cancelan las otras.
+export async function vincularPorPlan(admin: SupabaseClient, sub: Suscripcion, sugerida?: string | null): Promise<string | null> {
+  if (sub.mp_preapproval_id || !sub.mp_plan_id) return sub.mp_preapproval_id
+  const planId = sub.mp_plan_id
+
+  let candidatas: any[] = []
+  if (sugerida) {
+    const r = await mpFetch(`/preapproval/${encodeURIComponent(sugerida)}`)
+    if (r.ok && r.data?.preapproval_plan_id === planId) candidatas = [r.data]
+  }
+  if (candidatas.length === 0) {
+    const r = await mpFetch(`/preapproval/search?preapproval_plan_id=${encodeURIComponent(planId)}&limit=20`)
+    if (!r.ok) throw new Error(`No se pudieron buscar las suscripciones del plan ${planId} (${r.status})`)
+    candidatas = ((r.data?.results ?? []) as any[]).filter((p) => p?.preapproval_plan_id === planId)
+  }
+  const vivas = candidatas.filter((p) => p?.status !== "cancelled")
+  if (vivas.length === 0) return null
+  const elegida = vivas.find((p) => p.status === "authorized") ?? vivas[0]
+  const id = String(elegida.id)
+
+  const { data: vinculada } = await admin
+    .from("platform_subscriptions")
+    .update({ mp_preapproval_id: id, ...(elegida.payer_email ? { payer_email: String(elegida.payer_email) } : {}) })
+    .eq("id", sub.id)
+    .eq("mp_plan_id", planId)
+    .is("mp_preapproval_id", null)
+    .select("id")
+  if (!vinculada?.length) {
+    // Otra corrida (webhook, bienvenida o cron) la vinculó primero.
+    const { data: actual } = await admin.from("platform_subscriptions").select("mp_preapproval_id").eq("id", sub.id).maybeSingle()
+    return actual?.mp_preapproval_id ?? null
+  }
+  sub.mp_preapproval_id = id
+  if (elegida.payer_email) sub.payer_email = String(elegida.payer_email)
+
+  for (const otra of vivas) {
+    if (String(otra.id) === id) continue
+    await cancelarPreapprovalMP(String(otra.id))
+    await avisarDueno(
+      "Se canceló una suscripción repetida",
+      `<p>El link de pago de ${escapeHtml(nombreProducto(sub.product))} para ${escapeHtml(sub.contact_email ?? sub.organization_id)} se usó más de una vez. ` +
+        `Quedó la suscripción ${escapeHtml(id)} y se canceló la ${escapeHtml(String(otra.id))}. Si llegó a cobrar algo, hay que devolverlo desde Mercado Pago.</p>`,
+    )
+  }
+  return id
+}
+
+function esDeEsteProyecto(pre: any): boolean {
+  return /^BG (Tienda|Gestión)\b/.test(String(pre?.reason ?? ""))
+}
+
 // Código de acceso al panel después de pagar (ver alta-tienda y estado-alta). Se guarda solo el
 // hash: el código queda en el navegador de quien hizo el alta.
 const ACCESO_VALIDO_MS = 24 * 60 * 60 * 1000
@@ -112,7 +223,7 @@ export function storeSiteUrl(): string {
 
 export async function sincronizarSuscripcion(
   admin: SupabaseClient,
-  ref: { organizationId?: string; preapprovalId?: string; authorizedPaymentId?: string },
+  ref: { organizationId?: string; preapprovalId?: string; authorizedPaymentId?: string; sugerida?: string | null },
 ): Promise<{ status: string | null } | null> {
   let preapprovalId = ref.preapprovalId ?? null
   const cobros = new Map<string, CobroMP>()
@@ -131,12 +242,42 @@ export async function sincronizarSuscripcion(
   } else if (ref.organizationId) {
     const { data } = await admin.from("platform_subscriptions").select("*").eq("organization_id", ref.organizationId).maybeSingle()
     sub = data
-    preapprovalId = sub?.mp_preapproval_id ?? null
+    // Pagó el link del plan pero la suscripción todavía no está guardada: buscarla.
+    preapprovalId = sub ? await vincularPorPlan(admin, sub, ref.sugerida) : null
   }
   if (!preapprovalId) return null
 
   const pre = await mpFetch(`/preapproval/${encodeURIComponent(preapprovalId)}`)
   if (!pre.ok) throw new Error(`No se pudo consultar la suscripción ${preapprovalId} (${pre.status})`)
+
+  // Aviso de una suscripción que salió de un plan (alta o reactivación): se vincula a la cuenta
+  // dueña del plan. Si vincularPorPlan eligió otra (pagó dos veces), esta ya quedó cancelada.
+  if (!sub && pre.data?.preapproval_plan_id) {
+    const { data: delPlan } = await admin
+      .from("platform_subscriptions")
+      .select("*")
+      .eq("mp_plan_id", String(pre.data.preapproval_plan_id))
+      .maybeSingle()
+    if (delPlan) {
+      const vinculada = delPlan.mp_preapproval_id ?? (await vincularPorPlan(admin, delPlan, preapprovalId))
+      if (vinculada !== preapprovalId) {
+        // El mismo link se pagó otra vez después de vincular el primer pago: esta sobra.
+        if (vinculada && pre.data?.status !== "cancelled") {
+          await cancelarPreapprovalMP(preapprovalId)
+          await avisarDueno(
+            "Se canceló una suscripción repetida",
+            `<p>El link de pago de ${escapeHtml(nombreProducto(delPlan.product))} para ${escapeHtml(delPlan.contact_email ?? delPlan.organization_id)} ` +
+              `se usó más de una vez. Quedó la suscripción ${escapeHtml(vinculada)} y se canceló la ${escapeHtml(preapprovalId)}. ` +
+              `Si llegó a cobrar algo, hay que devolverlo desde Mercado Pago.</p>`,
+          )
+        }
+        return null
+      }
+      sub = { ...delPlan, mp_preapproval_id: preapprovalId }
+    } else if (!esDeEsteProyecto(pre.data)) {
+      return null // TurnoMio, BG Gym u otro producto con la misma cuenta de Mercado Pago
+    }
+  }
 
   // La suscripción se guarda apenas Mercado Pago la crea; si igual no está (el alta se cortó
   // justo entre crearla y guardarla), se busca por external_reference = id de la organización.
@@ -168,6 +309,9 @@ export async function sincronizarSuscripcion(
         .maybeSingle()
       if (actual) return null
     }
+    // Una cancelada no cobra nada (por ejemplo, la anterior a una reactivación por plan): no hay
+    // nada que revisar.
+    if (pre.data?.status === "cancelled") return null
     await avisarSuscripcionHuerfana(preapprovalId, pre.data)
     return null
   }
@@ -381,10 +525,22 @@ export async function sincronizarSuscripcion(
 // ese cobro, se sube al precio de lista para los meses siguientes.
 async function subirAPrecioCompleto(admin: SupabaseClient, sub: Suscripcion): Promise<void> {
   if (!sub.mp_preapproval_id || Number(sub.current_amount) >= Number(sub.full_amount)) return
-  const r = await mpFetch(`/preapproval/${encodeURIComponent(sub.mp_preapproval_id)}`, {
+  const monto = Number(sub.full_amount)
+  let r = await mpFetch(`/preapproval/${encodeURIComponent(sub.mp_preapproval_id)}`, {
     method: "PUT",
-    body: JSON.stringify({ auto_recurring: { transaction_amount: Number(sub.full_amount), currency_id: "ARS" } }),
+    body: JSON.stringify({ auto_recurring: { transaction_amount: monto, currency_id: "ARS" } }),
   })
+  // Una suscripción que salió de un plan puede no aceptar el cambio: se cambia el plan y se
+  // confirma releyendo la suscripción.
+  if (!r.ok && sub.mp_plan_id) {
+    console.error("subirAPrecioCompleto: la suscripción no aceptó el monto, se cambia el plan", sub.mp_preapproval_id, r.status, r.data)
+    const plan = await mpFetch(`/preapproval_plan/${encodeURIComponent(sub.mp_plan_id)}`, {
+      method: "PUT",
+      body: JSON.stringify({ auto_recurring: { frequency: 1, frequency_type: "months", transaction_amount: monto, currency_id: "ARS" } }),
+    })
+    const actual = plan.ok ? await mpFetch(`/preapproval/${encodeURIComponent(sub.mp_preapproval_id)}`) : plan
+    r = actual.ok && Number(actual.data?.auto_recurring?.transaction_amount) === monto ? actual : { ...actual, ok: false }
+  }
   if (r.ok) {
     await admin.from("platform_subscriptions").update({ current_amount: sub.full_amount }).eq("id", sub.id)
     return

@@ -1,16 +1,17 @@
 // Edge Function: alta-tienda
 // Alta automática desde la landing (binarygoats.com.ar/bg-tienda/empezar y /bg-gestion/empezar).
 // Pública, sin sesión: crea el usuario dueño, la organización en estado pending, su sucursal (y su
-// tienda, si es BG Tienda) y una suscripción de Mercado Pago por el primer mes al 50%. Devuelve el
-// link de pago. Con producto "gestion" el plan es "profesional" o "premium" (plan_config) y la
+// tienda, si es BG Tienda) y un plan de Mercado Pago propio por el primer mes al 50%. Devuelve el
+// link de pago del plan: el cliente paga con la cuenta de Mercado Pago que quiera. Con producto "gestion" el plan es "profesional" o "premium" (plan_config) y la
 // dirección de la organización se genera sola a partir del nombre del negocio.
-// La cuenta queda sin acceso y la tienda sin publicar hasta que sincronizarSuscripcion() ve la
-// tarjeta autorizada o el primer cobro aprobado. Si algo falla a mitad de camino se deshace todo.
+// La cuenta queda sin acceso y la tienda sin publicar hasta que sincronizarSuscripcion() encuentra la
+// suscripción del plan (webhook, bienvenida o el chequeo cada 10 minutos) con la tarjeta autorizada
+// o el primer cobro aprobado. Si algo falla a mitad de camino se deshace todo.
 // También devuelve un código de acceso de un solo uso (ver estado-alta) para que, al volver de
 // Mercado Pago, el cliente entre al panel sin volver a escribir la contraseña.
 
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2"
-import { generarAcceso, mpFetch, precioPrimerMes } from "../_shared/suscripciones.ts"
+import { crearPlanMP, generarAcceso, precioPrimerMes } from "../_shared/suscripciones.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -58,7 +59,6 @@ Deno.serve(async (req) => {
     const email = String(body.email ?? "").trim().toLowerCase()
     const whatsapp = String(body.whatsapp ?? "").replace(/[^\d+]/g, "")
     const password = String(body.password ?? "")
-    const emailMP = String(body.email_mercadopago ?? "").trim().toLowerCase() || null
 
     if (negocio.length < 2 || negocio.length > 80) return errorResponse("Escribí el nombre de tu negocio")
     if (producto === "gestion") slug = await slugLibreDesde(admin, negocio)
@@ -67,7 +67,6 @@ Deno.serve(async (req) => {
     if (SLUGS_RESERVADOS.has(slug)) return errorResponse("Esa dirección no está disponible, probá con otra")
     if (nombre.length < 2) return errorResponse("Escribí tu nombre")
     if (!EMAIL_RE.test(email)) return errorResponse("El email no es válido")
-    if (emailMP && !EMAIL_RE.test(emailMP)) return errorResponse("El email de Mercado Pago no es válido")
     if (whatsapp.replace(/\D/g, "").length < 8) return errorResponse("Escribí un WhatsApp válido")
     if (password.length < 8) return errorResponse("La contraseña tiene que tener al menos 8 caracteres")
 
@@ -98,32 +97,20 @@ Deno.serve(async (req) => {
     const precio = Number(plan.price_per_branch)
     const primerMes = precioPrimerMes(precio)
 
-    const creado = await crearCuenta(admin, { producto, negocio, slug, nombre, email, whatsapp, password, emailMP, plan, precio, primerMes })
+    const creado = await crearCuenta(admin, { producto, negocio, slug, nombre, email, whatsapp, password, plan, precio, primerMes })
     if ("error" in creado) return errorResponse(creado.error, creado.status)
 
     const siteUrl = (Deno.env.get("LANDING_SITE_URL") ?? "https://www.binarygoats.com.ar").replace(/\/$/, "")
     // Si Mercado Pago no responde (o falta el token) también se deshace el alta: si no, la cuenta
     // quedaría ocupando el email y la dirección hasta que la limpie el cron.
-    const preapproval = await mpFetch("/preapproval", {
-      method: "POST",
-      body: JSON.stringify({
-        reason: producto === "gestion" ? `BG Gestión ${tituloPlan(planPedido)} — ${negocio}` : `BG Tienda — ${negocio}`,
-        external_reference: creado.organizationId,
-        payer_email: emailMP ?? email,
-        auto_recurring: { frequency: 1, frequency_type: "months", transaction_amount: primerMes, currency_id: "ARS" },
-        back_url: `${siteUrl}/${producto === "gestion" ? "bg-gestion" : "bg-tienda"}/bienvenida?cuenta=${creado.organizationId}`,
-        notification_url: `${Deno.env.get("SUPABASE_URL")}/functions/v1/suscripciones-webhook`,
-        status: "pending",
-      }),
-    }).catch((err) => {
-      console.error("alta-tienda: falló la llamada a Mercado Pago", err)
-      return { ok: false, status: 0, data: null }
+    const planMP = await crearPlanMP({
+      motivo: producto === "gestion" ? `BG Gestión ${tituloPlan(planPedido)} — ${negocio}` : `BG Tienda — ${negocio}`,
+      monto: primerMes,
+      backUrl: `${siteUrl}/${producto === "gestion" ? "bg-gestion" : "bg-tienda"}/bienvenida?cuenta=${creado.organizationId}`,
     })
-
-    if (!preapproval.ok || !preapproval.data?.id || !preapproval.data?.init_point) {
-      console.error("alta-tienda: Mercado Pago no creó la suscripción", preapproval.status, preapproval.data)
+    if (!planMP) {
       await deshacerAlta(admin, creado.organizationId, creado.authId)
-      return errorResponse(mensajeMercadoPago(preapproval.data), 502)
+      return errorResponse("No pudimos conectar con Mercado Pago. Probá de nuevo en unos minutos.", 502)
     }
 
     // El código para entrar al panel sin contraseña es solo de BG Tienda (panel web). BG Gestión
@@ -132,14 +119,14 @@ Deno.serve(async (req) => {
     await admin
       .from("platform_subscriptions")
       .update({
-        mp_preapproval_id: String(preapproval.data.id),
-        mp_status: preapproval.data.status ?? "pending",
+        mp_plan_id: planMP.id,
+        mp_status: "pending",
         acceso_hash: acceso?.hash ?? null,
         acceso_vence_at: acceso?.venceAt ?? null,
       })
       .eq("organization_id", creado.organizationId)
 
-    return jsonResponse({ ok: true, cuenta: creado.organizationId, init_point: preapproval.data.init_point, acceso: acceso?.codigo ?? null })
+    return jsonResponse({ ok: true, cuenta: creado.organizationId, init_point: planMP.init_point, acceso: acceso?.codigo ?? null })
   } catch (err: any) {
     console.error("alta-tienda error:", err)
     return errorResponse("No pudimos crear tu cuenta. Probá de nuevo en unos minutos.", 500)
@@ -174,7 +161,6 @@ async function crearCuenta(
     email: string
     whatsapp: string
     password: string
-    emailMP: string | null
     producto: "tienda" | "gestion"
     plan: { plan_name: string; max_branches: number; max_products_per_branch: number; max_users_per_branch: number }
     precio: number
@@ -263,7 +249,6 @@ async function crearCuenta(
       contact_name: d.nombre,
       contact_email: d.email,
       contact_phone: d.whatsapp,
-      payer_email: d.emailMP,
     })
     if (subError) throw subError
 
@@ -328,14 +313,6 @@ function mensajeEmailUsado(producto: "tienda" | "gestion"): string {
   return producto === "gestion"
     ? "Ya hay una cuenta con ese email. Si es tuya, entrá desde el programa de BG Gestión."
     : "Ya hay una cuenta con ese email. Si es tuya, entrá desde el panel de tu tienda."
-}
-
-function mensajeMercadoPago(data: any): string {
-  const texto = JSON.stringify(data ?? {}).toLowerCase()
-  if (texto.includes("payer_email") || texto.includes("payer email")) {
-    return "Mercado Pago no aceptó ese email. Usá el email de tu cuenta de Mercado Pago en el campo correspondiente."
-  }
-  return "No pudimos conectar con Mercado Pago. Probá de nuevo en unos minutos."
 }
 
 class ErrorVisible extends Error {

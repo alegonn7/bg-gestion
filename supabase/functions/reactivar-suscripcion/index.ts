@@ -1,14 +1,15 @@
 // Edge Function: reactivar-suscripcion
 // Botón "Reactivar suscripción" de Mi suscripción, en el panel de BG Tienda. Solo el dueño, y solo
-// si la suscripción está cancelada o la cuenta suspendida. Crea una suscripción nueva en Mercado
-// Pago a precio completo (el 50% es solo para el primer mes de un alta) y devuelve el link de pago.
-// Si canceló pero todavía tiene el mes pago, la nueva arranca a cobrar el día que vencía, así no
-// paga dos veces el mismo mes. La cuenta se reactiva cuando sincronizarSuscripcion() ve la nueva
-// autorizada (webhook, o accion "sincronizar" que llama el panel al volver de Mercado Pago).
+// si la suscripción está cancelada o la cuenta suspendida. Crea un plan nuevo en Mercado Pago a
+// precio completo (el 50% es solo para el primer mes de un alta) y devuelve su link de pago: paga
+// con la cuenta de Mercado Pago que quiera. Si canceló pero todavía tiene el mes pago, el plan trae
+// días gratis hasta el día que vencía, así no paga dos veces el mismo mes. La cuenta se reactiva
+// cuando sincronizarSuscripcion() encuentra la suscripción del plan autorizada (webhook, el chequeo
+// cada 10 minutos, o accion "sincronizar" que llama el panel al volver de Mercado Pago).
 
 import { createClient } from "npm:@supabase/supabase-js@2"
 import { usuarioDeLaSesion } from "../_shared/sesion.ts"
-import { mpFetch, sincronizarSuscripcion, storeSiteUrl } from "../_shared/suscripciones.ts"
+import { cancelarPlanMP, crearPlanMP, mpFetch, sincronizarSuscripcion, storeSiteUrl } from "../_shared/suscripciones.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -51,21 +52,29 @@ Deno.serve(async (req) => {
       return jsonResponse({ reactivada: !!sub && !sub.cancelled_at && org?.subscription_status === "active" })
     }
 
+    // Un link de reactivación anterior que quizás se pagó y todavía no se vinculó: buscarlo antes.
+    const { data: previa } = await admin
+      .from("platform_subscriptions")
+      .select("mp_plan_id, mp_preapproval_id")
+      .eq("organization_id", organizationId)
+      .maybeSingle()
+    if (previa?.mp_plan_id && !previa.mp_preapproval_id) await sincronizarSuscripcion(admin, { organizationId })
+
     const [{ data: sub }, { data: org }] = await Promise.all([
       admin
         .from("platform_subscriptions")
-        .select("id, mp_preapproval_id, mp_status, cancelled_at, full_amount, contact_email, payer_email")
+        .select("id, mp_preapproval_id, mp_plan_id, mp_status, cancelled_at, full_amount")
         .eq("organization_id", organizationId)
         .maybeSingle(),
       admin.from("organizations").select("name, subscription_status, subscription_ends_at").eq("id", organizationId).single(),
     ])
-    if (!sub?.mp_preapproval_id || !org) return errorResponse("Tu cuenta no tiene una suscripción automática", 404)
+    if (!sub || (!sub.mp_preapproval_id && !sub.mp_plan_id) || !org) return errorResponse("Tu cuenta no tiene una suscripción automática", 404)
     if (!sub.cancelled_at && org.subscription_status !== "suspended") return errorResponse("Tu suscripción ya está activa", 409)
 
     // La suscripción actual (la cancelada, una reactivación anterior que quedó sin pagar, o la de una
     // cuenta suspendida por atraso que Mercado Pago sigue reintentando) se cancela antes de crear la
     // nueva: nunca puede haber dos cobrando a la vez.
-    if (sub.mp_status !== "cancelled") {
+    if (sub.mp_preapproval_id && sub.mp_status !== "cancelled") {
       const r = await mpFetch(`/preapproval/${encodeURIComponent(sub.mp_preapproval_id)}`, {
         method: "PUT",
         body: JSON.stringify({ status: "cancelled" }),
@@ -83,39 +92,24 @@ Deno.serve(async (req) => {
     const conMesPago = org.subscription_status !== "suspended" && vence > Date.now() + MARGEN_INICIO_MS
     const monto = Number(sub.full_amount)
 
-    const preapproval = await mpFetch("/preapproval", {
-      method: "POST",
-      body: JSON.stringify({
-        reason: `BG Tienda — ${org.name}`,
-        external_reference: organizationId,
-        payer_email: sub.payer_email ?? sub.contact_email,
-        auto_recurring: {
-          frequency: 1,
-          frequency_type: "months",
-          transaction_amount: monto,
-          currency_id: "ARS",
-          ...(conMesPago ? { start_date: new Date(vence).toISOString() } : {}),
-        },
-        back_url: `${storeSiteUrl()}/admin/suscripcion?reactivar=1`,
-        notification_url: `${Deno.env.get("SUPABASE_URL")}/functions/v1/suscripciones-webhook`,
-        status: "pending",
-      }),
-    }).catch((err) => {
-      console.error("reactivar-suscripcion: falló la llamada a Mercado Pago", err)
-      return { ok: false, status: 0, data: null }
+    const planMP = await crearPlanMP({
+      motivo: `BG Tienda — ${org.name}`,
+      monto,
+      backUrl: `${storeSiteUrl()}/admin/suscripcion?reactivar=1`,
+      diasGratis: conMesPago ? Math.ceil((vence - Date.now()) / (24 * 60 * 60 * 1000)) : 0,
     })
-    if (!preapproval.ok || !preapproval.data?.id || !preapproval.data?.init_point) {
-      console.error("reactivar-suscripcion: Mercado Pago no creó la suscripción", preapproval.status, preapproval.data)
-      return errorResponse("No pudimos conectar con Mercado Pago. Probá de nuevo en unos minutos.", 502)
-    }
+    if (!planMP) return errorResponse("No pudimos conectar con Mercado Pago. Probá de nuevo en unos minutos.", 502)
+    // El link de una reactivación anterior que no se pagó deja de cobrar.
+    if (sub.mp_plan_id) await cancelarPlanMP(sub.mp_plan_id)
 
     // cancelled_at queda puesto hasta que la nueva se autorice: así, si no termina de pagar, la cuenta
     // sigue como estaba (vence o sigue suspendida) y puede volver a intentarlo.
     await admin
       .from("platform_subscriptions")
       .update({
-        mp_preapproval_id: String(preapproval.data.id),
-        mp_status: preapproval.data.status ?? "pending",
+        mp_plan_id: planMP.id,
+        mp_preapproval_id: null,
+        mp_status: "pending",
         current_amount: monto,
         cancelled_at: sub.cancelled_at ?? new Date().toISOString(),
         next_payment_date: null,
@@ -123,7 +117,7 @@ Deno.serve(async (req) => {
       })
       .eq("id", sub.id)
 
-    return jsonResponse({ ok: true, init_point: preapproval.data.init_point })
+    return jsonResponse({ ok: true, init_point: planMP.init_point })
   } catch (err: any) {
     console.error("reactivar-suscripcion error:", err)
     return errorResponse("No pudimos reactivar la suscripción. Probá de nuevo en unos minutos.", 500)
