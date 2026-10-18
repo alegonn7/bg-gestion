@@ -302,7 +302,7 @@ export default function ProductDetailModal({ product, isOpen, onClose, onEdit, o
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-600">ID</span>
-                <span className="font-mono text-xs text-gray-500">{product.id}</span>
+                <span className="font-mono text-xs text-gray-500 break-all text-right ml-3 md:ml-0">{product.id}</span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-gray-600">Versión</span>
@@ -313,7 +313,8 @@ export default function ProductDetailModal({ product, isOpen, onClose, onEdit, o
         </div>
 
         {/* Footer Actions */}
-        <div className="flex gap-3 p-4 md:p-6 border-t border-gray-200">
+        {/* En el celular los botones van en dos columnas (en fila no entran y la ventana se corre de costado) */}
+        <div className="grid grid-cols-2 gap-2 md:flex md:gap-3 p-4 md:p-6 border-t border-gray-200">
           <button
             onClick={onClose}
             className="px-4 md:px-6 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg transition"
@@ -321,7 +322,7 @@ export default function ProductDetailModal({ product, isOpen, onClose, onEdit, o
             Cerrar
           </button>
           
-          <div className="flex-1 flex gap-3">
+          <div className="contents md:flex md:flex-1 md:gap-3">
             {onEdit && (
               <button
                 onClick={onEdit}
