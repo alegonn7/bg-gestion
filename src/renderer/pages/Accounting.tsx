@@ -165,15 +165,15 @@ function SummaryCard({
   const c = colors[color]
   return (
     <div className={`${c.bg} rounded-xl p-4 border border-white`}>
-      <div className="flex items-start justify-between">
-        <div>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{title}</p>
-          <p className={`text-2xl font-bold mt-1 ${color === 'red' ? 'text-red-700' : color === 'green' ? 'text-green-700' : 'text-gray-900'}`}>
+          <p className={`text-xl 2xl:text-2xl font-bold mt-1 break-words ${color === 'red' ? 'text-red-700' : color === 'green' ? 'text-green-700' : 'text-gray-900'}`}>
             {value}
           </p>
           {subtitle && <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>}
         </div>
-        <div className={`p-2 rounded-lg ${c.ring}`}>
+        <div className={`p-2 rounded-lg flex-shrink-0 ${c.ring}`}>
           <Icon className={`w-5 h-5 ${c.icon}`} />
         </div>
       </div>
@@ -797,7 +797,7 @@ function ResumenTab() {
   return (
     <div className="space-y-6">
       {/* Cards principales */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <SummaryCard
           title="Ventas del período"
           value={fmt(plData.totalSalesRevenue)}
@@ -983,7 +983,7 @@ function FlujoTab() {
   return (
     <div className="space-y-6">
       {/* Cards resumen */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <SummaryCard title="Cobros efectivo" value={fmt(totals.cashIn)} icon={Wallet} color="green" />
         <SummaryCard title="Cobros tarjeta" value={fmt(totals.card)} icon={CreditCard} color="blue" />
         <SummaryCard title="Transferencias" value={fmt(totals.transfer)} icon={Building2} color="purple" />
@@ -1225,7 +1225,7 @@ function LibroIVATab() {
       {avisoPrueba}
       <LibroIvaDigitalCard />
       {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <p className="text-xs text-gray-500 uppercase tracking-wide">Total Neto (sin IVA)</p>
           <p className="text-xl font-bold text-gray-900 mt-1">{fmt(totalLibroNeto)}</p>
@@ -1380,7 +1380,7 @@ function ComprasTab() {
   return (
     <div className="space-y-5">
       {/* Cards resumen */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 md:gap-4">
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <p className="text-xs text-gray-500 uppercase tracking-wide">Total comprado</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">{fmt(totalPurchasesAmount)}</p>
@@ -1534,8 +1534,9 @@ export default function AccountingPage() {
     ...(fiscalActivo ? [{ id: 'libro' as Tab, label: 'Libro IVA', icon: FileText }] : []),
   ]
 
+  // En el celular scrollea toda la página (el encabezado con los indicadores no queda fijo tapando la lista)
   return (
-    <div className="flex flex-col h-full bg-gray-50">
+    <div className="h-full overflow-y-auto md:overflow-hidden md:flex md:flex-col bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-4 md:px-6 py-4">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
@@ -1581,7 +1582,7 @@ export default function AccountingPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-4 md:p-6">
+      <div className="md:flex-1 md:overflow-y-auto p-4 md:p-6">
         {error && (
           <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
             Error al cargar datos: {error}

@@ -32,6 +32,31 @@ export default function RemitosPage() {
   const paginas = Math.max(1, Math.ceil(total / REMITOS_POR_PAGINA))
   const filtrar = (cambios: Partial<FiltrosRemitos>) => setFiltros(f => ({ ...f, ...cambios, pagina: 1 }))
 
+  // Botones de cada remito (los usan la tabla y las tarjetas del celular)
+  const accionesRemito = (r: (typeof remitos)[number]) => (
+    <>
+      <button
+        onClick={() => descargarRemitoPdf(r)}
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg border border-emerald-200"
+      >
+        <Download className="w-3.5 h-3.5" />PDF
+      </button>
+      {r.estado === 'emitido' && (confirmarAnular === r.id ? (
+        <span className="ml-2 inline-flex items-center gap-1">
+          <button onClick={() => anular(r.id).then(() => setConfirmarAnular(null))} className="px-2.5 py-1 text-xs bg-red-600 text-white rounded-lg">Anular</button>
+          <button onClick={() => setConfirmarAnular(null)} className="px-2.5 py-1 text-xs bg-gray-100 rounded-lg">No</button>
+        </span>
+      ) : (
+        <button
+          onClick={() => setConfirmarAnular(r.id)}
+          className="ml-2 inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-red-50 hover:bg-red-100 text-red-600 rounded-lg border border-red-200"
+        >
+          <XCircle className="w-3.5 h-3.5" />Anular
+        </button>
+      ))}
+    </>
+  )
+
   return (
     <div className="h-full overflow-y-auto bg-gray-50 p-4 md:p-6 space-y-5">
       <div className="flex flex-col items-start md:flex-row md:items-center md:justify-between gap-3 md:gap-0">
@@ -95,7 +120,31 @@ export default function RemitosPage() {
             <p className="text-sm">No hay remitos para mostrar.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          {/* Celular: tarjetas (la tabla no entra) */}
+          <ul className="md:hidden divide-y divide-gray-100">
+            {remitos.map(r => (
+              <li key={r.id} className="p-4 space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-mono text-xs text-gray-700">{numeroRemito(r)}</p>
+                    <p className="text-sm font-medium text-gray-900 break-words">
+                      {r.destinatario_nombre || <span className="text-gray-400">Sin destinatario</span>}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {r.fecha.split('-').reverse().join('/')} · {MOTIVOS_REMITO[r.motivo]} · {r.items.reduce((s, i) => s + i.cantidad, 0)} ítems
+                      {r.created_by_name && ` · ${r.created_by_name}`}
+                    </p>
+                  </div>
+                  {r.estado === 'anulado'
+                    ? <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs font-medium rounded-full flex-shrink-0">Anulado</span>
+                    : <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-medium rounded-full flex-shrink-0">Emitido</span>}
+                </div>
+                <div>{accionesRemito(r)}</div>
+              </li>
+            ))}
+          </ul>
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-gray-50 text-left text-xs text-gray-500 uppercase tracking-wide">
@@ -135,31 +184,14 @@ export default function RemitosPage() {
                       ) : <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs font-medium rounded-full">Emitido</span>}
                     </td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
-                      <button
-                        onClick={() => descargarRemitoPdf(r)}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg border border-emerald-200"
-                      >
-                        <Download className="w-3.5 h-3.5" />PDF
-                      </button>
-                      {r.estado === 'emitido' && (confirmarAnular === r.id ? (
-                        <span className="ml-2 inline-flex items-center gap-1">
-                          <button onClick={() => anular(r.id).then(() => setConfirmarAnular(null))} className="px-2.5 py-1 text-xs bg-red-600 text-white rounded-lg">Anular</button>
-                          <button onClick={() => setConfirmarAnular(null)} className="px-2.5 py-1 text-xs bg-gray-100 rounded-lg">No</button>
-                        </span>
-                      ) : (
-                        <button
-                          onClick={() => setConfirmarAnular(r.id)}
-                          className="ml-2 inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-red-50 hover:bg-red-100 text-red-600 rounded-lg border border-red-200"
-                        >
-                          <XCircle className="w-3.5 h-3.5" />Anular
-                        </button>
-                      ))}
+                      {accionesRemito(r)}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          </>
         )}
 
         {/* Paginación */}

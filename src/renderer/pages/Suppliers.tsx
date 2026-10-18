@@ -84,8 +84,9 @@ export default function SuppliersPage() {
     products.some(p => p.product && p.product.supplier_id === s.id)
   )
 
+  // En el celular scrollea toda la página (el encabezado con los indicadores no queda fijo tapando la lista)
   return (
-    <div className="h-full flex flex-col bg-gray-50">
+    <div className="h-full overflow-y-auto md:overflow-hidden md:flex md:flex-col bg-gray-50">
 
       {/* Header */}
       <div className="bg-white border-b border-gray-200 p-4 md:p-6">
@@ -138,27 +139,27 @@ export default function SuppliersPage() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-4">
-          <div className="bg-blue-50 rounded-lg p-4">
+        <div className="grid grid-cols-3 gap-2 md:gap-4">
+          <div className="bg-blue-50 rounded-lg p-3 md:p-4">
             <div className="flex items-center gap-2 text-blue-600 mb-1">
-              <Truck className="w-4 h-4" />
-              <span className="text-sm font-medium">Total Proveedores</span>
+              <Truck className="w-4 h-4 hidden md:block" />
+              <span className="text-xs md:text-sm font-medium">Total Proveedores</span>
             </div>
-            <p className="text-2xl font-bold text-blue-900">{suppliers.length}</p>
+            <p className="text-xl md:text-2xl font-bold text-blue-900">{suppliers.length}</p>
           </div>
-          <div className="bg-green-50 rounded-lg p-4">
+          <div className="bg-green-50 rounded-lg p-3 md:p-4">
             <div className="flex items-center gap-2 text-green-600 mb-1">
               <Package className="w-4 h-4" />
-              <span className="text-sm font-medium">Con Productos</span>
+              <span className="text-xs md:text-sm font-medium">Con Productos</span>
             </div>
-            <p className="text-2xl font-bold text-green-900">{suppliersWithProducts.length}</p>
+            <p className="text-xl md:text-2xl font-bold text-green-900">{suppliersWithProducts.length}</p>
           </div>
-          <div className="bg-purple-50 rounded-lg p-4">
+          <div className="bg-purple-50 rounded-lg p-3 md:p-4">
             <div className="flex items-center gap-2 text-purple-600 mb-1">
               <Package className="w-4 h-4" />
-              <span className="text-sm font-medium">Total Productos</span>
+              <span className="text-xs md:text-sm font-medium">Total Productos</span>
             </div>
-            <p className="text-2xl font-bold text-purple-900">
+            <p className="text-xl md:text-2xl font-bold text-purple-900">
               {products.filter(p => p.product?.supplier_id).length}
             </p>
           </div>
@@ -166,7 +167,7 @@ export default function SuppliersPage() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto p-4 md:p-6">
+      <div className="md:flex-1 md:overflow-auto p-4 md:p-6">
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
             {error}
@@ -175,7 +176,8 @@ export default function SuppliersPage() {
 
         {/* Form */}
         {showForm && (
-          <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-4 md:p-6 mb-6">
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-xl p-4 md:p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
                 <Truck className="w-5 h-5 text-blue-600" />
@@ -252,6 +254,7 @@ export default function SuppliersPage() {
                 </button>
               </div>
             </form>
+          </div>
           </div>
         )}
 

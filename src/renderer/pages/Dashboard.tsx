@@ -404,12 +404,12 @@ function DashboardHome() {
           </div>
 
           <div className="bg-white rounded-lg border border-gray-200 p-5">
-            <div className="flex items-center justify-between mb-3">
-              <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center">
+            <div className="flex flex-col items-start gap-2 mb-3">
+              <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center flex-shrink-0">
                 <TrendingUp className="w-5 h-5 text-emerald-600" />
               </div>
-              <div className="overflow-x-auto w-full flex justify-end">
-                <span className="text-2xl font-bold text-emerald-700 whitespace-nowrap">{formatCurrency(todayStats.profit)}</span>
+              <div className="overflow-x-auto w-full min-w-0">
+                <span className="text-lg md:text-xl xl:text-2xl font-bold text-emerald-700 whitespace-nowrap">{formatCurrency(todayStats.profit)}</span>
               </div>
             </div>
             <h3 className="text-sm font-medium text-gray-600">Ganancia Hoy</h3>

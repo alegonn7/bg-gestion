@@ -14,6 +14,8 @@ interface Props {
 }
 
 const inputClass = 'w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500'
+// Igual pero sin ancho fijo, para los campos de cada línea de mercadería
+const lineInputClass = inputClass.replace('w-full ', '')
 
 export default function RemitoModal({ inicial, onClose, onCreado }: Props) {
   const { branches, selectedBranch, branch } = useAuthStore()
@@ -266,7 +268,7 @@ export default function RemitoModal({ inicial, onClose, onCreado }: Props) {
                 <CameraScanButton onScan={agregarPorCodigo} continuous title="Agregar al remito" />
                 </div>
 
-                <div className="flex gap-2 px-2 text-xs text-gray-500">
+                <div className="hidden md:flex gap-2 px-2 text-xs text-gray-500">
                   <span className="w-36">Código</span>
                   <span className="flex-1">Descripción</span>
                   <span className="w-20 text-right">Cantidad</span>
@@ -275,13 +277,14 @@ export default function RemitoModal({ inicial, onClose, onCreado }: Props) {
                 </div>
                 <div className="border border-gray-200 rounded-lg divide-y">
                   {items.map((item, i) => (
-                    <div key={i} className="flex gap-2 p-2 items-center">
-                      <input value={item.codigo} onChange={e => cambiarItem(i, { codigo: e.target.value })} placeholder="Código" className={`${inputClass} w-36`} />
-                      <input value={item.descripcion} onChange={e => cambiarItem(i, { descripcion: e.target.value })} placeholder="Descripción" className={`${inputClass} flex-1`} />
+                    // En el celular: descripción arriba a todo el ancho, y código, cantidad y precio abajo
+                    <div key={i} className="flex flex-wrap md:flex-nowrap gap-2 p-2 items-center">
+                      <input value={item.codigo} onChange={e => cambiarItem(i, { codigo: e.target.value })} placeholder="Código" className={`${lineInputClass} flex-1 min-w-0 md:flex-none md:w-36`} />
+                      <input value={item.descripcion} onChange={e => cambiarItem(i, { descripcion: e.target.value })} placeholder="Descripción" className={`${inputClass} order-first w-full md:order-none md:w-auto md:flex-1`} />
                       <input
                         type="number" min={0} step="any" value={item.cantidad}
                         onChange={e => cambiarItem(i, { cantidad: Number(e.target.value) })}
-                        className={`${inputClass} w-20 text-right`}
+                        className={`${lineInputClass} w-16 md:w-20 text-right`}
                         title="Cantidad"
                       />
                       <input
@@ -289,7 +292,7 @@ export default function RemitoModal({ inicial, onClose, onCreado }: Props) {
                         onChange={e => cambiarItem(i, { precio: e.target.value === '' ? null : Number(e.target.value) })}
                         placeholder="Precio"
                         title="Precio unitario (opcional)"
-                        className={`${inputClass} w-28 text-right`}
+                        className={`${lineInputClass} w-20 md:w-28 text-right`}
                       />
                       <button onClick={() => setItems(prev => prev.filter((_, j) => j !== i))} className="p-2 text-gray-400 hover:text-red-600">
                         <Trash2 className="w-4 h-4" />

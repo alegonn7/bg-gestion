@@ -381,7 +381,7 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
                 Autofill
               </label>
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
               <div>
                 <label htmlFor="price_cost" className="block text-sm font-medium text-gray-700 mb-2">
                   Costo (ARS)
@@ -439,7 +439,7 @@ export default function EditProductModal({ product, isOpen, onClose }: EditProdu
               <DollarSign className="w-4 h-4 text-green-600" />
               Precios en Dólares (USD)
             </h3>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
               <div>
                 <label htmlFor="price_cost_usd" className="block text-sm font-medium text-gray-700 mb-2">Costo (USD)</label>
                 <div className="relative">
