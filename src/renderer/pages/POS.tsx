@@ -489,13 +489,13 @@ export default function POS() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Descuento</label>
                 <div className="flex gap-2">
-                  <div className="flex-1 flex gap-2">
+                  <div className="flex-1 min-w-0 flex gap-2">
                     <input
                       type="number"
                       value={discountInput}
                       onChange={(e) => setDiscountInput(e.target.value)}
                       placeholder="0"
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                      className="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-lg text-sm"
                     />
                     <select
                       value={discountTypeInput}
@@ -508,7 +508,7 @@ export default function POS() {
                   </div>
                   <button
                     onClick={handleDiscountApply}
-                    className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-sm"
+                    className="px-3 md:px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-sm flex-shrink-0"
                   >
                     Aplicar
                   </button>

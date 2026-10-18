@@ -419,7 +419,7 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
           {/* Precios */}
           <div>
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Precios</h3>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
               <div>
                 <label htmlFor="price_cost" className="block text-sm font-medium text-gray-700 mb-2">Costo (ARS)</label>
                 <div className="relative">
@@ -470,7 +470,7 @@ export default function CreateProductModal({ isOpen, onClose, initialBarcode, du
                 Autofill
               </label>
             </h3>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
               <div>
                 <label htmlFor="price_cost_usd" className="block text-sm font-medium text-gray-700 mb-2">Costo (USD)</label>
                 <div className="relative">

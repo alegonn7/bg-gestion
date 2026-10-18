@@ -374,11 +374,12 @@ export default function ExtrasPage() {
             {sheets.map(sheet => {
               const cfg = getSizeConfig(sheet.size)
               return (
-                <div key={sheet.id} className="bg-white rounded-xl border border-gray-200 px-5 py-4 flex items-center gap-4">
+                <div key={sheet.id} className="bg-white rounded-xl border border-gray-200 px-4 md:px-5 py-4 flex flex-wrap md:flex-nowrap items-center gap-x-4 gap-y-3">
                   <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
                     <Tag className="w-5 h-5 text-blue-600" />
                   </div>
-                  <div className="flex-1 min-w-0">
+                  {/* En el celular los botones bajan a una segunda fila */}
+                  <div className="flex-1 min-w-[12rem] md:min-w-0">
                     <p className="font-semibold text-gray-900 truncate">{sheet.name}</p>
                     <p className="text-xs text-gray-400 mt-0.5">
                       {new Date(sheet.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}

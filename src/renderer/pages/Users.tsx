@@ -62,8 +62,9 @@ export default function Users() {
 
   const canInvite = currentUser?.role !== 'employee'
 
+  // En el celular scrollea toda la página (el encabezado con los indicadores no queda fijo tapando la lista)
   return (
-    <div className="h-full flex flex-col bg-gray-50">
+    <div className="h-full overflow-y-auto md:overflow-hidden md:flex md:flex-col bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 p-4 md:p-6">
         <div className="flex flex-col items-start md:flex-row md:items-center md:justify-between gap-3 md:gap-0 mb-4">
@@ -156,7 +157,7 @@ export default function Users() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto p-4 md:p-6">
+      <div className="md:flex-1 md:overflow-auto p-4 md:p-6">
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
             {error}

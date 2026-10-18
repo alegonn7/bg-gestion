@@ -117,9 +117,6 @@ function ExtraMovementForm({ cashRegisterId, onClose }: { cashRegisterId: string
 
   return (
     <div className="relative">
-      <button type="button" onClick={onClose} className="absolute top-2 right-2 text-gray-400 hover:text-gray-700">
-        <XCircle className="w-6 h-6" />
-      </button>
 
       {/* ── Frecuentes ──────────────────────────────────────────── */}
       {templates.length > 0 && (
@@ -308,14 +305,14 @@ function ExtraMovementForm({ cashRegisterId, onClose }: { cashRegisterId: string
 
               return (
                 <li key={mov.id} className={`py-2 flex flex-col gap-0.5 text-sm ${!affectsCash ? 'bg-amber-50 px-1 rounded' : ''}`}>
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                     <span className={`font-bold ${mov.type === 'gasto' ? 'text-red-600' : 'text-green-700'}`}>
                       {mov.type === 'gasto' ? '-' : '+'}{mov.amount.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' })}
                     </span>
-                    <span className="flex-1 text-gray-700">{mov.description}</span>
+                    <span className="flex-1 min-w-[8rem] text-gray-700">{mov.description}</span>
                     <span className="px-2 py-0.5 bg-gray-100 text-gray-500 rounded text-xs">{sourceLabel}</span>
                   </div>
-                  <div className="flex items-center gap-2 text-xs text-gray-400 pl-1">
+                  <div className="flex flex-wrap items-center gap-x-2 text-xs text-gray-400 pl-1">
                     <span>{new Date(mov.created_at).toLocaleString('es-AR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}</span>
                     {mov.created_by_name && <span>• {mov.created_by_name}</span>}
                     {(mov as any).category && <span className="text-blue-400">• {EXPENSE_CATEGORIES.find(c => c.value === (mov as any).category)?.label || (mov as any).category}</span>}
@@ -613,8 +610,9 @@ export default function CashRegisterPage() {
     if (!isNaN(open) && open !== lastClose) diffWithLast = open - lastClose
   }
 
+  // En el celular scrollea toda la página (el encabezado con los indicadores no queda fijo tapando la lista)
   return (
-    <div className="h-full flex flex-col bg-gray-50">
+    <div className="h-full overflow-y-auto md:overflow-hidden md:flex md:flex-col bg-gray-50">
       {/* Header */}
       <div className="bg-white border-b px-4 md:px-6 py-4">
         <div className="flex flex-col items-start md:flex-row md:items-center md:justify-between gap-3 md:gap-0 mb-4">
@@ -658,7 +656,13 @@ export default function CashRegisterPage() {
             {showExtraModal && (
               <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 p-4">
                 <div className="bg-white rounded-lg shadow-lg p-4 md:p-6 w-full max-w-lg relative max-h-[90vh] overflow-y-auto">
-                  <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><ListPlus className="w-5 h-5" /> Movimientos Extraordinarios</h3>
+                  {/* La X va en el encabezado (antes flotaba encima del campo Monto) */}
+                  <div className="flex items-center justify-between gap-3 mb-4">
+                    <h3 className="text-lg font-bold flex items-center gap-2"><ListPlus className="w-5 h-5" /> Movimientos Extraordinarios</h3>
+                    <button type="button" onClick={() => setShowExtraModal(false)} className="text-gray-400 hover:text-gray-700 flex-shrink-0" aria-label="Cerrar">
+                      <XCircle className="w-6 h-6" />
+                    </button>
+                  </div>
                   <ExtraMovementForm cashRegisterId={currentRegister.id} onClose={() => setShowExtraModal(false)} />
                 </div>
               </div>
@@ -715,7 +719,7 @@ export default function CashRegisterPage() {
       )}
 
       {/* Historial */}
-      <div className="flex-1 overflow-y-auto p-4 md:p-6 mt-2">
+      <div className="md:flex-1 md:overflow-y-auto p-4 md:p-6 mt-2">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Historial de Arqueos</h2>
         {isLoading ? (
           <div className="text-center py-12">
@@ -954,48 +958,48 @@ export default function CashRegisterPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                   <div className="flex items-center gap-2 text-blue-600 mb-1"><ArrowUpCircle className="w-4 h-4" /><span className="text-xs font-medium">Apertura</span></div>
-                  <p className="text-lg font-bold text-blue-900">{formatCurrency(showDetailModal.opening_amount)}</p>
+                  <p className="text-base md:text-lg font-bold text-blue-900">{formatCurrency(showDetailModal.opening_amount)}</p>
                 </div>
                 <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
                   <div className="flex items-center gap-2 text-purple-600 mb-1"><ArrowDownCircle className="w-4 h-4" /><span className="text-xs font-medium">Cierre (Contado)</span></div>
-                  <p className="text-lg font-bold text-purple-900">{formatCurrency(showDetailModal.closing_amount || 0)}</p>
+                  <p className="text-base md:text-lg font-bold text-purple-900">{formatCurrency(showDetailModal.closing_amount || 0)}</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 <div className="bg-green-50 border border-green-200 rounded-lg p-3">
                   <div className="flex items-center gap-2 text-green-600 mb-1"><Banknote className="w-4 h-4" /><span className="text-xs font-medium">Efectivo</span></div>
                   <div style={{overflowX: 'auto'}} className="hide-scrollbar">
-                    <p className="text-lg font-bold text-green-900 whitespace-nowrap">{formatCurrency(showDetailModal.cash_sales_total || 0)}</p>
+                    <p className="text-base md:text-lg font-bold text-green-900 whitespace-nowrap">{formatCurrency(showDetailModal.cash_sales_total || 0)}</p>
                   </div>
                 </div>
                 <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-3">
                   <div className="flex items-center gap-2 text-indigo-600 mb-1"><CreditCard className="w-4 h-4" /><span className="text-xs font-medium">Tarjeta</span></div>
                   <div style={{overflowX: 'auto'}} className="hide-scrollbar">
-                    <p className="text-lg font-bold text-indigo-900 whitespace-nowrap">{formatCurrency(showDetailModal.card_sales_total || 0)}</p>
+                    <p className="text-base md:text-lg font-bold text-indigo-900 whitespace-nowrap">{formatCurrency(showDetailModal.card_sales_total || 0)}</p>
                   </div>
                 </div>
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                   <div className="flex items-center gap-2 text-blue-600 mb-1"><CreditCard className="w-4 h-4" /><span className="text-xs font-medium">Transferencia</span></div>
                   <div style={{overflowX: 'auto'}} className="hide-scrollbar">
-                    <p className="text-lg font-bold text-blue-900 whitespace-nowrap">{formatCurrency(showDetailModal.transfer_sales_total || 0)}</p>
+                    <p className="text-base md:text-lg font-bold text-blue-900 whitespace-nowrap">{formatCurrency(showDetailModal.transfer_sales_total || 0)}</p>
                   </div>
                 </div>
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
                   <div className="flex items-center gap-2 text-gray-600 mb-1"><TrendingUp className="w-4 h-4" /><span className="text-xs font-medium">Total Turno</span></div>
                   <div style={{overflowX: 'auto'}} className="hide-scrollbar">
-                    <p className="text-lg font-bold text-gray-900 whitespace-nowrap">{formatCurrency(showDetailModal.total_sales_amount || 0)}</p>
+                    <p className="text-base md:text-lg font-bold text-gray-900 whitespace-nowrap">{formatCurrency(showDetailModal.total_sales_amount || 0)}</p>
                   </div>
                 </div>
               </div>
               <div className={`rounded-lg p-4 border ${(showDetailModal.difference || 0) === 0 ? 'bg-green-50 border-green-200' : (showDetailModal.difference || 0) > 0 ? 'bg-blue-50 border-blue-200' : 'bg-red-50 border-red-200'}`}>
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-medium text-gray-700">Monto Esperado</p>
-                    <p className="text-lg font-bold">{formatCurrency(showDetailModal.expected_amount || 0)}</p>
+                    <p className="text-base md:text-lg font-bold">{formatCurrency(showDetailModal.expected_amount || 0)}</p>
                   </div>
                   <div className="text-center">
                     <p className="text-sm font-medium text-gray-700">Diferencia</p>
-                    <p className={`text-2xl font-bold ${(showDetailModal.difference || 0) === 0 ? 'text-green-600' : (showDetailModal.difference || 0) > 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                    <p className={`text-xl md:text-2xl font-bold ${(showDetailModal.difference || 0) === 0 ? 'text-green-600' : (showDetailModal.difference || 0) > 0 ? 'text-blue-600' : 'text-red-600'}`}>
                       {(showDetailModal.difference || 0) > 0 ? '+' : ''}{formatCurrency(showDetailModal.difference || 0)}
                     </p>
                     {(showDetailModal.difference || 0) === 0 && <p className="text-xs text-green-600 mt-1">Cuadra perfecto</p>}
