@@ -60,13 +60,14 @@ export default function MasterProductDetailModal({ product, isOpen, onClose }: M
         </div>
 
         {/* Stats Overview */}
-        <div className="grid grid-cols-4 gap-4 p-4 md:p-6 bg-gray-50">
+        {/* En el celular van de a dos por fila (de a cuatro los montos se pisan) */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 md:p-6 bg-gray-50">
           <div className="text-center">
             <div className="flex items-center justify-center gap-2 text-blue-600 mb-2">
               <Package className="w-5 h-5" />
               <span className="text-sm font-medium">Stock Total</span>
             </div>
-            <p className="text-3xl font-bold text-gray-900">{product.total_stock}</p>
+            <p className="text-xl md:text-3xl font-bold text-gray-900 break-words">{product.total_stock}</p>
           </div>
 
           <div className="text-center">
@@ -74,7 +75,7 @@ export default function MasterProductDetailModal({ product, isOpen, onClose }: M
               <Store className="w-5 h-5" />
               <span className="text-sm font-medium">Sucursales</span>
             </div>
-            <p className="text-3xl font-bold text-gray-900">{product.branches_count}</p>
+            <p className="text-xl md:text-3xl font-bold text-gray-900 break-words">{product.branches_count}</p>
           </div>
 
           <div className="text-center">
@@ -82,7 +83,7 @@ export default function MasterProductDetailModal({ product, isOpen, onClose }: M
               <DollarSign className="w-5 h-5" />
               <span className="text-sm font-medium">Precio Prom.</span>
             </div>
-            <p className="text-3xl font-bold text-gray-900">
+            <p className="text-xl md:text-3xl font-bold text-gray-900 break-words">
               ${product.avg_price_sale.toFixed(2)}
             </p>
           </div>
@@ -92,7 +93,7 @@ export default function MasterProductDetailModal({ product, isOpen, onClose }: M
               <TrendingUp className="w-5 h-5" />
               <span className="text-sm font-medium">Ganancia Pot.</span>
             </div>
-            <p className="text-3xl font-bold text-gray-900">
+            <p className="text-xl md:text-3xl font-bold text-gray-900 break-words">
               ${potentialProfit.toFixed(2)}
             </p>
           </div>
@@ -145,7 +146,7 @@ export default function MasterProductDetailModal({ product, isOpen, onClose }: M
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div>
                       <p className="text-xs text-gray-500 mb-1">Precio Costo</p>
                       <p className="text-sm font-semibold text-gray-900">

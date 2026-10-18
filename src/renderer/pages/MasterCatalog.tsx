@@ -91,8 +91,9 @@ export default function MasterCatalog() {
     setSelectedProduct(null)
   }
 
+  // En el celular scrollea toda la página (el encabezado con los indicadores no queda fijo tapando la lista)
   return (
-    <div className="h-full flex flex-col bg-gray-50">
+    <div className="h-full overflow-y-auto md:overflow-hidden md:flex md:flex-col bg-gray-50">
       {/* Feedback del escáner */}
       {scanFeedback && (
         <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg text-white text-sm font-medium ${
@@ -178,31 +179,31 @@ export default function MasterCatalog() {
         )}
 
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-4">
-          <div className="bg-blue-50 rounded-lg p-4">
+        <div className="grid grid-cols-3 gap-2 md:gap-4">
+          <div className="bg-blue-50 rounded-lg p-3 md:p-4">
             <div className="flex items-center gap-2 text-blue-600 mb-1">
               <Package className="w-4 h-4" />
-              <span className="text-sm font-medium">Total Productos</span>
+              <span className="text-xs md:text-sm font-medium">Total Productos</span>
             </div>
-            <p className="text-2xl font-bold text-blue-900">{filteredProducts.length}</p>
+            <p className="text-xl md:text-2xl font-bold text-blue-900">{filteredProducts.length}</p>
           </div>
 
-          <div className="bg-green-50 rounded-lg p-4">
+          <div className="bg-green-50 rounded-lg p-3 md:p-4">
             <div className="flex items-center gap-2 text-green-600 mb-1">
               <BarChart className="w-4 h-4" />
-              <span className="text-sm font-medium">Stock Total</span>
+              <span className="text-xs md:text-sm font-medium">Stock Total</span>
             </div>
-            <p className="text-2xl font-bold text-green-900">
+            <p className="text-xl md:text-2xl font-bold text-green-900">
               {filteredProducts.reduce((sum, p) => sum + p.total_stock, 0)}
             </p>
           </div>
 
-          <div className="bg-purple-50 rounded-lg p-4">
+          <div className="bg-purple-50 rounded-lg p-3 md:p-4">
             <div className="flex items-center gap-2 text-purple-600 mb-1">
               <Store className="w-4 h-4" />
-              <span className="text-sm font-medium">Sucursales Activas</span>
+              <span className="text-xs md:text-sm font-medium">Sucursales Activas</span>
             </div>
-            <p className="text-2xl font-bold text-purple-900">
+            <p className="text-xl md:text-2xl font-bold text-purple-900">
               {new Set(filteredProducts.flatMap(p => p.branches.map(b => b.branch_id))).size}
             </p>
           </div>
@@ -210,7 +211,7 @@ export default function MasterCatalog() {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto p-4 md:p-6">
+      <div className="md:flex-1 md:overflow-auto p-4 md:p-6">
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
             {error}
