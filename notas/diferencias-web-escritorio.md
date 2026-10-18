@@ -8,6 +8,7 @@ distinto a propósito según la plataforma (se detecta con `window.electron`: ex
 | :--- | :--- | :--- | :--- |
 | 2026-10-07 | Cámara como lector de códigos (`CameraScanButton`, `lib/cameraScanner.ts`): botón con ícono de cámara en Punto de Venta, Productos, Escáner, Catálogo Maestro, Remitos y en el código de barras de "Nuevo producto" | Solo desde el celular o tablet (pantalla táctil); en la web desde la compu no aparece. Pide permiso de cámara | No: se usa el lector físico, el botón no aparece |
 | 2026-10-07 | Instalar como app (`manifest.webmanifest`, botón "Instalar app" en el menú) | El botón aparece solo desde el celular o tablet | No aplica (ya es una app instalada) |
+| 2026-10-18 | Ver las fotos del producto (`ProductPhotos`) al abrirlo en Productos y al escanearlo en el Escáner; se prende y apaga en Configuración → "Fotos de productos" (`store/display.ts`, se guarda en el navegador de cada dispositivo) | Sí, activado de entrada (en compu y celular). Sin fotos no se muestra nada | No: ni las fotos en esas pantallas ni la opción en Configuración (las fotos se siguen cargando al editar el producto) |
 
 Historial: del 2026-10-02 al 2026-10-05 las imágenes de producto (`ProductImagesField`) fueron solo web;
 en la 1.3.5 se habilitaron también en escritorio.

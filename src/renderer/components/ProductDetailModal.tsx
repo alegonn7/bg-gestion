@@ -2,6 +2,7 @@ import { X, Barcode, TrendingUp, DollarSign, Clock, Copy } from 'lucide-react'
 import type { Product } from '@/store/products'
 import { useDollarStore } from '@/store/dollar'
 import { gananciaSobreCosto } from '@/lib/ganancia'
+import ProductPhotos from '@/components/ProductPhotos'
 
 interface ProductDetailModalProps {
   product: Product | null
@@ -70,6 +71,9 @@ export default function ProductDetailModal({ product, isOpen, onClose, onEdit, o
 
         {/* Content */}
         <div className="p-4 md:p-6 space-y-6">
+          {/* Fotos (solo web, si están activadas en Configuración) */}
+          <ProductPhotos images={product.product?.images} name={displayName} />
+
           {/* Descripción */}
           {displayDescription && (
             <div>
