@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import { Building2, Save, RefreshCw, DollarSign, Info, Upload, Trash2, Loader2 } from 'lucide-react'
+import { Building2, Save, RefreshCw, DollarSign, Info, Upload, Trash2, Loader2, Image as ImageIcon } from 'lucide-react'
 import { useAuthStore } from '@/store/auth'
 import { useDollarStore } from '@/store/dollar'
+import { useDisplayStore, productPhotosAvailable } from '@/store/display'
 import { supabase } from '@/lib/supabase'
 import FiscalSetupSection from '@/components/FiscalSetupSection'
 import MiCuentaSection from '@/components/MiCuentaSection'
@@ -20,6 +21,7 @@ export default function SettingsPage() {
     setManualRates,
     syncFromOrg,
   } = useDollarStore()
+  const { showProductPhotos, setShowProductPhotos } = useDisplayStore()
     // Sincronizar valores manuales al cargar organización
     useEffect(() => {
       syncFromOrg();
@@ -407,6 +409,32 @@ export default function SettingsPage() {
           Fuente: dolarapi.com (fallback: bluelytics.com.ar). Se actualiza automáticamente cada 5 minutos.
         </p>
       </section>
+
+      {/* Fotos de productos: solo en la web, se guarda en este dispositivo */}
+      {productPhotosAvailable() && (
+        <section className="bg-white rounded-xl border border-gray-200 p-4 md:p-6 mb-6">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+              <ImageIcon className="w-5 h-5 text-purple-600" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Fotos de productos</h2>
+              <p className="text-sm text-gray-500">Se aplica solo a este dispositivo</p>
+            </div>
+          </div>
+          <label className="flex items-start gap-3 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showProductPhotos}
+              onChange={e => setShowProductPhotos(e.target.checked)}
+              className="form-checkbox h-5 w-5 text-blue-600 mt-0.5"
+            />
+            <span className="text-sm text-gray-700">
+              <span className="font-medium">Mostrar las fotos</span> al abrir un producto en Productos y al escanearlo en el Escáner
+            </span>
+          </label>
+        </section>
+      )}
 
       {/* Facturación Electrónica: la configura solo el dueño */}
       {user?.role === 'owner' && <FiscalSetupSection />}

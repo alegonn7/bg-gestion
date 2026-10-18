@@ -7,6 +7,7 @@ import { CameraScanButton } from '@/components/CameraScanner'
 import { canUseCameraScanner } from '@/lib/cameraScanner'
 import { playScanSuccess, playScanError } from '@/lib/scan-sound'
 import { formatSyncAge } from '@/lib/offline'
+import ProductPhotos from '@/components/ProductPhotos'
 
 export default function ScannerPage() {
   const { products, fetchProducts, isFromCache, lastSyncAt } = useProductsStore()
@@ -162,6 +163,13 @@ export default function ScannerPage() {
                   )}
                 </div>
               </div>
+
+              {/* Fotos (solo web, si están activadas en Configuración) */}
+              <ProductPhotos
+                images={scannedProduct.product?.images}
+                name={scannedProduct.product?.name}
+                className="bg-white rounded-xl shadow-sm border p-4"
+              />
 
               {/* Precios */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
