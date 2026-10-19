@@ -99,7 +99,7 @@ async function loadProfile(authId: string) {
           : null
   if (sinAcceso) {
     await clearOfflineCredentials(userData.email)
-    await supabase.auth.signOut().catch(() => {})
+    await supabase.auth.signOut({ scope: 'local' }).catch(() => {})
     throw new Error(sinAcceso)
   }
 
@@ -354,7 +354,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // En modo soporte, avisar al servidor que se sale de la empresa (queda registrado)
     if (get().isSupport) await callSoporte('salir').catch(() => {})
     try {
-      const result = await withTimeout(supabase.auth.signOut(), 5000)
+      // scope local: cierra solo esta sesión. El default (global) cerraba la cuenta en todos los
+      // dispositivos y también en BG Tienda, que usa la misma cuenta.
+      const result = await withTimeout(supabase.auth.signOut({ scope: 'local' }), 5000)
       // Sin conexión el servidor no puede invalidar el token: se borra la sesión local
       if (!result || result.error) clearStoredSession()
     } catch (error) {
