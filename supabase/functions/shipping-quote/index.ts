@@ -1,7 +1,7 @@
 // Edge Function: shipping-quote
 // Cotiza el costo de envío para un carrito. Dos modos posibles según
 // store_settings.shipping_pricing_mode: "carrier" delega al transportista real que la tienda
-// conectó (Correo Argentino/Andreani, necesita credenciales propias); "fixed_zones" es un monto
+// conectó (Correo Argentino/Andreani con credenciales propias, o Envia.com que cotiza varios correos); "fixed_zones" es un monto
 // fijo por provincia que la tienda define a mano, sin transportista ni credenciales -- para
 // quien no quiere lidiar con eso. Pública, sin Authorization de usuario -- la llama el
 // storefront anónimo (mismo modelo de confianza que mercadopago-checkout: cualquiera puede
@@ -14,6 +14,7 @@ import { createClient } from "npm:@supabase/supabase-js@2"
 import { decryptSecret } from "../_shared/crypto.ts"
 import * as correoArgentino from "../_shared/carriers/correo-argentino.ts"
 import * as andreani from "../_shared/carriers/andreani.ts"
+import * as envia from "../_shared/carriers/envia.ts"
 import type { QuoteInput } from "../_shared/carriers/types.ts"
 
 const corsHeaders = {
@@ -101,7 +102,7 @@ Deno.serve(async (req) => {
 
     const { data: branch } = await adminSupabase
       .from("branches")
-      .select("shipping_origin_postal_code")
+      .select("shipping_origin_postal_code, shipping_origin_province")
       .eq("id", settings.branch_id)
       .single()
 
@@ -154,7 +155,9 @@ Deno.serve(async (req) => {
 
     const quoteInput: QuoteInput = {
       originPostalCode: branch.shipping_origin_postal_code,
+      originProvince: branch.shipping_origin_province,
       destinationPostalCode,
+      destinationProvince,
       weightGrams: totalWeightGrams,
       lengthCm: maxLengthCm,
       widthCm: maxWidthCm,
@@ -164,7 +167,11 @@ Deno.serve(async (req) => {
 
     // Ecomerse nunca decide con qué transportista hablar -- es un detalle server-side, igual
     // que mercadopago-checkout ya decide sola live_mode.
-    const carrierModule = settings.shipping_carrier === "andreani" ? andreani : correoArgentino
+    const carrierModule = settings.shipping_carrier === "andreani"
+      ? andreani
+      : settings.shipping_carrier === "envia"
+        ? envia
+        : correoArgentino
     const result = await carrierModule.quote(credentials, creds.environment, quoteInput)
 
     return jsonResponse({

@@ -8,6 +8,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2"
 import { encryptSecret } from "../_shared/crypto.ts"
 import { getToken as getAndreaniToken } from "../_shared/carriers/andreani.ts"
+import { listCarriers as listEnviaCarriers } from "../_shared/carriers/envia.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -99,7 +100,7 @@ Deno.serve(async (req) => {
 
     if (action === "save_credentials") {
       const { carrier, environment, displayLabel, ...credentialFields } = body
-      if (!carrier || !["correo_argentino", "andreani"].includes(carrier)) {
+      if (!carrier || !["correo_argentino", "andreani", "envia"].includes(carrier)) {
         return errorResponse("Transportista inválido")
       }
 
@@ -110,6 +111,14 @@ Deno.serve(async (req) => {
           await getAndreaniToken(credentialFields, environment ?? "production")
         } catch {
           return errorResponse("Andreani rechazó el usuario o la contraseña. Revisalos (y si son de prueba, marcá la casilla).")
+        }
+      }
+
+      if (carrier === "envia") {
+        try {
+          await listEnviaCarriers(credentialFields, environment ?? "production")
+        } catch {
+          return errorResponse("Envia rechazó la clave de API. Revisala (y si es del entorno de prueba, marcá la casilla).")
         }
       }
 
