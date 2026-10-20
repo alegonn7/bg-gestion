@@ -117,12 +117,21 @@ Deno.serve(async (req) => {
       .eq("carrier", settings.shipping_carrier)
       .maybeSingle()
 
-    if (!creds) {
+    // Envia usa la cuenta de la plataforma (secreto ENVIA_API_KEY): cotizar no cobra nada, así
+    // que las tiendas no tienen que crear ni conectar una cuenta propia. Si alguna tienda
+    // cargó su propia clave, esa tiene prioridad.
+    let credentials: Record<string, string>
+    let environment: string
+    if (creds) {
+      const encryptionKey = Deno.env.get("SHIPPING_CREDENTIALS_ENCRYPTION_KEY")!
+      credentials = JSON.parse(await decryptSecret(creds.credentials_encrypted, encryptionKey))
+      environment = creds.environment
+    } else if (settings.shipping_carrier === "envia" && Deno.env.get("ENVIA_API_KEY")) {
+      credentials = { apiKey: Deno.env.get("ENVIA_API_KEY")! }
+      environment = Deno.env.get("ENVIA_ENVIRONMENT") ?? "production"
+    } else {
       return errorResponse("Esta tienda no conectó su transportista")
     }
-
-    const encryptionKey = Deno.env.get("SHIPPING_CREDENTIALS_ENCRYPTION_KEY")!
-    const credentials = JSON.parse(await decryptSecret(creds.credentials_encrypted, encryptionKey))
 
     const { data: products } = await adminSupabase
       .from("products")
@@ -172,7 +181,7 @@ Deno.serve(async (req) => {
       : settings.shipping_carrier === "envia"
         ? envia
         : correoArgentino
-    const result = await carrierModule.quote(credentials, creds.environment, quoteInput)
+    const result = await carrierModule.quote(credentials, environment, quoteInput)
 
     return jsonResponse({
       ok: true,
