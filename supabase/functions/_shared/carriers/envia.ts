@@ -6,13 +6,16 @@
 //   - POST /ship/rate/ con Bearer <apiKey>; sandbox api-test.envia.com, producción api.envia.com.
 //   - shipment.carrier es un solo correo por llamada, así que se cotiza uno por uno en paralelo
 //     y se cobra el más barato.
-//   - Los correos disponibles salen de queries(.test).envia.com/available-carrier/AR/0/1.
-// Sin verificar contra el sandbox todavía: si piden calle/teléfono reales para cotizar (se
-// mandan valores de relleno: en el preview del checkout todavía no hay dirección completa).
+//   - Probado en producción (2026-10-20): con calle/teléfono de relleno cotiza igual, y los
+//     códigos de provincia son los de GET /state (BA, CB, DF...).
 
 import type { CarrierCredentials, QuoteInput, QuoteResult } from "./types.ts"
 
 const FALLBACK_CARRIERS = ["andreani", "correoArgentino", "oca"]
+
+// Por defecto se cotizan solo los correos nacionales. Envia también ofrece mensajerías locales
+// (DPD, Rueddo, Welivery: mismo día, solo algunas ciudades) que no sirven para un envío normal.
+const DEFAULT_CARRIERS = ["andreani", "correoArgentino", "oca"]
 
 const PROVINCE_CODES: Record<string, string> = {
   "buenos aires": "B",
@@ -95,6 +98,9 @@ export async function listCarriers(credentials: CarrierCredentials, environment:
 type EnviaRate = {
   carrier?: string
   service?: string
+  serviceDescription?: string
+  // 0 puerta a puerta, 1 sucursal a puerta, 2 puerta a sucursal, 3 sucursal a sucursal.
+  dropOff?: number
   totalPrice?: number | string
   currency?: string
   deliveryDate?: { dateDifference?: number }
@@ -105,12 +111,10 @@ export async function quote(
   environment: string,
   input: QuoteInput,
 ): Promise<QuoteResult> {
-  // La tienda puede limitar a qué correos ofrecer (ej. "andreani"); si no, todos los de AR.
+  // Se puede limitar/ampliar la lista de correos (ej. "andreani,oca"); si no, los nacionales.
   const wanted = (credentials.carriers ?? "").split(",").map((c) => c.trim()).filter(Boolean)
-  const [carriers, codes] = await Promise.all([
-    wanted.length ? Promise.resolve(wanted) : listCarriers(credentials, environment),
-    provinceCodes(credentials.apiKey, environment),
-  ])
+  const carriers = wanted.length ? wanted : DEFAULT_CARRIERS
+  const codes = await provinceCodes(credentials.apiKey, environment)
 
   const address = (postalCode: string, province: string | null | undefined) => ({
     name: "BG Tienda",
@@ -154,6 +158,8 @@ export async function quote(
   const rates = results.flatMap((r) => r.rates)
     .map((r) => ({ ...r, price: Number(r.totalPrice) }))
     .filter((r) => Number.isFinite(r.price) && r.price > 0 && (!r.currency || r.currency === "ARS"))
+    // El checkout pide dirección de entrega: solo servicios que llegan a la puerta del cliente.
+    .filter((r) => r.dropOff == null || r.dropOff === 0 || r.dropOff === 1)
 
   if (!rates.length) {
     throw new Error(`Envia no devolvió tarifas: ${JSON.stringify(results.map((r) => r.error))}`)
@@ -163,6 +169,6 @@ export async function quote(
   return {
     cost: cheapest.price,
     estimatedDays: cheapest.deliveryDate?.dateDifference ?? null,
-    quoteReference: [cheapest.carrier, cheapest.service].filter(Boolean).join(":") || null,
+    quoteReference: cheapest.serviceDescription ?? ([cheapest.carrier, cheapest.service].filter(Boolean).join(":") || null),
   }
 }
