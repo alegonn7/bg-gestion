@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
     const { data: settings } = await adminSupabase
       .from("store_settings")
       .select(
-        "branch_id, shipping_enabled, shipping_pricing_mode, shipping_carrier, shipping_default_weight_grams, shipping_default_length_cm, shipping_default_width_cm, shipping_default_height_cm, free_shipping_threshold, fixed_shipping_default_cost, fixed_shipping_zones",
+        "branch_id, shipping_enabled, shipping_pricing_mode, shipping_carrier, shipping_default_weight_grams, shipping_default_length_cm, shipping_default_width_cm, shipping_default_height_cm, free_shipping_threshold, fixed_shipping_default_cost, fixed_shipping_zones, extra",
       )
       .eq("organization_id", organizationId)
       .single()
@@ -127,7 +127,12 @@ Deno.serve(async (req) => {
       credentials = JSON.parse(await decryptSecret(creds.credentials_encrypted, encryptionKey))
       environment = creds.environment
     } else if (settings.shipping_carrier === "envia" && Deno.env.get("ENVIA_API_KEY")) {
-      credentials = { apiKey: Deno.env.get("ENVIA_API_KEY")! }
+      // La tienda elige con qué correos trabaja (extra.shipping_carriers, ej. ["oca"]).
+      const storeCarriers = (settings.extra as { shipping_carriers?: unknown } | null)?.shipping_carriers
+      credentials = {
+        apiKey: Deno.env.get("ENVIA_API_KEY")!,
+        carriers: Array.isArray(storeCarriers) ? storeCarriers.join(",") : "",
+      }
       environment = Deno.env.get("ENVIA_ENVIRONMENT") ?? "production"
     } else {
       return errorResponse("Esta tienda no conectó su transportista")
