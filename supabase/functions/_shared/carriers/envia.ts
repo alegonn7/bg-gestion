@@ -7,9 +7,8 @@
 //   - shipment.carrier es un solo correo por llamada, así que se cotiza uno por uno en paralelo
 //     y se cobra el más barato.
 //   - Los correos disponibles salen de queries(.test).envia.com/available-carrier/AR/0/1.
-// Sin verificar contra el sandbox todavía: el formato de `state` para Argentina (se manda el
-// código ISO 3166-2:AR sin "AR-") y si piden calle/teléfono reales para cotizar (se mandan
-// valores de relleno: en el preview del checkout todavía no hay dirección completa).
+// Sin verificar contra el sandbox todavía: si piden calle/teléfono reales para cotizar (se
+// mandan valores de relleno: en el preview del checkout todavía no hay dirección completa).
 
 import type { CarrierCredentials, QuoteInput, QuoteResult } from "./types.ts"
 
@@ -42,8 +41,36 @@ const PROVINCE_CODES: Record<string, string> = {
   "tucuman": "T",
 }
 
-function provinceCode(province: string | null | undefined): string {
-  const key = (province ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim()
+function normalize(text: string | null | undefined): string {
+  return (text ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim()
+}
+
+// Los códigos de provincia de Envia salen de su Queries API (GET /state?country_code=AR ->
+// data[].{ name, code_2_digits }). La doc no muestra los de Argentina, así que se busca por
+// nombre y, si la consulta falla o no matchea, se cae a la letra ISO 3166-2:AR.
+async function provinceCodes(apiKey: string, environment: string): Promise<Map<string, string>> {
+  const codes = new Map<string, string>()
+  try {
+    const response = await fetch(`${hosts(environment).queries}/state?country_code=AR`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+    })
+    const data = await response.json().catch(() => null)
+    for (const state of Array.isArray(data?.data) ? data.data : []) {
+      if (state?.name && state?.code_2_digits) codes.set(normalize(state.name), state.code_2_digits)
+    }
+  } catch {
+    // Sin red o respuesta rara: quedan los códigos ISO.
+  }
+  return codes
+}
+
+function provinceCode(codes: Map<string, string>, province: string | null | undefined): string {
+  const key = normalize(province)
+  if (codes.has(key)) return codes.get(key)!
+  // "Ciudad Autónoma de Buenos Aires" puede venir como "Ciudad de Buenos Aires", etc.
+  for (const [name, code] of codes) {
+    if (key && (name.includes(key) || key.includes(name))) return code
+  }
   return PROVINCE_CODES[key] ?? "B"
 }
 
@@ -80,7 +107,10 @@ export async function quote(
 ): Promise<QuoteResult> {
   // La tienda puede limitar a qué correos ofrecer (ej. "andreani"); si no, todos los de AR.
   const wanted = (credentials.carriers ?? "").split(",").map((c) => c.trim()).filter(Boolean)
-  const carriers = wanted.length ? wanted : await listCarriers(credentials, environment)
+  const [carriers, codes] = await Promise.all([
+    wanted.length ? Promise.resolve(wanted) : listCarriers(credentials, environment),
+    provinceCodes(credentials.apiKey, environment),
+  ])
 
   const address = (postalCode: string, province: string | null | undefined) => ({
     name: "BG Tienda",
@@ -88,7 +118,7 @@ export async function quote(
     street: "-",
     number: "0",
     city: province || "-",
-    state: provinceCode(province),
+    state: provinceCode(codes, province),
     country: "AR",
     postalCode,
   })
