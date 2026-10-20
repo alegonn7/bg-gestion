@@ -75,12 +75,15 @@ Deno.serve(async (req) => {
         const storeName = org?.name ?? "tu tienda"
         const siteUrl = Deno.env.get("ECOMERSE_SITE_URL")
         const orderUrl = siteUrl && org?.slug ? `${siteUrl}/${org.slug}/pedido/${order.id}` : null
+        // Con Envia, shipping_quote_reference dice qué correo/servicio se cotizó (ej. "Oca Puerta a Puerta").
         const carrierLabel =
           order.shipping_carrier === "andreani"
             ? "Andreani"
             : order.shipping_carrier === "correo_argentino"
               ? "Correo Argentino"
-              : null
+              : order.shipping_carrier === "envia"
+                ? order.shipping_quote_reference ?? null
+                : null
 
         await sendEmail({
           to: order.customer_email,

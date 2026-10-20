@@ -1,7 +1,7 @@
 // Edge Function: shipping-quote
 // Cotiza el costo de envío para un carrito. Dos modos posibles según
 // store_settings.shipping_pricing_mode: "carrier" delega al transportista real que la tienda
-// conectó (Correo Argentino/Andreani, necesita credenciales propias); "fixed_zones" es un monto
+// conectó (Correo Argentino/Andreani con credenciales propias, o Envia.com que cotiza varios correos); "fixed_zones" es un monto
 // fijo por provincia que la tienda define a mano, sin transportista ni credenciales -- para
 // quien no quiere lidiar con eso. Pública, sin Authorization de usuario -- la llama el
 // storefront anónimo (mismo modelo de confianza que mercadopago-checkout: cualquiera puede
@@ -14,6 +14,7 @@ import { createClient } from "npm:@supabase/supabase-js@2"
 import { decryptSecret } from "../_shared/crypto.ts"
 import * as correoArgentino from "../_shared/carriers/correo-argentino.ts"
 import * as andreani from "../_shared/carriers/andreani.ts"
+import * as envia from "../_shared/carriers/envia.ts"
 import type { QuoteInput } from "../_shared/carriers/types.ts"
 
 const corsHeaders = {
@@ -45,7 +46,7 @@ Deno.serve(async (req) => {
     const { data: settings } = await adminSupabase
       .from("store_settings")
       .select(
-        "branch_id, shipping_enabled, shipping_pricing_mode, shipping_carrier, shipping_default_weight_grams, shipping_default_length_cm, shipping_default_width_cm, shipping_default_height_cm, free_shipping_threshold, fixed_shipping_default_cost, fixed_shipping_zones",
+        "branch_id, shipping_enabled, shipping_pricing_mode, shipping_carrier, shipping_default_weight_grams, shipping_default_length_cm, shipping_default_width_cm, shipping_default_height_cm, free_shipping_threshold, fixed_shipping_default_cost, fixed_shipping_zones, extra",
       )
       .eq("organization_id", organizationId)
       .single()
@@ -101,7 +102,7 @@ Deno.serve(async (req) => {
 
     const { data: branch } = await adminSupabase
       .from("branches")
-      .select("shipping_origin_postal_code")
+      .select("shipping_origin_postal_code, shipping_origin_province")
       .eq("id", settings.branch_id)
       .single()
 
@@ -116,12 +117,26 @@ Deno.serve(async (req) => {
       .eq("carrier", settings.shipping_carrier)
       .maybeSingle()
 
-    if (!creds) {
+    // Envia usa la cuenta de la plataforma (secreto ENVIA_API_KEY): cotizar no cobra nada, así
+    // que las tiendas no tienen que crear ni conectar una cuenta propia. Si alguna tienda
+    // cargó su propia clave, esa tiene prioridad.
+    let credentials: Record<string, string>
+    let environment: string
+    if (creds) {
+      const encryptionKey = Deno.env.get("SHIPPING_CREDENTIALS_ENCRYPTION_KEY")!
+      credentials = JSON.parse(await decryptSecret(creds.credentials_encrypted, encryptionKey))
+      environment = creds.environment
+    } else if (settings.shipping_carrier === "envia" && Deno.env.get("ENVIA_API_KEY")) {
+      // La tienda elige con qué correos trabaja (extra.shipping_carriers, ej. ["oca"]).
+      const storeCarriers = (settings.extra as { shipping_carriers?: unknown } | null)?.shipping_carriers
+      credentials = {
+        apiKey: Deno.env.get("ENVIA_API_KEY")!,
+        carriers: Array.isArray(storeCarriers) ? storeCarriers.join(",") : "",
+      }
+      environment = Deno.env.get("ENVIA_ENVIRONMENT") ?? "production"
+    } else {
       return errorResponse("Esta tienda no conectó su transportista")
     }
-
-    const encryptionKey = Deno.env.get("SHIPPING_CREDENTIALS_ENCRYPTION_KEY")!
-    const credentials = JSON.parse(await decryptSecret(creds.credentials_encrypted, encryptionKey))
 
     const { data: products } = await adminSupabase
       .from("products")
@@ -154,17 +169,24 @@ Deno.serve(async (req) => {
 
     const quoteInput: QuoteInput = {
       originPostalCode: branch.shipping_origin_postal_code,
+      originProvince: branch.shipping_origin_province,
       destinationPostalCode,
+      destinationProvince,
       weightGrams: totalWeightGrams,
       lengthCm: maxLengthCm,
       widthCm: maxWidthCm,
       heightCm: totalHeightCm,
+      declaredValue: subtotal,
     }
 
     // Ecomerse nunca decide con qué transportista hablar -- es un detalle server-side, igual
     // que mercadopago-checkout ya decide sola live_mode.
-    const carrierModule = settings.shipping_carrier === "andreani" ? andreani : correoArgentino
-    const result = await carrierModule.quote(credentials, creds.environment, quoteInput)
+    const carrierModule = settings.shipping_carrier === "andreani"
+      ? andreani
+      : settings.shipping_carrier === "envia"
+        ? envia
+        : correoArgentino
+    const result = await carrierModule.quote(credentials, environment, quoteInput)
 
     return jsonResponse({
       ok: true,
