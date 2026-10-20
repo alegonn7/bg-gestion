@@ -7,6 +7,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2"
 import { encryptSecret } from "../_shared/crypto.ts"
+import { getToken as getAndreaniToken } from "../_shared/carriers/andreani.ts"
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -100,6 +101,16 @@ Deno.serve(async (req) => {
       const { carrier, environment, displayLabel, ...credentialFields } = body
       if (!carrier || !["correo_argentino", "andreani"].includes(carrier)) {
         return errorResponse("Transportista inválido")
+      }
+
+      // Andreani: probar el login antes de guardar, así un usuario/contraseña mal cargado se ve
+      // acá y no recién cuando un cliente quiere cotizar en el checkout.
+      if (carrier === "andreani") {
+        try {
+          await getAndreaniToken(credentialFields, environment ?? "production")
+        } catch {
+          return errorResponse("Andreani rechazó el usuario o la contraseña. Revisalos (y si son de prueba, marcá la casilla).")
+        }
       }
 
       const encryptionKey = Deno.env.get("SHIPPING_CREDENTIALS_ENCRYPTION_KEY")!

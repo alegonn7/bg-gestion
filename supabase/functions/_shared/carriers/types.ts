@@ -8,6 +8,8 @@ export type QuoteInput = {
   lengthCm: number
   widthCm: number
   heightCm: number
+  // Valor de la mercadería (subtotal del carrito), para el seguro que cotiza Andreani.
+  declaredValue: number
 }
 
 export type QuoteResult = {

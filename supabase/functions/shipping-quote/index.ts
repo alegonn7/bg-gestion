@@ -159,6 +159,7 @@ Deno.serve(async (req) => {
       lengthCm: maxLengthCm,
       widthCm: maxWidthCm,
       heightCm: totalHeightCm,
+      declaredValue: subtotal,
     }
 
     // Ecomerse nunca decide con qué transportista hablar -- es un detalle server-side, igual
