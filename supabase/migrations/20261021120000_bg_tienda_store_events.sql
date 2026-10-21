@@ -16,10 +16,13 @@ CREATE TABLE IF NOT EXISTS store_events (
   product_id uuid,
   quantity integer,
   visitor_id text NOT NULL CHECK (length(visitor_id) BETWEEN 8 AND 64),
+  -- Página abierta (solo en page_view), para no contar dos veces una recarga.
+  path text,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS store_events_org_created_idx ON store_events (organization_id, created_at);
+CREATE INDEX IF NOT EXISTS store_events_visitor_idx ON store_events (visitor_id, created_at);
 
 ALTER TABLE store_events ENABLE ROW LEVEL SECURITY;
 
@@ -28,7 +31,8 @@ CREATE OR REPLACE FUNCTION track_store_event(
   p_event_type text,
   p_visitor_id text,
   p_product_id uuid DEFAULT NULL,
-  p_quantity integer DEFAULT NULL
+  p_quantity integer DEFAULT NULL,
+  p_path text DEFAULT NULL
 ) RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -53,19 +57,35 @@ BEGIN
     RETURN;
   END IF;
 
-  INSERT INTO store_events (organization_id, event_type, product_id, quantity, visitor_id)
+  -- Recargar la página (o volver atrás) no cuenta de nuevo: la misma visita o el mismo producto
+  -- del mismo navegador dentro de 30 minutos se toma como uno solo. "Agregar al carrito" sí
+  -- cuenta cada vez, porque suma unidades.
+  IF p_event_type IN ('page_view', 'product_view') AND EXISTS (
+    SELECT 1 FROM store_events
+    WHERE organization_id = p_organization_id
+      AND visitor_id = p_visitor_id
+      AND event_type = p_event_type
+      AND product_id IS NOT DISTINCT FROM p_product_id
+      AND path IS NOT DISTINCT FROM p_path
+      AND created_at > now() - interval '30 minutes'
+  ) THEN
+    RETURN;
+  END IF;
+
+  INSERT INTO store_events (organization_id, event_type, product_id, quantity, visitor_id, path)
   VALUES (
     p_organization_id,
     p_event_type,
     p_product_id,
     CASE WHEN p_event_type = 'add_to_cart' THEN LEAST(GREATEST(COALESCE(p_quantity, 1), 1), 100) END,
-    p_visitor_id
+    p_visitor_id,
+    CASE WHEN p_event_type = 'page_view' THEN left(p_path, 300) END
   );
 END;
 $$;
 
-REVOKE ALL ON FUNCTION track_store_event(uuid, text, text, uuid, integer) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION track_store_event(uuid, text, text, uuid, integer) TO anon, authenticated;
+REVOKE ALL ON FUNCTION track_store_event(uuid, text, text, uuid, integer, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION track_store_event(uuid, text, text, uuid, integer, text) TO anon, authenticated;
 
 -- Resumen de los últimos p_days días (1 a 90) de la organización del usuario logueado.
 -- Los días se cuentan en hora de Argentina.
