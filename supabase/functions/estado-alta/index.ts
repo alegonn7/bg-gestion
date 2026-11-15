@@ -43,7 +43,7 @@ Deno.serve(async (req) => {
 
     const { data: sub } = await admin
       .from("platform_subscriptions")
-      .select("organization_id, product, plan, contact_email, last_synced_at, organizations(slug, name, subscription_status)")
+      .select("id, organization_id, product, plan, contact_email, first_paid_at, last_synced_at, organizations(slug, name, subscription_status)")
       .eq("organization_id", cuenta)
       .maybeSingle()
     if (!sub) return jsonResponse({ estado: "inexistente" })
@@ -52,11 +52,35 @@ Deno.serve(async (req) => {
     let estado = org.subscription_status
 
     const ultima = sub.last_synced_at ? Date.parse(sub.last_synced_at) : 0
-    if (estado === "pending" && Date.now() - ultima > RELEER_CADA_MS) {
+    // Autorizar la tarjeta puede habilitar la cuenta antes del primer débito. La bienvenida de
+    // BG Gestión sigue esperando ese cobro para medir la compra, sin cambiar el acceso al sistema.
+    const esperaPrimerCobro = sub.product === "gestion" && !sub.first_paid_at && ESTADOS_CON_PANEL.includes(estado)
+    if ((estado === "pending" || esperaPrimerCobro) && Date.now() - ultima > RELEER_CADA_MS) {
       try {
         estado = (await sincronizarSuscripcion(admin, { organizationId: cuenta, sugerida }))?.status ?? estado
       } catch (err) {
         console.error("estado-alta: no se pudo sincronizar", cuenta, err)
+      }
+    }
+
+    let compra = null
+    if (sub.product === "gestion") {
+      const { data: pago, error } = await admin
+        .from("platform_payments")
+        .select("id, amount")
+        .eq("subscription_id", sub.id)
+        .eq("status", "approved")
+        .order("debit_date", { ascending: true, nullsFirst: false })
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+        .limit(1)
+        .maybeSingle()
+      if (error) console.error("estado-alta: no se pudo consultar el primer cobro", error.code)
+      const valor = Number(pago?.amount)
+      if (pago?.id && Number.isFinite(valor) && valor > 0) {
+        // ID opaco del cobro: permite deduplicar sin exponer el identificador de Mercado Pago.
+        // Los planes creados por alta-tienda se cobran en ARS.
+        compra = { transaction_id: pago.id, value: valor, currency: "ARS" }
       }
     }
 
@@ -69,6 +93,7 @@ Deno.serve(async (req) => {
       email: enmascarar(sub.contact_email),
       tienda: `${site}/${org.slug}`,
       panel: `${site}/admin/login`,
+      ...(sub.product === "gestion" ? { compra } : {}),
     })
   } catch (err: any) {
     console.error("estado-alta error:", err)
